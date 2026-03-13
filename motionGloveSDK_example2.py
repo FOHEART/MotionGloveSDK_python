@@ -4,7 +4,7 @@
 
 import time
 import threading
-import motionGloveSDK
+from src import motionGloveSDK
 from src.definitions import BoneIndex
 
 # 绑定本机的5001端口 开始读取数据

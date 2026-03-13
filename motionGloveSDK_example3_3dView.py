@@ -22,8 +22,8 @@ from camera_control import bind_space_reset_camera, setup_camera
 from bone_joint_actor import BoneJointActor
 from overlay_text import add_overlay_text
 
-import motionGloveSDK
-from src.definitions import BoneIndex, KHHS32_SKELETON_COUNT
+from src import motionGloveSDK
+from src.definitions import BoneIndex, KHHS32_SKELETON_COUNT, GloveFrame
 
 # ─────────────────────────────────────────────
 #  配置
@@ -109,7 +109,7 @@ def main():
     bind_space_reset_camera(interactor, renderer, render_window)
 
     # ── 用于线程间传递最新帧的容器 ──
-    _latest_frame = [None]
+    _latest_frame: list[GloveFrame | None] = [None]
     _lock = threading.Lock()
 
     # ── 后台线程：持续轮询 SDK 新帧 ──

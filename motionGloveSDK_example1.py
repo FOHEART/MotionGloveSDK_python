@@ -7,7 +7,7 @@
 
 import time
 import threading
-import motionGloveSDK
+from src import motionGloveSDK
 
 # 绑定本机的5001端口 开始读取数据
 # 端口号要与MotionGlove中 设置->选项->插件->数据转发 中的端口号一致

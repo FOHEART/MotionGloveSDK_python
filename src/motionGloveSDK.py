@@ -11,7 +11,7 @@ C++ 接口 → Python 接口对照表：
   MotionGloveSDK_GetGloveSkeletonsFrame()  → MotionGloveSDK_GetGloveSkeletonsFrame()
 
 使用方式：
-  import motionGloveSDK
+  from src import motionGloveSDK
 
   motionGloveSDK.MotionGloveSDK_ListenUDPPort(5001)
 
@@ -23,13 +23,13 @@ C++ 接口 → Python 接口对照表：
 
 import threading
 import socket
-from src.definitions import (
+from .definitions import (
     GloveFrame,
     ACTOR_NAME_LEN_MAX,
 )
-from src.glove_frame_assembler import GloveFrameAssembler
-from src.decode_glove_csv import decode_glove_csv
-from src.port_occupier import print_udp_port_occupier
+from .glove_frame_assembler import GloveFrameAssembler
+from .decode_glove_csv import decode_glove_csv
+from .port_occupier import print_udp_port_occupier
 
 # ---------------------------------------------------------------------------
 # SDK 版本，对应 C++ MotionGloveSDK_getVersion() 中的 mainVersion/subVersion/patchVersion
