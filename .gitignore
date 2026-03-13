@@ -1,0 +1,98 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+# Keil 用户特定配置文件 (因电脑而异，必须忽略)
+*.uvoptx
+*.uvguix.*
+*.uvgui.*
+*.uvproj.user
+*.uvoptx.user
+
+# Keil 编译输出和中间文件
+*.o
+*.obj
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.lnp
+*.crf
+*.d
+*.dep
+*.plg
+*.sct
+*.iex
+
+# Keil 默认输出目录
+libs/
+out/
+Objects/
+Listings/
+Debug/
+Release/
+Temp/
+build/
+.vs/
+*.zip
+*.rar
+
+# 临时文件和日志
+*.bak
+*.tmp
+*.swp
+*~
+*.log
+JLinkLog.txt
+
+# 其他IDE或工具生成的文件（如VSCode）
+.vscode/
+# 但可以保留共享的VSCode设置（可选）
+!.vscode/settings.json
+
+# 系统自动生成的文件
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
