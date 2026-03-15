@@ -1,4 +1,4 @@
-# /*******motionGloveSDK_example3_3dView*********/
+﻿# /*******motionGloveSDK_example3_3dView*********/
 # 将左右手所有骨骼的位置数据 实时显示为3D场景中的小球
 # 每个关节叠加三坐标轴线段表示旋转姿态
 # 每帧动态更新球体位置和坐标轴方向
@@ -39,6 +39,11 @@ SPHERE_RADIUS_FINGER = 0.005   # 手指关节球体半径
 
 COLOR_RIGHT = (0.3, 0.8, 1.0)   # 右手：青蓝
 COLOR_LEFT  = (1.0, 0.5, 0.2)   # 左手：橙
+
+# CI/无界面环境下用于自动化冒烟测试：渲染一帧后退出
+_CI_MODE = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
+           os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
+_CI_RENDER_SECONDS = float(os.environ.get("MOTIONGLOVE_CI_SECONDS", "0.5"))
 
 # ─────────────────────────────────────────────
 
@@ -98,6 +103,8 @@ def main():
     render_window.SetWindowName(
         "MotionGlove 3D Viewer"
     )
+    if _CI_MODE:
+        render_window.SetOffScreenRendering(1)
 
     interactor = vtk.vtkRenderWindowInteractor()
     interactor.SetRenderWindow(render_window)
@@ -107,6 +114,17 @@ def main():
 
     setup_camera(renderer, render_window)
     bind_space_reset_camera(interactor, renderer, render_window)
+
+    if _CI_MODE:
+        try:
+            interactor.Initialize()
+            render_window.Render()
+            time.sleep(max(0.0, _CI_RENDER_SECONDS))
+            render_window.Render()
+            print("[CI] Offscreen render smoke test passed.")
+        finally:
+            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+        return
 
     # ── 用于线程间传递最新帧的容器 ──
     _latest_frame: list[GloveFrame | None] = [None]

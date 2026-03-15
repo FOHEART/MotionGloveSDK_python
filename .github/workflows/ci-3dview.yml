@@ -1,0 +1,58 @@
+﻿name: ci-3dview
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke-test:
+    name: 3d-viewer-smoke-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, ubuntu-24.04]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install Python runtime tooling
+        run: python -m pip install --upgrade setuptools wheel
+
+      - name: Install system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1
+
+      - name: Install VTK/runtime deps into libs (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: call "[Windows]setup_python_libs.cmd"
+
+      - name: Install VTK/runtime deps into libs (Linux)
+        if: runner.os == 'Linux'
+        run: bash "[Linux]setup_python_libs.sh"
+
+      - name: Run 3D viewer smoke test (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MOTIONGLOVE_CI: "1"
+          MOTIONGLOVE_CI_SECONDS: "0.2"
+        run: python motionGloveSDK_example3_3dView.py
+
+      - name: Run 3D viewer smoke test (Linux)
+        if: runner.os == 'Linux'
+        env:
+          MOTIONGLOVE_CI: "1"
+          MOTIONGLOVE_CI_SECONDS: "0.2"
+        run: xvfb-run -a python motionGloveSDK_example3_3dView.py
