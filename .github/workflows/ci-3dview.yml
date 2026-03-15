@@ -12,6 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-22.04, ubuntu-24.04]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
 
     steps:
       - name: Checkout

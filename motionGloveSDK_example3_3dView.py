@@ -1,13 +1,18 @@
-﻿# /*******motionGloveSDK_example3_3dView*********/
-# 将左右手所有骨骼的位置数据 实时显示为3D场景中的小球
-# 每个关节叠加三坐标轴线段表示旋转姿态
-# 每帧动态更新球体位置和坐标轴方向
-# /*******************************************/
-
-import sys
+﻿import sys
 import os
 import threading
 import time
+
+
+def _force_utf8_stdio():
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+_force_utf8_stdio()
 
 # ── 路径：libs/ 和 python_draw3d/ 均在当前目录 ──
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
