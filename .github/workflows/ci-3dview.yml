@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -51,6 +51,7 @@ jobs:
         env:
           MOTIONGLOVE_CI: "1"
           MOTIONGLOVE_CI_SECONDS: "0.2"
+          MOTIONGLOVE_CI_RENDER: "0"
         run: python motionGloveSDK_example3_3dView.py
 
       - name: Run 3D viewer smoke test (Linux)

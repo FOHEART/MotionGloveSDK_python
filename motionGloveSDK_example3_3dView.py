@@ -48,6 +48,14 @@ COLOR_LEFT  = (1.0, 0.5, 0.2)   # 左手：橙
 # CI/无界面环境下用于自动化冒烟测试：渲染一帧后退出
 _CI_MODE = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
            os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
+
+_ci_render_env = os.environ.get("MOTIONGLOVE_CI_RENDER", "").strip().lower()
+if _ci_render_env:
+    _CI_RENDER_ENABLED = _ci_render_env in ("1", "true", "yes")
+else:
+    # GitHub-hosted Windows runner 通常无法创建可用的 OpenGL 上下文，默认跳过渲染
+    _CI_RENDER_ENABLED = not sys.platform.startswith("win")
+
 _CI_RENDER_SECONDS = float(os.environ.get("MOTIONGLOVE_CI_SECONDS", "0.5"))
 
 # ─────────────────────────────────────────────
@@ -100,6 +108,27 @@ def main():
         position=(0.5, 0.97),
         justification="center",
     )
+
+    if _CI_MODE and not _CI_RENDER_ENABLED:
+        try:
+            # 仅做 VTK 导入 + 基础管线冒烟测试（不触发 OpenGL 上下文创建）
+            sphere = vtk.vtkSphereSource()
+            sphere.SetRadius(1.0)
+            sphere.SetThetaResolution(8)
+            sphere.SetPhiResolution(8)
+            sphere.Update()
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputConnection(sphere.GetOutputPort())
+
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            renderer.AddActor(actor)
+
+            print("[CI] VTK pipeline smoke test passed (render skipped).")
+        finally:
+            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+        return
 
     # ── 窗口与交互 ──
     render_window = vtk.vtkRenderWindow()
