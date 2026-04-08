@@ -12,10 +12,10 @@ Dependencies are installed locally to `libs/` (not system Python) using pip `--t
 
 ```bash
 # Windows
-[Windows]setup_python_libs.cmd
+scripts\[Windows]setup_python_libs.cmd
 
 # Linux/macOS
-bash [Linux]setup_python_libs.sh
+bash scripts/[Linux]setup_python_libs.sh
 ```
 
 **Python 3.10+ is required.** Runtime deps (vtk, numpy, matplotlib, Pillow, **pyside6**) land in `libs/`; dev tools (pyinstaller, pybind11) go to system Python.
@@ -42,9 +42,9 @@ The CI workflow (`.github/workflows/ci-3dview.yml`) runs `motionGloveSDK_example
 
 Environment variables that control CI behavior:
 - `MOTIONGLOVE_CI=1` — activates CI mode (no blocking input/timer loops)
-- `MOTIONGLOVE_CI_RENDER=0` — skip rendering (Windows pipeline-only test); exits before constructing `QApplication`
-- `MOTIONGLOVE_CI_RENDER=1` — enable offscreen rendering (Linux via xvfb + `QT_QPA_PLATFORM=offscreen`)
-- `MOTIONGLOVE_CI_SECONDS=0.2` — how long to run the render loop
+- `MOTIONGLOVE_CI_RENDER=0` — skip rendering; exits before constructing `QApplication` (used on both Windows and Linux)
+- `MOTIONGLOVE_CI_RENDER=1` — enable offscreen rendering (not used in CI; available for local testing)
+- `MOTIONGLOVE_CI_SECONDS=0.2` — how long to run the render loop (only relevant when `MOTIONGLOVE_CI_RENDER=1`)
 
 To replicate a CI run locally:
 ```bash

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set ROOT_DIR=%~dp0
+set ROOT_DIR=%~dp0..
 
 echo [fetch_latest] Fetching latest from origin...
 cd /d "%ROOT_DIR%"

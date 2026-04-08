@@ -47,12 +47,14 @@ MotionGloveSDK_python/
 │   ├── left_panel.ui                  # 左侧网络信息面板布局（Qt Designer 可编辑）
 │   └── left_panel_widget.py           # LeftPanelWidget 控制器（QUiLoader 运行时加载）
 │
-├── [Windows]setup_python_libs.cmd     # Windows 一键安装依赖脚本
-├── [Linux]setup_python_libs.sh        # Linux 一键安装依赖脚本
-├── [Windows]git_pull_latest.cmd       # Windows 拉取最新代码脚本
-├── [Linux]git_pull_latest.sh          # Linux 拉取最新代码脚本
-├── [Windows]open_in_vscode.bat        # Windows 用 VSCode 打开工程脚本
-├── [Linux]open_in_vscode.sh           # Linux 用 VSCode 打开工程脚本
+├── scripts/                           # 实用脚本
+│   ├── [Windows]setup_python_libs.cmd # Windows 一键安装依赖脚本
+│   ├── [Linux]setup_python_libs.sh    # Linux 一键安装依赖脚本
+│   ├── [Windows]git_pull_latest.cmd   # Windows 拉取最新代码脚本
+│   ├── [Linux]git_pull_latest.sh      # Linux 拉取最新代码脚本
+│   ├── [Windows]open_in_vscode.bat    # Windows 用 VSCode 打开工程脚本
+│   └── [Linux]open_in_vscode.sh       # Linux 用 VSCode 打开工程脚本
+│
 └── pyrightconfig.json                 # Pyright 类型检查配置
 ```
 
@@ -73,13 +75,13 @@ MotionGloveSDK_python/
 ### Windows
 
 ```cmd
-[Windows]setup_python_libs.cmd
+scripts\[Windows]setup_python_libs.cmd
 ```
 
 ### Linux / macOS
 
 ```bash
-bash [Linux]setup_python_libs.sh
+bash scripts/[Linux]setup_python_libs.sh
 ```
 
 脚本分两步执行：

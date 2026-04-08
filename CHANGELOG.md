@@ -17,4 +17,5 @@
 - `CLAUDE.md`：新增 AI 协作上下文文件，描述项目结构、架构、常用命令及 CI 配置。
 - `python_draw3d/vtk_axes.py`：`add_axes_to_renderer` 现在返回 `vtkAxesActor` 实例；参数类型由 `int` 改为 `float`。
 - `[Windows]setup_python_libs.cmd` / `[Linux]setup_python_libs.sh`：运行时依赖新增 `pyside6==6.5.3`。
+- 所有脚本（`setup_python_libs`、`git_pull_latest`、`open_in_vscode`）移至 `scripts/` 子文件夹；脚本内部路径引用已更新为相对于项目根目录。
 - `.github/workflows/ci-3dview.yml`：Linux 作业新增 `QT_QPA_PLATFORM: offscreen` 环境变量及 Qt/EGL 系统包安装步骤。
