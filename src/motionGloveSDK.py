@@ -59,13 +59,15 @@ _store_lock = threading.RLock()
 _MAX_FRAME_LEN = 32 * 1024
 _assembler: GloveFrameAssembler | None = None
 
+_last_remote_addr: tuple[str, int] | None = None
+
 
 # ---------------------------------------------------------------------------
 # 内部：后台接收线程
 # ---------------------------------------------------------------------------
 
 def _recv_loop() -> None:
-    global _sock, _sdk_status
+    global _sock, _sdk_status, _last_remote_addr
 
     while True:
         if _sock is None:
@@ -74,6 +76,9 @@ def _recv_loop() -> None:
             data, addr = _sock.recvfrom(_MAX_FRAME_LEN)
         except OSError:
             break
+
+        with _store_lock:
+            _last_remote_addr = addr
 
         try:
             text = data.decode("utf-8", errors="replace")
@@ -243,3 +248,15 @@ def MotionGloveSDK_GetGloveSkeletonsFrame(actorName: str) -> GloveFrame | None:
         if entry is None:
             return None
         return entry["frame"]
+
+
+def MotionGloveSDK_GetLastRemoteAddr() -> tuple[str, int] | None:
+    """
+    返回最近一次收到 UDP 数据包的发送方地址。
+
+    返回：
+      (ip_str, port_int)  至少已收到一包时
+      None                尚未收到任何数据包
+    """
+    with _store_lock:
+        return _last_remote_addr

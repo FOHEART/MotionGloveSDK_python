@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import threading
 import time
@@ -18,14 +18,18 @@ _force_utf8_stdio()
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _LIBS_DIR   = os.path.join(_SCRIPT_DIR, "libs")
 _DRAW3D_DIR = os.path.join(_SCRIPT_DIR, "python_draw3d")
+_UI_DIR     = os.path.join(_SCRIPT_DIR, "ui")
 sys.path.insert(0, _DRAW3D_DIR)
 sys.path.insert(0, _LIBS_DIR)
+sys.path.insert(0, _UI_DIR)
 
 import vtk
 from vtk_axes import add_axes_to_renderer
 from camera_control import bind_space_reset_camera, setup_camera
 from bone_joint_actor import BoneJointActor
+from bone_link_actor import BoneLinkActor
 from overlay_text import add_overlay_text
+from ground_plane import build_ground_plane_actor
 
 from src import motionGloveSDK
 from src.definitions import BoneIndex, KHHS32_SKELETON_COUNT, GloveFrame
@@ -39,13 +43,52 @@ GLOVE_NAME   = "Glove1"
 WINDOW_WIDTH  = 1366
 WINDOW_HEIGHT = 768
 
-SPHERE_RADIUS_PALM   = 0.005   # 手掌根节球体半径
-SPHERE_RADIUS_FINGER = 0.005   # 手指关节球体半径
+SPHERE_RADIUS_PALM   = 0.005
+SPHERE_RADIUS_FINGER = 0.005
 
-COLOR_RIGHT = (0.3, 0.8, 1.0)   # 右手：青蓝
-COLOR_LEFT  = (1.0, 0.5, 0.2)   # 左手：橙
+COLOR_RIGHT = (0.3, 0.8, 1.0)
+COLOR_LEFT  = (1.0, 0.5, 0.2)
 
-# CI/无界面环境下用于自动化冒烟测试：渲染一帧后退出
+BONE_LINK_COLOR_RIGHT = (0.3, 0.8, 1.0)
+BONE_LINK_COLOR_LEFT  = (1.0, 0.5, 0.2)
+BONE_LINK_WIDTH       = 3.0
+
+_BONE_LINKS: list[tuple[int, int]] = [
+    # 右手
+    (BoneIndex.RightHandThumb1,  BoneIndex.RightHand),
+    (BoneIndex.RightHandThumb2,  BoneIndex.RightHandThumb1),
+    (BoneIndex.RightHandThumb3,  BoneIndex.RightHandThumb2),
+    (BoneIndex.RightHandIndex1,  BoneIndex.RightHand),
+    (BoneIndex.RightHandIndex2,  BoneIndex.RightHandIndex1),
+    (BoneIndex.RightHandIndex3,  BoneIndex.RightHandIndex2),
+    (BoneIndex.RightHandMiddle1, BoneIndex.RightHand),
+    (BoneIndex.RightHandMiddle2, BoneIndex.RightHandMiddle1),
+    (BoneIndex.RightHandMiddle3, BoneIndex.RightHandMiddle2),
+    (BoneIndex.RightHandRing1,   BoneIndex.RightHand),
+    (BoneIndex.RightHandRing2,   BoneIndex.RightHandRing1),
+    (BoneIndex.RightHandRing3,   BoneIndex.RightHandRing2),
+    (BoneIndex.RightHandPinky1,  BoneIndex.RightHand),
+    (BoneIndex.RightHandPinky2,  BoneIndex.RightHandPinky1),
+    (BoneIndex.RightHandPinky3,  BoneIndex.RightHandPinky2),
+    # 左手
+    (BoneIndex.LeftHandThumb1,   BoneIndex.LeftHand),
+    (BoneIndex.LeftHandThumb2,   BoneIndex.LeftHandThumb1),
+    (BoneIndex.LeftHandThumb3,   BoneIndex.LeftHandThumb2),
+    (BoneIndex.LeftHandIndex1,   BoneIndex.LeftHand),
+    (BoneIndex.LeftHandIndex2,   BoneIndex.LeftHandIndex1),
+    (BoneIndex.LeftHandIndex3,   BoneIndex.LeftHandIndex2),
+    (BoneIndex.LeftHandMiddle1,  BoneIndex.LeftHand),
+    (BoneIndex.LeftHandMiddle2,  BoneIndex.LeftHandMiddle1),
+    (BoneIndex.LeftHandMiddle3,  BoneIndex.LeftHandMiddle2),
+    (BoneIndex.LeftHandRing1,    BoneIndex.LeftHand),
+    (BoneIndex.LeftHandRing2,    BoneIndex.LeftHandRing1),
+    (BoneIndex.LeftHandRing3,    BoneIndex.LeftHandRing2),
+    (BoneIndex.LeftHandPinky1,   BoneIndex.LeftHand),
+    (BoneIndex.LeftHandPinky2,   BoneIndex.LeftHandPinky1),
+    (BoneIndex.LeftHandPinky3,   BoneIndex.LeftHandPinky2),
+]
+
+# CI/无界面环境下用于自动化冒烟测试
 _CI_MODE = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
            os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
 
@@ -53,7 +96,6 @@ _ci_render_env = os.environ.get("MOTIONGLOVE_CI_RENDER", "").strip().lower()
 if _ci_render_env:
     _CI_RENDER_ENABLED = _ci_render_env in ("1", "true", "yes")
 else:
-    # GitHub-hosted Windows runner 通常无法创建可用的 OpenGL 上下文，默认跳过渲染
     _CI_RENDER_ENABLED = not sys.platform.startswith("win")
 
 _CI_RENDER_SECONDS = float(os.environ.get("MOTIONGLOVE_CI_SECONDS", "0.5"))
@@ -71,152 +113,314 @@ def _bone_color(bone_idx):
     return COLOR_RIGHT if bone_idx < BoneIndex.LeftHand else COLOR_LEFT
 
 
-def main():
-    # ── 初始化 SDK ──
-    print(f"UDP Bind IP:port: 127.0.0.1:{RX_PORT}")
-    nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
-    if nRet == -1:
-        print(f"端口 {RX_PORT} 绑定失败，按 Enter 退出。")
-        input()
-        return
-    print(f"[UDP] 端口 {RX_PORT} 绑定成功，开始接收数据...")
+# ─────────────────────────────────────────────
+#  CI 快速路径（不构建任何 Qt 对象）
+# ─────────────────────────────────────────────
 
-    # ── 构建渲染场景 ──
-    renderer = vtk.vtkRenderer()
-    renderer.SetBackground(0.10, 0.10, 0.16)
+def _run_ci_no_render():
+    """仅做 VTK 导入 + 基础管线冒烟测试，不触发 OpenGL 上下文。"""
+    try:
+        renderer = vtk.vtkRenderer()
+        sphere = vtk.vtkSphereSource()
+        sphere.SetRadius(1.0)
+        sphere.SetThetaResolution(8)
+        sphere.SetPhiResolution(8)
+        sphere.Update()
 
-    # 为 32 个骨骼各创建一个 BoneJointActor
-    joint_actors = [
-        BoneJointActor(renderer,
-                       radius=_bone_radius(i),
-                       sphere_color=_bone_color(i))
-        for i in range(KHHS32_SKELETON_COUNT)
-    ]
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(sphere.GetOutputPort())
 
-    add_axes_to_renderer(renderer, length=0.05)
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        renderer.AddActor(actor)
 
-    # ── 界面操作提示文字 ──
-    _font_file = os.path.join(_SCRIPT_DIR, "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
-    if not os.path.isfile(_font_file):
-        _font_file = None
-    add_overlay_text(
-        renderer,
-        text="鼠标左键 旋转    鼠标右键 缩放    鼠标中键 平移    空格 重置视角",
-        font_file=_font_file,
-        font_size=15,
-        color=(0.75, 0.75, 0.75),
-        position=(0.5, 0.97),
-        justification="center",
+        print("[CI] VTK pipeline smoke test passed (render skipped).")
+    finally:
+        motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+
+
+# ─────────────────────────────────────────────
+#  PySide6 主窗口
+# ─────────────────────────────────────────────
+
+def _build_qt_app():
+    """构建并运行 PySide6 主窗口（含 VTK 嵌入）。"""
+    from PySide6.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QHBoxLayout,
+        QMessageBox, QSizePolicy, QMenu,
     )
+    from PySide6.QtCore import QTimer, QEvent, Qt
+    from PySide6.QtGui import QAction
+    from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+    from left_panel_widget import LeftPanelWidget
 
-    if _CI_MODE and not _CI_RENDER_ENABLED:
-        try:
-            # 仅做 VTK 导入 + 基础管线冒烟测试（不触发 OpenGL 上下文创建）
-            sphere = vtk.vtkSphereSource()
-            sphere.SetRadius(1.0)
-            sphere.SetThetaResolution(8)
-            sphere.SetPhiResolution(8)
-            sphere.Update()
+    class MotionGloveMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("MotionGlove 3D Viewer")
+            self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
-            mapper = vtk.vtkPolyDataMapper()
-            mapper.SetInputConnection(sphere.GetOutputPort())
+            self._quit_event = threading.Event()
+            self._latest_frame: list[GloveFrame | None] = [None]
+            self._frame_lock = threading.Lock()
+            self._axes_visible = True
+            self._ground_visible = False
+            self._rb_press_pos = None   # 记录右键按下时的位置，用于判断是否发生了拖拽
 
-            actor = vtk.vtkActor()
-            actor.SetMapper(mapper)
-            renderer.AddActor(actor)
+            self._build_menu()
+            self._build_central()
+            self._build_status_bar()
+            self._build_vtk_scene()
+            self._start_sdk_poll()
+            self._start_render_timer()
 
-            print("[CI] VTK pipeline smoke test passed (render skipped).")
-        finally:
-            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
-        return
+        # ── 菜单栏 ────────────────────────────────────────
+        def _build_menu(self):
+            menu_bar = self.menuBar()
 
-    # ── 窗口与交互 ──
-    render_window = vtk.vtkRenderWindow()
-    render_window.AddRenderer(renderer)
-    render_window.SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-    render_window.SetWindowName(
-        "MotionGlove 3D Viewer"
-    )
-    if _CI_MODE:
-        render_window.SetOffScreenRendering(1)
+            file_menu = menu_bar.addMenu("文件(&F)")
+            exit_action = QAction("退出(&X)", self)
+            exit_action.triggered.connect(QApplication.quit)
+            file_menu.addAction(exit_action)
 
-    interactor = vtk.vtkRenderWindowInteractor()
-    interactor.SetRenderWindow(render_window)
-    interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+            help_menu = menu_bar.addMenu("帮助(&H)")
+            about_qt_action = QAction("关于 Qt(&Q)", self)
+            about_qt_action.triggered.connect(lambda: QMessageBox.aboutQt(self))
+            help_menu.addAction(about_qt_action)
 
-    render_window.Render()
+        # ── 状态栏 ────────────────────────────────────────
+        def _build_status_bar(self):
+            self.statusBar().showMessage("就绪")
 
-    setup_camera(renderer, render_window)
-    bind_space_reset_camera(interactor, renderer, render_window)
+        # ── 中央布局：左侧面板 + VTK 视口 ───────────────
+        def _build_central(self):
+            central = QWidget()
+            self.setCentralWidget(central)
+            h_layout = QHBoxLayout(central)
+            h_layout.setContentsMargins(0, 0, 0, 0)
+            h_layout.setSpacing(0)
 
-    if _CI_MODE:
-        try:
-            interactor.Initialize()
-            render_window.Render()
-            time.sleep(max(0.0, _CI_RENDER_SECONDS))
-            render_window.Render()
-            print("[CI] Offscreen render smoke test passed.")
-        finally:
-            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
-        return
+            # ── 左侧信息面板（从 ui/left_panel.ui 加载）──
+            self._left_panel = LeftPanelWidget()
+            h_layout.addWidget(self._left_panel)
 
-    # ── 用于线程间传递最新帧的容器 ──
-    _latest_frame: list[GloveFrame | None] = [None]
-    _lock = threading.Lock()
+            # ── VTK 视口 ──
+            self._vtk_widget = QVTKRenderWindowInteractor(central)
+            self._vtk_widget.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            self._vtk_widget.installEventFilter(self)
+            h_layout.addWidget(self._vtk_widget)
 
-    # ── 后台线程：持续轮询 SDK 新帧 ──
-    _quit = threading.Event()
+        # ── VTK 场景 ──────────────────────────────────────
+        def _build_vtk_scene(self):
+            self._renderer = vtk.vtkRenderer()
+            self._renderer.SetBackground(0.10, 0.10, 0.16)
 
-    def _sdk_poll():
-        while not _quit.is_set():
-            if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
-                frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame(GLOVE_NAME)
-                motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(GLOVE_NAME)
-                if frame is not None:
-                    with _lock:
-                        _latest_frame[0] = frame
-            time.sleep(0.002)
+            render_window = self._vtk_widget.GetRenderWindow()
+            render_window.AddRenderer(self._renderer)
 
-    threading.Thread(target=_sdk_poll, daemon=True).start()
+            self._interactor = render_window.GetInteractor()
+            self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
-    # ── Enter 键退出线程 ──
-    threading.Thread(
-        target=lambda: (input("按 Enter 键退出程序\n"), _quit.set()),
-        daemon=True,
-    ).start()
+            # 32 个关节演员
+            self._joint_actors = [
+                BoneJointActor(self._renderer,
+                               radius=_bone_radius(i),
+                               sphere_color=_bone_color(i))
+                for i in range(KHHS32_SKELETON_COUNT)
+            ]
 
-    # ── 定时器回调：更新各关节姿态并重绘 ──
-    def _on_timer(*_):
-        with _lock:
-            frame = _latest_frame[0]
-        if frame is None:
-            return
+            # 骨骼连线演员
+            def _link_color(child_idx):
+                return BONE_LINK_COLOR_RIGHT if child_idx < BoneIndex.LeftHand else BONE_LINK_COLOR_LEFT
 
-        for i, skel in enumerate(frame.skeletons):
-            ja = joint_actors[i]
-            if skel.contains_position and skel.contains_quat_wxyz:
-                ja.set_pose(skel.position, skel.quat_wxyz)
-            elif skel.contains_position:
-                ja.set_position_only(skel.position)
+            self._link_actors = [
+                BoneLinkActor(self._renderer,
+                              color=_link_color(child),
+                              line_width=BONE_LINK_WIDTH)
+                for child, _ in _BONE_LINKS
+            ]
+
+            self._axes_actor = add_axes_to_renderer(self._renderer, length=0.05)
+
+            # 地平面网格（默认隐藏）
+            self._ground_actor = build_ground_plane_actor(extent=0.30, spacing=0.05)
+            self._ground_actor.SetVisibility(False)
+            self._renderer.AddActor(self._ground_actor)
+
+            _font_file = os.path.join(_SCRIPT_DIR, "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
+            if not os.path.isfile(_font_file):
+                _font_file = None
+            add_overlay_text(
+                self._renderer,
+                text="鼠标左键 旋转    鼠标右键 缩放    鼠标中键 平移    空格 重置视角",
+                font_file=_font_file,
+                font_size=15,
+                color=(0.75, 0.75, 0.75),
+                position=(0.5, 0.97),
+                justification="center",
+            )
+
+            self._vtk_widget.Initialize()
+            setup_camera(self._renderer, render_window)
+            bind_space_reset_camera(self._interactor, self._renderer, render_window)
+
+        # ── SDK 轮询线程 ──────────────────────────────────
+        def _start_sdk_poll(self):
+            def _poll():
+                while not self._quit_event.is_set():
+                    if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
+                        frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame(GLOVE_NAME)
+                        motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(GLOVE_NAME)
+                        if frame is not None:
+                            with self._frame_lock:
+                                self._latest_frame[0] = frame
+                    time.sleep(0.002)
+
+            threading.Thread(target=_poll, daemon=True).start()
+
+        # ── Qt 定时器驱动渲染更新 ─────────────────────────
+        def _start_render_timer(self):
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._on_timer)
+            self._timer.start(16)   # ~60 fps
+
+        def _on_timer(self):
+            with self._frame_lock:
+                frame = self._latest_frame[0]
+
+            if frame is not None:
+                positions: list = [None] * KHHS32_SKELETON_COUNT
+                for i, skel in enumerate(frame.skeletons):
+                    ja = self._joint_actors[i]
+                    if skel.contains_position and skel.contains_quat_wxyz:
+                        ja.set_pose(skel.position, skel.quat_wxyz)
+                        positions[i] = skel.position
+                    elif skel.contains_position:
+                        ja.set_position_only(skel.position)
+                        positions[i] = skel.position
+                    else:
+                        ja.hide()
+
+                for la, (child, parent) in zip(self._link_actors, _BONE_LINKS):
+                    pc = positions[child]
+                    pp = positions[parent]
+                    if pc is not None and pp is not None:
+                        la.update(pp, pc)
+                    else:
+                        la.hide()
+
+                self._vtk_widget.GetRenderWindow().Render()
+
+            # 更新左侧网络信息面板
+            addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
+            if addr is not None:
+                self._left_panel.lbl_ip.setText(addr[0])
+                self._left_panel.lbl_port.setText(str(addr[1]))
             else:
-                ja.hide()
+                self._left_panel.lbl_ip.setText("等待中…")
+                self._left_panel.lbl_port.setText("—")
 
-        render_window.Render()
+        # ── 右键上下文菜单 ────────────────────────────────
+        def eventFilter(self, obj, event):
+            if obj is self._vtk_widget:
+                t = event.type()
+                if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
+                    self._rb_press_pos = event.pos()
+                elif t == QEvent.Type.ContextMenu:
+                    # 仅在右键短按（未发生拖拽）时弹出菜单
+                    # 拖拽判定：按下到弹起的移动距离 > 5 px 则视为缩放操作
+                    show = True
+                    if self._rb_press_pos is not None:
+                        delta = event.pos() - self._rb_press_pos
+                        if delta.x() ** 2 + delta.y() ** 2 > 25:
+                            show = False
+                        self._rb_press_pos = None
+                    if show:
+                        self._show_context_menu(event.globalPos())
+                    return True
+            return super().eventFilter(obj, event)
 
-        if _quit.is_set():
-            interactor.GetRenderWindow().Finalize()
-            interactor.TerminateApp()
+        def _show_context_menu(self, global_pos):
+            menu = QMenu(self)
 
-    interactor.AddObserver("TimerEvent", _on_timer)
-    interactor.Initialize()
-    interactor.CreateRepeatingTimer(16)   # ~60fps
+            axes_label = "隐藏坐标轴" if self._axes_visible else "显示坐标轴"
+            axes_action = menu.addAction(axes_label)
 
-    interactor.Start()
+            ground_label = "隐藏地平面" if self._ground_visible else "显示地平面"
+            ground_action = menu.addAction(ground_label)
 
-    # ── 清理 ──
-    _quit.set()
-    motionGloveSDK.MotionGloveSDK_CloseUDPPort()
-    print("程序退出。")
+            action = menu.exec(global_pos)
+            rw = self._vtk_widget.GetRenderWindow()
+
+            if action is axes_action:
+                self._axes_visible = not self._axes_visible
+                self._axes_actor.SetVisibility(self._axes_visible)
+                rw.Render()
+            elif action is ground_action:
+                self._ground_visible = not self._ground_visible
+                self._ground_actor.SetVisibility(self._ground_visible)
+                rw.Render()
+
+        # ── 窗口关闭处理 ──────────────────────────────────
+        def closeEvent(self, event):
+            self._timer.stop()
+            self._quit_event.set()
+            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+            self._vtk_widget.GetRenderWindow().Finalize()
+            self._interactor.TerminateApp()
+            super().closeEvent(event)
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    window = MotionGloveMainWindow()
+    window.show()
+    return app, window
+
+
+# ─────────────────────────────────────────────
+#  入口
+# ─────────────────────────────────────────────
+
+def main():
+    print(f"UDP Bind IP:port: 0.0.0.0:{RX_PORT}")
+    nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
+    _port_error_lines: list[str] = []
+    if nRet == -1:
+        print(f"端口 {RX_PORT} 绑定失败，正在查询占用程序…")
+        from src.port_occupier import find_udp_port_occupier
+        _port_error_lines = find_udp_port_occupier(RX_PORT)
+        if not _port_error_lines:
+            _port_error_lines = [f"端口 {RX_PORT} 绑定失败"]
+        for line in _port_error_lines:
+            print(line)
+    else:
+        print(f"[UDP] 端口 {RX_PORT} 绑定成功，开始接收数据...")
+
+    # ── CI 快速路径：不构建任何 Qt 对象 ──
+    if _CI_MODE and not _CI_RENDER_ENABLED:
+        _run_ci_no_render()
+        return
+
+    # ── CI 离屏渲染路径：设置无头 Qt 平台 ──
+    if _CI_MODE and _CI_RENDER_ENABLED:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, window = _build_qt_app()
+
+    if _port_error_lines:
+        window._left_panel.show_port_error(_port_error_lines)
+
+    if _CI_MODE:
+        # CI 渲染冒烟测试：渲染一帧后自动退出
+        from PySide6.QtCore import QTimer as _QTimer
+        def _ci_exit():
+            window._vtk_widget.GetRenderWindow().Render()
+            print("[CI] Offscreen render smoke test passed.")
+            app.quit()
+        _QTimer.singleShot(int(_CI_RENDER_SECONDS * 1000), _ci_exit)
+
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

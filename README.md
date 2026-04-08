@@ -25,9 +25,11 @@ MotionGloveSDK_python/
 │
 ├── python_draw3d/                     # 3D 渲染辅助模块（基于 VTK）
 │   ├── bone_joint_actor.py            # 骨骼关节球体 + 坐标轴 Actor
+│   ├── bone_link_actor.py             # 骨骼连线 Actor（父子关节间连线）
 │   ├── box_actor.py                   # 箱体 Actor
 │   ├── camera_control.py              # 摄像机控制（初始化、空格重置视角）
 │   ├── draw_lines.py                  # 线段绘制工具
+│   ├── ground_plane.py                # 地平面网格 Actor（灰色，5 cm 间距）
 │   ├── overlay_text.py                # 屏幕叠加文字
 │   ├── print_help_message.py          # 打印帮助信息
 │   └── vtk_axes.py                    # 三坐标轴显示
@@ -41,6 +43,10 @@ MotionGloveSDK_python/
 ├── fonts/
 │   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
 │
+├── ui/                                # Qt Designer UI 文件与控制器
+│   ├── left_panel.ui                  # 左侧网络信息面板布局（Qt Designer 可编辑）
+│   └── left_panel_widget.py           # LeftPanelWidget 控制器（QUiLoader 运行时加载）
+│
 ├── [Windows]setup_python_libs.cmd     # Windows 一键安装依赖脚本
 ├── [Linux]setup_python_libs.sh        # Linux 一键安装依赖脚本
 ├── [Windows]git_pull_latest.cmd       # Windows 拉取最新代码脚本
@@ -49,6 +55,14 @@ MotionGloveSDK_python/
 ├── [Linux]open_in_vscode.sh           # Linux 用 VSCode 打开工程脚本
 └── pyrightconfig.json                 # Pyright 类型检查配置
 ```
+
+---
+
+## Python 版本要求
+
+**最低要求：Python 3.10**
+
+部分依赖（numpy 2.x、contourpy 1.3.x、kiwisolver 1.4.x）在 Linux 上需要 Python 3.10+；Windows 上建议使用 Python 3.10 或更高版本。
 
 ---
 
@@ -78,6 +92,7 @@ bash [Linux]setup_python_libs.sh
 | numpy | 2.4.2 | 2.2.6 | 数值计算 |
 | matplotlib | 3.10.8 | 3.10.8 | 绘图（依赖项） |
 | Pillow | 12.1.1 | 12.1.1 | 图像处理 |
+| pyside6 | 6.5.3 | 6.5.3 | Qt6 GUI 框架（示例3主窗口） |
 | pyparsing | 3.3.2 | 3.3.2 | 解析工具 |
 | python-dateutil | 2.9.0.post0 | 2.9.0.post0 | 日期工具 |
 | packaging | 26.0 | 26.0 | 包管理工具 |
@@ -131,6 +146,7 @@ while True:
 | `MotionGloveSDK_isGloveNewFramePending(actorName)` | 查询指定数据流是否有新帧到达 |
 | `MotionGloveSDK_resetGloveNewFramePending(actorName)` | 清除指定数据流的新帧标志 |
 | `MotionGloveSDK_GetGloveSkeletonsFrame(actorName)` | 获取最新一帧 `GloveFrame` 骨骼数据 |
+| `MotionGloveSDK_GetLastRemoteAddr()` | 返回最近一次收到 UDP 数据包的发送方 `(ip, port)`，未收到数据时返回 `None` |
 
 ---
 
@@ -172,20 +188,26 @@ Left Palm Euler Angle: [12.34, -5.67, 90.12]   Right Palm Euler Angle: [-3.21, 8
 
 ### `motionGloveSDK_example3_3dView.py` — 3D 实时可视化
 
-将左右手所有骨骼关节的位置和姿态实时渲染为 3D 场景。
+将左右手所有骨骼关节的位置和姿态实时渲染为 3D 场景，基于 **PySide6 + VTK** 构建。
 
 - 监听本机 UDP 5001 端口
 - 每个骨骼关节显示为彩色小球：右手为青蓝色，左手为橙色
-- 每个关节叠加三坐标轴线段，直观表示旋转姿态
+- 每个关节叠加三坐标轴线段，直观表示旋转姿态；父子关节间绘制骨骼连线
 - 约 60fps 实时刷新
-- 鼠标操作：左键旋转、右键缩放、中键平移、**空格键** 重置视角
-- 按 **Enter** 退出
+- **窗口功能**：
+  - 菜单栏：文件 → 退出；帮助 → 关于 Qt
+  - 左侧面板：实时显示 UDP 数据来源 IP 和端口；若端口被占用则以红色显示占用程序信息
+  - 底部状态栏
+- **鼠标操作**：左键旋转、右键拖拽缩放、中键平移、**空格键** 重置视角
+- **右键短按** 弹出上下文菜单，可切换：
+  - 坐标轴（显示/隐藏）
+  - 地平面网格（显示/隐藏，灰色 5 cm 间距网格）
 
 ```bash
 python motionGloveSDK_example3_3dView.py
 ```
 
-> 运行此示例需要先安装 VTK：执行 `[Windows]setup_python_libs.cmd` 或 `[Linux]setup_python_libs.sh`。
+> 运行此示例需要先安装依赖：执行 `[Windows]setup_python_libs.cmd` 或 `[Linux]setup_python_libs.sh`（包含 VTK 和 PySide6）。
 
 ---
 

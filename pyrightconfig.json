@@ -1,6 +1,7 @@
 {
     "extraPaths": [
         "python_draw3d",
-        "libs"
+        "libs",
+        "ui"
     ]
 }

@@ -6,7 +6,7 @@ import vtk
 _AXES_LABEL_FONT_SIZE = 14
 
 
-def build_axes_actor(length=4):
+def build_axes_actor(length: float = 4):
     """坐标轴辅助显示"""
     axes = vtk.vtkAxesActor()
     axes.SetTotalLength(length, length, length)
@@ -27,6 +27,8 @@ def build_axes_actor(length=4):
     return axes
 
 
-def add_axes_to_renderer(renderer, length=4):
-    """创建坐标轴并添加到 renderer"""
-    renderer.AddActor(build_axes_actor(length=length))
+def add_axes_to_renderer(renderer, length: float = 4):
+    """创建坐标轴并添加到 renderer，返回该 actor 以便外部控制可见性"""
+    axes = build_axes_actor(length=length)
+    renderer.AddActor(axes)
+    return axes
