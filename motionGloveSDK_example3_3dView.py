@@ -30,6 +30,7 @@ from bone_joint_actor import BoneJointActor
 from bone_link_actor import BoneLinkActor
 from overlay_text import add_overlay_text
 from ground_plane import build_ground_plane_actor
+from fps_counter import FpsCounter
 
 from src import motionGloveSDK
 from src.definitions import BoneIndex, KHHS32_SKELETON_COUNT, GloveFrame
@@ -166,6 +167,11 @@ def _build_qt_app():
             self._axes_visible = True
             self._ground_visible = False
             self._rb_press_pos = None   # 记录右键按下时的位置，用于判断是否发生了拖拽
+            self._total_frames = 0       # 本次接收会话的累计帧数
+            self._dropped_frames = 0     # 本次接收会话的累计丢失帧数
+            self._last_frame_fn = None   # 上一次消费的帧序号（在 _poll 线程中更新）
+            self._drop_event: tuple[int, int, int] | None = None  # (first_lost_fn, last_lost_fn, cumulative)
+            self._fps_counter = FpsCounter()
 
             self._build_menu()
             self._build_central()
@@ -188,9 +194,18 @@ def _build_qt_app():
             about_qt_action.triggered.connect(lambda: QMessageBox.aboutQt(self))
             help_menu.addAction(about_qt_action)
 
+            oss_action = QAction("开源声明(&O)", self)
+            oss_action.triggered.connect(self._show_oss_dialog)
+            help_menu.addAction(oss_action)
+
         # ── 状态栏 ────────────────────────────────────────
         def _build_status_bar(self):
             self.statusBar().showMessage("就绪")
+
+        def _show_oss_dialog(self):
+            from oss_licenses_dialog import OssLicensesDialog
+            dlg = OssLicensesDialog(self)
+            dlg.exec()
 
         # ── 中央布局：左侧面板 + VTK 视口 ───────────────
         def _build_central(self):
@@ -202,6 +217,8 @@ def _build_qt_app():
 
             # ── 左侧信息面板（从 ui/left_panel.ui 加载）──
             self._left_panel = LeftPanelWidget()
+            self._left_panel.btn_start.clicked.connect(self._on_start_clicked)
+            self._left_panel.btn_stop.clicked.connect(self._on_stop_clicked)
             h_layout.addWidget(self._left_panel)
 
             # ── VTK 视口 ──
@@ -270,12 +287,32 @@ def _build_qt_app():
         def _start_sdk_poll(self):
             def _poll():
                 while not self._quit_event.is_set():
-                    if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
+                    # 把队列中所有积压帧逐一消费，做连续性检测，取最新帧用于渲染
+                    latest = None
+                    while motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
                         frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame(GLOVE_NAME)
                         motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(GLOVE_NAME)
-                        if frame is not None:
-                            with self._frame_lock:
-                                self._latest_frame[0] = frame
+                        if frame is None:
+                            continue
+                        fn = frame.header.frame_number
+                        with self._frame_lock:
+                            # 连续性检测
+                            if self._last_frame_fn is not None:
+                                lost = fn - self._last_frame_fn - 1
+                                if lost > 0:
+                                    self._dropped_frames += lost
+                                    self._drop_event = (
+                                        self._last_frame_fn + 1,
+                                        fn - 1,
+                                        self._dropped_frames,
+                                    )
+                            self._total_frames += 1
+                            self._last_frame_fn = fn
+                            self._fps_counter.tick()
+                            latest = frame
+                    if latest is not None:
+                        with self._frame_lock:
+                            self._latest_frame[0] = latest
                     time.sleep(0.002)
 
             threading.Thread(target=_poll, daemon=True).start()
@@ -286,9 +323,28 @@ def _build_qt_app():
             self._timer.timeout.connect(self._on_timer)
             self._timer.start(16)   # ~60 fps
 
+            self._fps_timer = QTimer(self)
+            self._fps_timer.timeout.connect(self._on_fps_timer)
+            self._fps_timer.start(1000)  # 1 秒刷新一次帧率
+
+        def _on_fps_timer(self):
+            self._fps_counter.snapshot()
+            self._left_panel.lbl_fps.setText(f"{self._fps_counter.fps()} fps")
+
         def _on_timer(self):
             with self._frame_lock:
                 frame = self._latest_frame[0]
+                drop_event = self._drop_event
+                self._drop_event = None
+
+            # 显示丢帧警告（由 _poll 线程检测，主线程在此显示）
+            if drop_event is not None:
+                first, last, cumulative = drop_event
+                self.statusBar().showMessage(
+                    f"[丢帧] fn {first}"
+                    + (f" ~ {last}" if last > first else "")
+                    + f"  丢失 {last - first + 1} 帧（累计 {cumulative}）"
+                )
 
             if frame is not None:
                 positions: list = [None] * KHHS32_SKELETON_COUNT
@@ -321,6 +377,11 @@ def _build_qt_app():
             else:
                 self._left_panel.lbl_ip.setText("等待中…")
                 self._left_panel.lbl_port.setText("—")
+            actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
+            self._left_panel.lbl_actor_name.setText(", ".join(actor_names) if actor_names else "—")
+            if frame is not None and self._last_frame_fn is not None:
+                self._left_panel.lbl_frame_id.setText(str(self._last_frame_fn))
+            self._left_panel.lbl_total_frames.setText(str(self._total_frames))
 
         # ── 右键上下文菜单 ────────────────────────────────
         def eventFilter(self, obj, event):
@@ -366,11 +427,43 @@ def _build_qt_app():
         # ── 窗口关闭处理 ──────────────────────────────────
         def closeEvent(self, event):
             self._timer.stop()
+            self._fps_timer.stop()
             self._quit_event.set()
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._vtk_widget.GetRenderWindow().Finalize()
             self._interactor.TerminateApp()
             super().closeEvent(event)
+
+        # ── UDP 接收控制 ──────────────────────────────────
+        def _on_stop_clicked(self):
+            motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+            self._fps_counter.reset()
+            self._left_panel.set_receiving(False)
+            self._left_panel.lbl_ip.setText("等待中…")
+            self._left_panel.lbl_port.setText("—")
+            self._left_panel.lbl_actor_name.setText("—")
+            self._left_panel.lbl_frame_id.setText("—")
+            self._left_panel.lbl_fps.setText("0 fps")
+
+        def _on_start_clicked(self):
+            nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
+            if nRet == 0:
+                self._total_frames = 0
+                self._dropped_frames = 0
+                self._last_frame_fn = None
+                self._fps_counter.reset()
+                self._left_panel.lbl_total_frames.setText("0")
+                self._left_panel.lbl_frame_id.setText("—")
+                self._left_panel.lbl_fps.setText("0 fps")
+                self._left_panel.set_receiving(True)
+                self._left_panel.clear_error()
+            else:
+                from src.port_occupier import find_udp_port_occupier
+                lines = find_udp_port_occupier(RX_PORT)
+                if not lines:
+                    lines = [f"端口 {RX_PORT} 绑定失败"]
+                self._left_panel.show_port_error(lines)
+                self._left_panel.set_receiving(False)
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = MotionGloveMainWindow()
@@ -410,6 +503,9 @@ def main():
 
     if _port_error_lines:
         window._left_panel.show_port_error(_port_error_lines)
+        window._left_panel.set_receiving(False)
+    else:
+        window._left_panel.set_receiving(True)
 
     if _CI_MODE:
         # CI 渲染冒烟测试：渲染一帧后自动退出

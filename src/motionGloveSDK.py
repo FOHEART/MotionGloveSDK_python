@@ -23,6 +23,7 @@ C++ 接口 → Python 接口对照表：
 
 import threading
 import socket
+import queue
 from .definitions import (
     GloveFrame,
     ACTOR_NAME_LEN_MAX,
@@ -99,9 +100,8 @@ def _on_complete_frame(actor: str, fn: int, body_csv: str, header_tokens: list) 
         if actor not in _actor_store:
             if len(_actor_store) >= _SUIT_MGR_MAXLEN:
                 return
-            _actor_store[actor] = {"frame": None, "pending": False}
-        _actor_store[actor]["frame"]   = frame
-        _actor_store[actor]["pending"] = True
+            _actor_store[actor] = {"queue": queue.Queue(), "last_frame": None}
+        _actor_store[actor]["queue"].put(frame)
 
 
 # ---------------------------------------------------------------------------
@@ -202,12 +202,12 @@ def MotionGloveSDK_isGloveNewFramePending(actorName: str) -> bool:
         entry = _actor_store.get(actorName)
         if entry is None:
             return False
-        return entry["pending"]
+        return not entry["queue"].empty()
 
 
 def MotionGloveSDK_resetGloveNewFramePending(actorName: str) -> bool:
     """
-    清除指定数据流的新帧标志。
+    清除指定数据流的新帧标志（从队列取出一帧并更新 last_frame）。
     对应 C++ MotionGloveSDK_resetGloveNewFramePending()。
 
     参数：
@@ -224,7 +224,11 @@ def MotionGloveSDK_resetGloveNewFramePending(actorName: str) -> bool:
         entry = _actor_store.get(actorName)
         if entry is None:
             return False
-        entry["pending"] = False
+        try:
+            frame = entry["queue"].get_nowait()
+            entry["last_frame"] = frame
+        except queue.Empty:
+            pass
         return True
 
 
@@ -247,7 +251,7 @@ def MotionGloveSDK_GetGloveSkeletonsFrame(actorName: str) -> GloveFrame | None:
         entry = _actor_store.get(actorName)
         if entry is None:
             return None
-        return entry["frame"]
+        return entry["last_frame"]
 
 
 def MotionGloveSDK_GetLastRemoteAddr() -> tuple[str, int] | None:
@@ -260,3 +264,14 @@ def MotionGloveSDK_GetLastRemoteAddr() -> tuple[str, int] | None:
     """
     with _store_lock:
         return _last_remote_addr
+
+
+def MotionGloveSDK_GetActorNames() -> list[str]:
+    """
+    返回当前已发现的所有套装名称列表（按首次出现顺序）。
+
+    返回：
+      list[str]  套装名称列表，尚未收到任何数据时为空列表
+    """
+    with _store_lock:
+        return list(_actor_store.keys())

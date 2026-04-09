@@ -39,8 +39,10 @@ class UDPRawReceiver:
         self._print_raw = print_raw  # True: 打印每个原始 UDP 包；False: 静默
 
         self._udp_packet_count = 0
+        self._dropped_frames = 0
         self._lock = threading.Lock()
         self._assembler = GloveFrameAssembler(on_complete_frame=self._on_complete_frame)
+        self._last_fn: int | None = None  # 上一个完整帧的帧序号
 
     def start(self) -> int:
         """
@@ -125,8 +127,28 @@ class UDPRawReceiver:
 
         print("[线程] 后台接收线程已退出")
 
+    def _check_fn_continuity(self, fn: int) -> None:
+        """检查帧序号是否连续，不连续时打印丢失帧范围。"""
+        if self._last_fn is None:
+            self._last_fn = fn
+            return
+        expected = self._last_fn + 1
+        if fn != expected:
+            lost = fn - expected
+            if lost > 0:
+                print(
+                    f"  [警告] 帧序号不连续：期望 {expected}，收到 {fn}"
+                    f"  丢失 {lost} 帧（fn {expected} ~ {fn - 1}）"
+                )
+                self._dropped_frames += lost
+            else:
+                # fn 回绕或乱序（罕见）
+                print(f"  [警告] 帧序号回绕或乱序：期望 {expected}，收到 {fn}")
+        self._last_fn = fn
+
     def _on_complete_frame(self, actor: str, fn: int, body_csv: str, header_tokens: list):
         """由 GloveFrameAssembler 在完整帧拼接完成后回调，调用 decode_glove_csv 解析数据。"""
+        self._check_fn_continuity(fn)
         complete = self._assembler.complete_frame_count
 
         frame = decode_glove_csv(actor, fn, body_csv, header_tokens)
@@ -152,7 +174,7 @@ class UDPRawReceiver:
             #f"  att={hdr.skeleton_attitude.name}"
             #f"  order={hdr.channel_order.name}"
             #f"  gesture L/R={hdr.left_hand_gesture.value}/{hdr.right_hand_gesture.value}"
-            f"\n       {rh.bone_name}{rh_pos_str}{rh_euler_str}{rh_quat_str}"
+            #f"\n       {rh.bone_name}{rh_pos_str}{rh_euler_str}{rh_quat_str}"
            # f"  quat={[f'{v:.3f}' for v in rh.quat_wxyz]}"
             #f"\n       {lh.bone_name}{lh_pos_str}{lh_euler_str}{lh_quat_str}"
         )
@@ -215,7 +237,7 @@ def main():
 
     receiver.stop()
 
-    print(f"\n[统计] 收到 UDP 包: {receiver._udp_packet_count}  完整帧: {receiver._assembler.complete_frame_count}")
+    print(f"\n[统计] 收到 UDP 包: {receiver._udp_packet_count}  完整帧: {receiver._assembler.complete_frame_count}  丢失帧: {receiver._dropped_frames}")
     print("程序退出。")
 
 

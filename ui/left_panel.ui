@@ -44,6 +44,27 @@
     </widget>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="actor_row">
+     <item>
+      <widget class="QLabel" name="lbl_actor_caption">
+       <property name="text">
+        <string>套装：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lbl_actor_name">
+       <property name="text">
+        <string>—</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="ip_row">
      <item>
       <widget class="QLabel" name="lbl_ip_caption">
@@ -83,6 +104,60 @@
     </layout>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="frame_row">
+     <item>
+      <widget class="QLabel" name="lbl_frame_caption">
+       <property name="text">
+        <string>帧序号：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lbl_frame_id">
+       <property name="text">
+        <string>—</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="total_frame_row">
+     <item>
+      <widget class="QLabel" name="lbl_total_caption">
+       <property name="text">
+        <string>总帧数：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lbl_total_frames">
+       <property name="text">
+        <string>0</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="fps_row">
+     <item>
+      <widget class="QLabel" name="lbl_fps_caption">
+       <property name="text">
+        <string>帧率：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lbl_fps">
+       <property name="text">
+        <string>0 fps</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <widget class="QLabel" name="lbl_error">
      <property name="text">
       <string/>
@@ -97,6 +172,24 @@
       <bool>false</bool>
      </property>
     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btn_row">
+     <item>
+      <widget class="QPushButton" name="btn_start">
+       <property name="text">
+        <string>开始</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_stop">
+       <property name="text">
+        <string>停止</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <spacer name="verticalSpacer">

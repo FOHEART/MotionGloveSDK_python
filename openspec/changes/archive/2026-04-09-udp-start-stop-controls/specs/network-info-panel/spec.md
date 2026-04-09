@@ -1,15 +1,4 @@
-## ADDED Requirements
-
-### Requirement: UDP source address exposed by SDK
-`motionGloveSDK` SHALL expose a function `MotionGloveSDK_GetLastRemoteAddr()` that returns the `(ip: str, port: int)` tuple of the most recently received UDP packet sender, or `None` if no packet has been received yet.
-
-#### Scenario: Remote address available after first packet
-- **WHEN** at least one UDP packet has been received from a remote sender
-- **THEN** `MotionGloveSDK_GetLastRemoteAddr()` returns `(ip_string, port_int)`
-
-#### Scenario: No packets received yet
-- **WHEN** the UDP port is bound but no packet has arrived
-- **THEN** `MotionGloveSDK_GetLastRemoteAddr()` returns `None`
+## MODIFIED Requirements
 
 ### Requirement: Left-side network info panel
 The application SHALL display a fixed-width panel on the left side of the main window. The panel SHALL show the UDP source IP address and port number, updated on each timer tick (~60 Hz). The panel's widget structure SHALL be defined in `ui/left_panel.ui` and loaded at runtime by `LeftPanelWidget`; the observable behavior (IP/port display, fixed width ≤240 px, waiting placeholder) SHALL be identical to the inline-built panel. The panel SHALL additionally contain a "开始" (Start) button and a "停止" (Stop) button positioned below the IP/port info area, controlling the UDP receive loop. When receiving is stopped, the IP address and port labels SHALL reset to their placeholder values.
