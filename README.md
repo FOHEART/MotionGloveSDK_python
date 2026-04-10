@@ -24,11 +24,13 @@ MotionGloveSDK_python/
 │   └── port_occupier.py               # 端口占用诊断工具
 │
 ├── python_draw3d/                     # 3D 渲染辅助模块（基于 VTK）
-│   ├── bone_joint_actor.py            # 骨骼关节球体 + 坐标轴 Actor
-│   ├── bone_link_actor.py             # 骨骼连线 Actor（父子关节间连线）
+│   ├── bone_joint_actor.py            # 骨骼关节球体 + 坐标轴 Actor（支持运行时修改半径/颜色/轴长）
+│   ├── bone_link_actor.py             # 骨骼连线 Actor（支持运行时修改粗细/颜色）
 │   ├── box_actor.py                   # 箱体 Actor
 │   ├── camera_control.py              # 摄像机控制（初始化、空格重置视角）
+│   ├── draw_config_io.py              # DrawConfig dataclass + JSON 配置读写
 │   ├── draw_lines.py                  # 线段绘制工具
+│   ├── fps_counter.py                 # FpsCounter：整秒桶计数帧率统计
 │   ├── ground_plane.py                # 地平面网格 Actor（灰色，5 cm 间距）
 │   ├── overlay_text.py                # 屏幕叠加文字
 │   ├── print_help_message.py          # 打印帮助信息
@@ -45,7 +47,9 @@ MotionGloveSDK_python/
 │
 ├── ui/                                # Qt Designer UI 文件与控制器
 │   ├── left_panel.ui                  # 左侧网络信息面板布局（Qt Designer 可编辑）
-│   └── left_panel_widget.py           # LeftPanelWidget 控制器（QUiLoader 运行时加载）
+│   ├── left_panel_widget.py           # LeftPanelWidget 控制器（QUiLoader 运行时加载）
+│   ├── draw_config_widget.py          # DrawConfigWidget：右侧绘图配置面板（Slider + 取色板）
+│   └── oss_licenses_dialog.py         # 开源声明对话框
 │
 ├── scripts/                           # 实用脚本
 │   ├── [Windows]setup_python_libs.cmd # Windows 一键安装依赖脚本
@@ -149,6 +153,7 @@ while True:
 | `MotionGloveSDK_resetGloveNewFramePending(actorName)` | 清除指定数据流的新帧标志 |
 | `MotionGloveSDK_GetGloveSkeletonsFrame(actorName)` | 获取最新一帧 `GloveFrame` 骨骼数据 |
 | `MotionGloveSDK_GetLastRemoteAddr()` | 返回最近一次收到 UDP 数据包的发送方 `(ip, port)`，未收到数据时返回 `None` |
+| `MotionGloveSDK_GetActorNames()` | 返回当前已发现的所有套装名称列表（如 `["Glove1", "Glove2"]`） |
 
 ---
 
@@ -195,10 +200,16 @@ Left Palm Euler Angle: [12.34, -5.67, 90.12]   Right Palm Euler Angle: [-3.21, 8
 - 监听本机 UDP 5001 端口
 - 每个骨骼关节显示为彩色小球：右手为青蓝色，左手为橙色
 - 每个关节叠加三坐标轴线段，直观表示旋转姿态；父子关节间绘制骨骼连线
-- 约 60fps 实时刷新
+- 约 60fps 实时刷新，左侧面板实时显示帧序号、总帧数、帧率
+- 检测帧序号连续性，丢帧时在状态栏显示丢失范围和累计数
 - **窗口功能**：
-  - 菜单栏：文件 → 退出；帮助 → 关于 Qt
-  - 左侧面板：实时显示 UDP 数据来源 IP 和端口；若端口被占用则以红色显示占用程序信息
+  - 菜单栏：文件 → 退出；窗口 → 切换左/右面板显示；帮助 → 关于 Qt / 开源声明
+  - 左侧面板：实时显示套装名称、UDP 来源 IP/端口、帧序号、总帧数、帧率；含"开始"/"停止"接收按钮；若端口被占用则以红色显示占用程序信息
+  - 右侧面板（绘图配置）：
+    - 关节球半径 Slider（1–10mm）+ 取色板
+    - 骨骼连线粗细 Slider（1–20px）+ 取色板
+    - 坐标轴长度 Slider（1–30mm）
+    - 导出/加载 JSON 配置文件
   - 底部状态栏
 - **鼠标操作**：左键旋转、右键拖拽缩放、中键平移、**空格键** 重置视角
 - **右键短按** 弹出上下文菜单，可切换：

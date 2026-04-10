@@ -154,6 +154,7 @@ def _build_qt_app():
     from PySide6.QtGui import QAction
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from left_panel_widget import LeftPanelWidget
+    from draw_config_widget import DrawConfigWidget
 
     class MotionGloveMainWindow(QMainWindow):
         def __init__(self):
@@ -188,6 +189,17 @@ def _build_qt_app():
             exit_action = QAction("退出(&X)", self)
             exit_action.triggered.connect(QApplication.quit)
             file_menu.addAction(exit_action)
+
+            win_menu = menu_bar.addMenu("窗口(&W)")
+            self._action_show_left = QAction("数据面板", self)
+            self._action_show_left.setCheckable(True)
+            self._action_show_left.setChecked(True)
+            win_menu.addAction(self._action_show_left)
+
+            self._action_show_right = QAction("配置面板", self)
+            self._action_show_right.setCheckable(True)
+            self._action_show_right.setChecked(True)
+            win_menu.addAction(self._action_show_right)
 
             help_menu = menu_bar.addMenu("帮助(&H)")
             about_qt_action = QAction("关于 Qt(&Q)", self)
@@ -228,6 +240,19 @@ def _build_qt_app():
             )
             self._vtk_widget.installEventFilter(self)
             h_layout.addWidget(self._vtk_widget)
+
+            # ── 右侧绘图配置面板 ──
+            self._draw_config_widget = DrawConfigWidget()
+            h_layout.addWidget(self._draw_config_widget)
+            self._last_applied_config = self._draw_config_widget.current_config()
+
+            # 连接窗口菜单的显示/隐藏信号（widget 已创建后才能连接）
+            self._action_show_left.triggered.connect(
+                lambda checked: self._left_panel.setVisible(checked)
+            )
+            self._action_show_right.triggered.connect(
+                lambda checked: self._draw_config_widget.setVisible(checked)
+            )
 
         # ── VTK 场景 ──────────────────────────────────────
         def _build_vtk_scene(self):
@@ -281,7 +306,7 @@ def _build_qt_app():
 
             self._vtk_widget.Initialize()
             setup_camera(self._renderer, render_window)
-            bind_space_reset_camera(self._interactor, self._renderer, render_window)
+            self._reset_camera_cb = bind_space_reset_camera(self._interactor, self._renderer, render_window)
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
@@ -332,6 +357,18 @@ def _build_qt_app():
             self._left_panel.lbl_fps.setText(f"{self._fps_counter.fps()} fps")
 
         def _on_timer(self):
+            # ── 推送绘图配置（仅在配置变化时）──────────────
+            cfg = self._draw_config_widget.current_config()
+            if cfg != self._last_applied_config:
+                for ja in self._joint_actors:
+                    ja.set_radius(cfg.joint_radius)
+                    ja.set_sphere_color(*cfg.joint_color)
+                    ja.set_axis_length(cfg.axis_length)
+                for la in self._link_actors:
+                    la.set_color(*cfg.link_color)
+                    la.set_line_width(cfg.link_width)
+                self._last_applied_config = cfg
+
             with self._frame_lock:
                 frame = self._latest_frame[0]
                 drop_event = self._drop_event
@@ -412,6 +449,9 @@ def _build_qt_app():
             ground_label = "隐藏地平面" if self._ground_visible else "显示地平面"
             ground_action = menu.addAction(ground_label)
 
+            menu.addSeparator()
+            reset_camera_action = menu.addAction("重置视角")
+
             action = menu.exec(global_pos)
             rw = self._vtk_widget.GetRenderWindow()
 
@@ -423,6 +463,8 @@ def _build_qt_app():
                 self._ground_visible = not self._ground_visible
                 self._ground_actor.SetVisibility(self._ground_visible)
                 rw.Render()
+            elif action is reset_camera_action:
+                self._reset_camera_cb.reset()
 
         # ── 窗口关闭处理 ──────────────────────────────────
         def closeEvent(self, event):

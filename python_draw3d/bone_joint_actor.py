@@ -161,3 +161,13 @@ class BoneJointActor:
         """设置三轴线宽。"""
         for a, _, __ in self._axes:
             a.GetProperty().SetLineWidth(width)
+
+    def set_radius(self, radius: float):
+        """运行时修改关节球半径。"""
+        self._radius = radius
+        self._sphere_src.SetRadius(radius)
+        self._sphere_src.Update()
+
+    def set_sphere_color(self, r: float, g: float, b: float):
+        """运行时修改关节球颜色。"""
+        self._s_actor.GetProperty().SetColor(r, g, b)

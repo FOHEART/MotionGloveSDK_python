@@ -26,11 +26,7 @@ class SpaceResetCameraCallback:
         self.render_window = render_window
         self.initial_state = initial_camera_state  # dict，记录初始相机参数
 
-    def __call__(self, obj, event):
-        if event != "KeyPressEvent":
-            return
-        if obj.GetKeySym() != "space":
-            return
+    def reset(self):
         cam = self.renderer.GetActiveCamera()
         s = self.initial_state
         cam.SetPosition(*s["position"])
@@ -40,6 +36,13 @@ class SpaceResetCameraCallback:
         self.renderer.ResetCameraClippingRange()
         self.render_window.Render()
         print("  [相机] 已重置视角")
+
+    def __call__(self, obj, event):
+        if event != "KeyPressEvent":
+            return
+        if obj.GetKeySym() != "space":
+            return
+        self.reset()
 
 
 def bind_space_reset_camera(interactor, renderer, render_window):
@@ -56,3 +59,4 @@ def bind_space_reset_camera(interactor, renderer, render_window):
     }
     cb = SpaceResetCameraCallback(renderer, render_window, initial_state)
     interactor.AddObserver("KeyPressEvent", cb, 1.0)
+    return cb
