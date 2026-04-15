@@ -14,7 +14,7 @@ decode_glove_csv.py - MotionGloveSDK Python
 """
 
 from .definitions import (
-    KHHS32_SKELETON_COUNT,
+    KHHS42_SKELETON_COUNT,
     BONE_NAMES,
     SkeletonPosition,
     SkeletonAttitude,
@@ -26,7 +26,7 @@ from .definitions import (
     SingleSkeleton,
     GloveFrame,
 )
-from .euler_to_quat import euler_to_quat
+from .xsqeconverter import euler_degree_to_quat_xyzw
 
 
 def parse_header_tokens(tokens: list[str]) -> StreamHeader:
@@ -140,7 +140,7 @@ def decode_glove_csv(actor: str,
     # 3. 分割 CSV 数值
     # ------------------------------------------------------------------
     values_str = [v for v in body_csv.split(",") if v.strip()]
-    expected   = group_item_count * KHHS32_SKELETON_COUNT
+    expected   = group_item_count * KHHS42_SKELETON_COUNT
 
     if len(values_str) != expected:
         return None
@@ -156,7 +156,7 @@ def decode_glove_csv(actor: str,
     # ------------------------------------------------------------------
     skeletons: list[SingleSkeleton] = []
 
-    for i in range(KHHS32_SKELETON_COUNT):
+    for i in range(KHHS42_SKELETON_COUNT):
         base = i * group_item_count
         skel = SingleSkeleton()
         skel.bone_index = i
@@ -178,7 +178,7 @@ def decode_glove_csv(actor: str,
             # 欧拉角 → 四元数，对应 C++ parseFrame() 末段的 EulerToQuat 调用
             # C++ 内部将 EulerToQuat 结果的 w 存到 quat[0]，x→[1],y→[2],z→[3]
             # 再在填充 ssd 时重新映射为 xyzw；最终结果等价于直接输出 [x,y,z,w]
-            xyzw = euler_to_quat(ex, ey, ez, hdr.channel_order)
+            xyzw = euler_degree_to_quat_xyzw(ex, ey, ez, int(hdr.channel_order))
             skel.contains_quat_wxyz = 1
             skel.quat_wxyz = [xyzw[3], xyzw[0], xyzw[1], xyzw[2]]
 

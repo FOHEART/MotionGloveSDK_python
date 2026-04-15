@@ -33,7 +33,7 @@
 *.lib
 
 # Executables
-*.exe
+#*.exe
 *.out
 *.app
 
@@ -71,6 +71,8 @@ Debug/
 Release/
 Temp/
 build/
+dist/
+csvfile/
 .vs/
 *.zip
 *.rar

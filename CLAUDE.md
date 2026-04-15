@@ -75,7 +75,8 @@ Application code
 | `definitions.py` | All data structures (`GloveFrame`, `SingleSkeleton`, `StreamHeader`, enums) |
 | `glove_frame_assembler.py` | Reassembles split UDP packets with matching frame number (`fn`) |
 | `decode_glove_csv.py` | Parses CSV-encoded packet body into typed objects |
-| `euler_to_quat.py` | Euler → quaternion conversion supporting all 6 rotation orders |
+| `csv_frame_reader.py` | `CsvFrameReader` — preloads a MotionGlove CSV export, serves frames via `next_frame()` |
+| `xsqeconverter.py` | Euler ↔ quaternion conversion (Python port of Movella's xsqeconverter.cpp); supports all 6 rotation orders |
 | `port_occupier.py` | Diagnostic: identifies process holding a UDP port (cross-platform) |
 
 ### 3D Visualization (`python_draw3d/`)
@@ -86,17 +87,35 @@ VTK-based pipeline embedded in a **PySide6 `QMainWindow`** (`motionGloveSDK_exam
 - 30 `BoneLinkActor` instances (lines connecting parent–child bone pairs)
 - `vtkAxesActor` at the world origin (toggleable via right-click menu)
 - `ground_plane.py` — grey grid on the X–Z plane, 5 cm spacing (toggleable via right-click menu)
+- `draw_config_io.py` — `DrawConfig` dataclass + JSON `save_config`/`load_config` for joint/link/axis visual properties
 
 Window chrome: menu bar (文件→退出, 帮助→关于 Qt), left info panel (UDP source IP/port, port error if bind fails), status bar.
 
 Mouse controls: rotate (left), zoom (right-drag), pan (middle), spacebar to reset camera. Short right-click opens context menu.
+
+### AppMode — dual startup mode
+
+`motionGloveSDK_example3_3dView.py` supports two modes switched by a single top-level constant:
+
+```python
+APP_MODE = AppMode.UDP_STREAM   # real-time UDP (default)
+APP_MODE = AppMode.CSV_PLAYBACK # replay a saved CSV file
+```
+
+- **`UDP_STREAM`**: left panel = `LeftPanelWidget`; background `_poll` thread feeds `_latest_frame[0]`
+- **`CSV_PLAYBACK`**: left panel = `CsvImportWidget`; `QTimer` ticks at the selected fps, calling `CsvFrameReader.next_frame()` to write `_latest_frame[0]`
+- Both modes share the same `_on_timer` VTK render loop and right-side `DrawConfigWidget`
+
+The render timer (`_on_timer`) always reads `_latest_frame[0]` regardless of mode.
 
 ### UI Files (`ui/`)
 
 | File | Role |
 |------|------|
 | `left_panel.ui` | Qt Designer layout for the left network info panel (fixed width 220 px) |
-| `left_panel_widget.py` | `LeftPanelWidget` controller — loads `.ui` at runtime via `QUiLoader`, exposes `lbl_ip`, `lbl_port`, `lbl_error`; provides `show_port_error(lines)` and `clear_error()` |
+| `left_panel_widget.py` | `LeftPanelWidget` — loads `.ui` via `QUiLoader`; exposes `lbl_ip`, `lbl_port`, `lbl_error`, `show_port_error()`, `clear_error()` |
+| `draw_config_widget.py` | `DrawConfigWidget` (220 px) — sliders + color pickers for joint radius/color, link width/color, axis length; calls `draw_config_io.py` |
+| `csv_import_widget.py` | `CsvImportWidget` (220 px) — file picker, fps combo (10/24/30/60 Hz), play/pause/reset buttons, progress slider; all interaction via PySide6 signals |
 
 The `.ui` file can be edited directly with Qt Designer. No compilation step required — `QUiLoader` loads it at runtime. `pyrightconfig.json` includes `ui/` in `extraPaths` so Pyright resolves the import.
 

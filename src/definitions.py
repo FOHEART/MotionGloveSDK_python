@@ -15,7 +15,8 @@ from enum import IntEnum
 # 常量
 # ---------------------------------------------------------------------------
 
-KHHS32_SKELETON_COUNT = 32      # 对应 C++ KHHS32_SkeletonCount
+KHHS42_SKELETON_COUNT = 42      # 对应 C++ KHHS42_SkeletonCount
+KHHS32_SKELETON_COUNT = 32      # legacy alias — kept for CSV compatibility
 ACTOR_NAME_LEN_MAX    = 64      # 对应 C++ ACTOR_NAME_LEN_MAX
 
 
@@ -83,57 +84,67 @@ class HandGesture(IntEnum):
 # ---------------------------------------------------------------------------
 
 class BoneIndex(IntEnum):
-    """对应 C++ kinemHumanHandsSkeleton32Index"""
-    RightHand       =  0
-    RightHandThumb1 =  1
-    RightHandThumb2 =  2
-    RightHandThumb3 =  3
-    RightHandIndex1 =  4
-    RightHandIndex2 =  5
-    RightHandIndex3 =  6
-    RightHandMiddle1=  7
-    RightHandMiddle2=  8
-    RightHandMiddle3=  9
-    RightHandRing1  = 10
-    RightHandRing2  = 11
-    RightHandRing3  = 12
-    RightHandPinky1 = 13
-    RightHandPinky2 = 14
-    RightHandPinky3 = 15
-    LeftHand        = 16
-    LeftHandThumb1  = 17
-    LeftHandThumb2  = 18
-    LeftHandThumb3  = 19
-    LeftHandIndex1  = 20
-    LeftHandIndex2  = 21
-    LeftHandIndex3  = 22
-    LeftHandMiddle1 = 23
-    LeftHandMiddle2 = 24
-    LeftHandMiddle3 = 25
-    LeftHandRing1   = 26
-    LeftHandRing2   = 27
-    LeftHandRing3   = 28
-    LeftHandPinky1  = 29
-    LeftHandPinky2  = 30
-    LeftHandPinky3  = 31
+    """对应 C++ kinemHumanHandsSkeleton42Index"""
+    RightHand            =  0
+    RightHandThumb1      =  1
+    RightHandThumb2      =  2
+    RightHandThumb3      =  3
+    RightHandThumb3End   =  4
+    RightHandIndex1      =  5
+    RightHandIndex2      =  6
+    RightHandIndex3      =  7
+    RightHandIndex3End   =  8
+    RightHandMiddle1     =  9
+    RightHandMiddle2     = 10
+    RightHandMiddle3     = 11
+    RightHandMiddle3End  = 12
+    RightHandRing1       = 13
+    RightHandRing2       = 14
+    RightHandRing3       = 15
+    RightHandRing3End    = 16
+    RightHandPinky1      = 17
+    RightHandPinky2      = 18
+    RightHandPinky3      = 19
+    RightHandPinky3End   = 20
+    LeftHand             = 21
+    LeftHandThumb1       = 22
+    LeftHandThumb2       = 23
+    LeftHandThumb3       = 24
+    LeftHandThumb3End    = 25
+    LeftHandIndex1       = 26
+    LeftHandIndex2       = 27
+    LeftHandIndex3       = 28
+    LeftHandIndex3End    = 29
+    LeftHandMiddle1      = 30
+    LeftHandMiddle2      = 31
+    LeftHandMiddle3      = 32
+    LeftHandMiddle3End   = 33
+    LeftHandRing1        = 34
+    LeftHandRing2        = 35
+    LeftHandRing3        = 36
+    LeftHandRing3End     = 37
+    LeftHandPinky1       = 38
+    LeftHandPinky2       = 39
+    LeftHandPinky3       = 40
+    LeftHandPinky3End    = 41
 
 # 骨骼全名列表，对应 C++ kinemHumanHandsSkeleton32[]
 BONE_NAMES: list[str] = [b.name for b in BoneIndex]
 
-# 骨骼短名列表，对应 C++ kinemHumanHandsSkeleton32Short[]
+# 骨骼短名列表，对应 C++ kinemHumanHandsSkeleton42Short[]
 BONE_NAMES_SHORT: list[str] = [
     "rHAND",
-    "RHT1","RHT2","RHT3",
-    "RHI1","RHI2","RHI3",
-    "RHM1","RHM2","RHM3",
-    "RHR1","RHR2","RHR3",
-    "RHP1","RHP2","RHP3",
+    "RHT1","RHT2","RHT3","RHT3E",
+    "RHI1","RHI2","RHI3","RHI3E",
+    "RHM1","RHM2","RHM3","RHM3E",
+    "RHR1","RHR2","RHR3","RHR3E",
+    "RHP1","RHP2","RHP3","RHP3E",
     "lHAND",
-    "LHT1","LHT2","LHT3",
-    "LHI1","LHI2","LHI3",
-    "LHM1","LHM2","LHM3",
-    "LHR1","LHR2","LHR3",
-    "LHP1","LHP2","LHP3",
+    "LHT1","LHT2","LHT3","LHT3E",
+    "LHI1","LHI2","LHI3","LHI3E",
+    "LHM1","LHM2","LHM3","LHM3E",
+    "LHR1","LHR2","LHR3","LHR3E",
+    "LHP1","LHP2","LHP3","LHP3E",
 ]
 
 
@@ -194,7 +205,7 @@ class GloveFrame:
     """
     header:     StreamHeader              = field(default_factory=StreamHeader)
     skeletons:  list[SingleSkeleton]      = field(
-        default_factory=lambda: [SingleSkeleton() for _ in range(KHHS32_SKELETON_COUNT)]
+        default_factory=lambda: [SingleSkeleton() for _ in range(KHHS42_SKELETON_COUNT)]
     )
     remote_ip:   str  = ""     # 数据来源 IP
     remote_port: int  = 0      # 数据来源端口

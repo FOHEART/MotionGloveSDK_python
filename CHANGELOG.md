@@ -3,34 +3,23 @@
 ## [Unreleased]
 
 ### Added
-- **右侧绘图配置面板**（`ui/draw_config_widget.py`）：新增 `DrawConfigWidget`，固定宽度 220px，提供三组配置：
-  - 关节球：半径 Slider（1–10mm）+ 取色板
-  - 骨骼连线：粗细 Slider（1–20px）+ 取色板
-  - 坐标轴：长度 Slider（1–30mm）
-  - 底部"导出配置"/"加载配置"按钮，配置持久化为 JSON
-  - 左右手使用统一设置，调整实时生效（16ms 渲染帧内更新）
-- `python_draw3d/draw_config_io.py`：新增 `DrawConfig` dataclass 及 `save_config` / `load_config`，负责绘图配置的 JSON 序列化与反序列化；字段缺失时自动用默认值填充（向前兼容）。
-- **菜单栏"窗口"菜单**：新增"窗口(&W)"菜单，含两个可勾选子项"数据面板"和"配置面板"，分别控制左侧/右侧面板的显示/隐藏，隐藏后 VTK 视口自动扩展。
-- `src/motionGloveSDK.py`：新增 `MotionGloveSDK_GetActorNames()` 接口，返回当前已发现的所有套装名称列表。
-- **左侧面板套装名称显示**：接收到数据后，左侧面板实时显示当前数据包中的套装名称（如 Glove1、Glove2）。
-- **FPS 抖动修复**（`python_draw3d/fps_counter.py`）：`snapshot()` 改用 `time.monotonic()` 测量实际经过时间做除法，消除定时器误差引起的 ±1fps 抖动。
-- `python_draw3d/bone_joint_actor.py`：新增 `set_radius(radius)` 和 `set_sphere_color(r, g, b)` 运行时接口，支持动态修改关节球半径和颜色；同时已支持 `set_axis_length`、`set_axis_line_width` 接口。
-- `python_draw3d/bone_link_actor.py`：新增 `BoneLinkActor`，封装父子骨骼关节间的 VTK 连线 Actor；支持 `set_color`、`set_line_width` 运行时接口（配合配置面板使用）。
-- **左侧面板接收控制按钮**：新增"开始"/"停止"按钮控制 UDP 接收；左侧面板实时显示当前帧序号、总帧数、帧率（每秒统计一次）；重新开始接收时各计数重置。
-- `python_draw3d/fps_counter.py`：新增 `FpsCounter` 类，提供 `tick()` / `snapshot()` / `fps()` / `reset()` 接口，用于整秒桶计数式帧率统计。
-- **帧丢失检测与警告**：3D 查看器和 `motionGloveSDK_rawReceiver.py` 均新增帧序号连续性检测；检测到不连续时，前者在状态栏显示丢帧范围和累计丢失数，后者在终端打印警告。
-- **丢帧根因修复**（`src/motionGloveSDK.py`）：将 `_actor_store` 单槽缓冲改为 `queue.Queue` per actor，`_poll` 线程消费完整队列，彻底消除单槽覆盖导致的每秒 2–3 帧丢失。
-- **开源声明对话框**（`ui/oss_licenses_dialog.py`）：帮助菜单新增"开源声明"，弹出对话框列出所有第三方库的许可证信息。
-- `scripts/` 子文件夹：新增所有平台实用脚本目录，移入原根目录下的 6 个脚本并修正内部路径引用。
-- `ui/left_panel.ui` + `ui/left_panel_widget.py`：将左侧面板提取为独立 Qt Designer 布局文件 + 控制器，通过 `QUiLoader` 运行时加载。
-- **端口占用错误提示**：UDP 端口绑定失败时，左侧面板以红色文字显示占用程序名称及 PID。
-- `python_draw3d/ground_plane.py`：新增地平面网格 Actor（X–Z 平面，5 cm 间距，右键菜单切换）。
-- **PySide6 主窗口**：将 VTK 视口嵌入 `QMainWindow`，含菜单栏（文件→退出、帮助→关于 Qt）、左侧面板、底部状态栏；右键短按弹出上下文菜单，可切换坐标轴和地平面显示。
-- `src/motionGloveSDK.py`：新增 `MotionGloveSDK_GetLastRemoteAddr()` 公共接口，返回最近一次收到 UDP 数据包的发送方 `(ip, port)`。
+- **42骨骼骨架支持**（`src/definitions.py`）：`BoneIndex` 枚举从 32 扩展至 42 个成员，新增 10 个末梢节点骨骼（`RightHandThumb3End` … `LeftHandPinky3End`），索引 4–41 按手指链顺序排列；`KHHS42_SKELETON_COUNT = 42`（旧 `KHHS32_SKELETON_COUNT = 32` 保留为兼容别名）；`BONE_NAMES` / `BONE_NAMES_SHORT` 同步扩展至 42 项。
+- **末梢节点关节球渲染**（`motionGloveSDK_example3_3dView.py`）：10 个 `*3End` 骨骼以真实世界坐标位置渲染为关节球，不显示局部坐标轴；每个末梢节点与其父骨骼（`*3`）之间绘制骨骼连线，与其他骨骼连线渲染方式完全一致。
+- `_END_BONE_INDICES`：模块级集合，由名称以 `End` 结尾的 `BoneIndex` 成员自动构建，驱动渲染循环中末梢节点的仅位置渲染分支。
+- **PyInstaller 打包脚本**（`scripts/[Windows]build_dist.cmd`、`scripts/[Linux]build_dist.sh`）：一键将 `motionGloveSDK_example3_3dView.py` 打包为独立可执行文件，输出至 `dist/`；默认不显示终端窗口，通过 `--console` 参数启用；包含 VTK、PySide6、字体、UI 文件等所有运行时资源。
+- `src/xsqeconverter.py`：欧拉角 ↔ 四元数转换模块，移植自 Movella `xsqeconverter.cpp`，支持全部 6 种旋转顺序（`XYZ/XZY/YXZ/YZX/ZXY/ZYX`）；提供 `euler_degree_to_quat_xyzw`、`euler_degree_to_quat_wxyz`、`quat_to_euler_degree` 三个接口。
+- `src/csv_frame_reader.py`：`CsvFrameReader` 类，打开文件时预加载全部帧到内存（`list[GloveFrame]`），支持 `next_frame()`、`seek(index)`、`at_end`、`total_frames` 接口；解析器内置 `_EMBEDDED_HEADER_RE` 正则，兼容新版固件在同一行嵌入多个子包头的 CSV 格式。
+- `ui/csv_import_widget.py`：`CsvImportWidget`，CSV 回放模式左侧面板；含文件选择、帧率下拉（10/24/30/60 Hz）、播放/暂停/重置按钮、帧号标签和进度条拖拽跳转。
+- `CSV_PLAYBACK_UserManual.md`：面向最终用户的 CSV 回放操作说明文档。
+- **AppMode 双启动模式**（`motionGloveSDK_example3_3dView.py`）：新增 `AppMode.CSV_PLAYBACK` 模式，通过顶部 `APP_MODE` 常量切换；CSV 回放使用单定时器架构（`time.monotonic()` 驱动），消除双定时器帧率抖动问题。
+- **地平面默认显示**：`build_ground_plane_actor` 返回的地平面 Actor 初始可见性改为 `True`。
 
 ### Changed
-- `README.md`：更新 3D 查看器功能说明，新增绘图配置面板、窗口菜单、套装名称显示等特性描述；更新工程结构表格。
-- `CLAUDE.md`：同步更新项目架构说明，补充新增模块和 UI 文件描述。
-- `python_draw3d/vtk_axes.py`：`add_axes_to_renderer` 现在返回 `vtkAxesActor` 实例。
-- 所有脚本移至 `scripts/` 子文件夹。
-- `.github/workflows/ci-3dview.yml`：Linux CI 改用 `MOTIONGLOVE_CI_RENDER=0`（不构建 QApplication），解决 shiboken6 在 xvfb 下崩溃的问题。
+- **末梢虚拟骨骼移除**：删除固定长度末梢骨骼合成逻辑（`FINGERTIP_BONE_LENGTH`、`_FINGERTIP_BONES`、`_fingertip_actors` 及 `_on_timer` 中的四元数 Y 轴投影代码），改由发送端传入的真实 `*3End` 骨骼位置替代。
+- `src/decode_glove_csv.py`：骨骼计数从 `KHHS32_SKELETON_COUNT` 更新为 `KHHS42_SKELETON_COUNT`，支持 42 骨骼帧的解析；欧拉角转四元数改用 `src/xsqeconverter.py`，移除对旧 `euler_to_quat.py` 的依赖。
+- `_BONE_LINKS`：从 30 条扩展至 40 条，新增 10 条 `*3 → *3End` 末梢连线；`_BONE_PARENT` 自动由 `_BONE_LINKS` 派生，覆盖全部 42 骨骼。
+- `python_draw3d/draw_config_io.py`：骨骼连线默认粗细从 2 调整为 10；`DrawConfigWidget` 连线粗细 Slider 最大值从 20 扩展至 30。
+- **世界坐标轴大小**：`add_axes_to_renderer` 调用时 `length` 从 0.05 缩减至 0.025（缩小一半）。
+- `src/euler_to_quat.py` 已删除，功能统一由 `src/xsqeconverter.py` 提供。
+
+

@@ -12,7 +12,8 @@ MotionGloveSDK_python/
 ├── motionGloveSDK_rawReceiver.py      # 原始 UDP 数据接收验证工具
 ├── motionGloveSDK_example1.py         # 示例1：帧接收计数
 ├── motionGloveSDK_example2.py         # 示例2：读取左右手掌欧拉角
-├── motionGloveSDK_example3_3dView.py  # 示例3：3D 实时可视化
+├── motionGloveSDK_example3_3dView.py  # 示例3：3D 实时可视化（含 UDP_STREAM / CSV_PLAYBACK 双模式）
+├── CSV_PLAYBACK_UserManual.md         # CSV 回放模式最终用户操作说明
 │
 ├── src/                               # SDK 内部实现模块
 │   ├── __init__.py
@@ -20,7 +21,8 @@ MotionGloveSDK_python/
 │   ├── definitions.py                 # 数据结构与枚举定义（GloveFrame、BoneIndex 等）
 │   ├── glove_frame_assembler.py       # UDP 分包拼帧逻辑
 │   ├── decode_glove_csv.py            # CSV 格式骨骼数据解析
-│   ├── euler_to_quat.py               # 欧拉角转四元数工具
+│   ├── csv_frame_reader.py            # CsvFrameReader：预加载 CSV 文件，逐帧提供 GloveFrame
+│   ├── xsqeconverter.py               # 欧拉角 ↔ 四元数转换（移植自 Movella xsqeconverter.cpp）
 │   └── port_occupier.py               # 端口占用诊断工具
 │
 ├── python_draw3d/                     # 3D 渲染辅助模块（基于 VTK）
@@ -48,12 +50,15 @@ MotionGloveSDK_python/
 ├── ui/                                # Qt Designer UI 文件与控制器
 │   ├── left_panel.ui                  # 左侧网络信息面板布局（Qt Designer 可编辑）
 │   ├── left_panel_widget.py           # LeftPanelWidget 控制器（QUiLoader 运行时加载）
+│   ├── csv_import_widget.py           # CsvImportWidget：CSV 回放模式左侧面板
 │   ├── draw_config_widget.py          # DrawConfigWidget：右侧绘图配置面板（Slider + 取色板）
 │   └── oss_licenses_dialog.py         # 开源声明对话框
 │
 ├── scripts/                           # 实用脚本
 │   ├── [Windows]setup_python_libs.cmd # Windows 一键安装依赖脚本
 │   ├── [Linux]setup_python_libs.sh    # Linux 一键安装依赖脚本
+│   ├── [Windows]build_dist.cmd        # Windows PyInstaller 打包脚本（--console 参数可选）
+│   ├── [Linux]build_dist.sh           # Linux PyInstaller 打包脚本（--console 参数可选）
 │   ├── [Windows]git_pull_latest.cmd   # Windows 拉取最新代码脚本
 │   ├── [Linux]git_pull_latest.sh      # Linux 拉取最新代码脚本
 │   ├── [Windows]open_in_vscode.bat    # Windows 用 VSCode 打开工程脚本
@@ -195,32 +200,110 @@ Left Palm Euler Angle: [12.34, -5.67, 90.12]   Right Palm Euler Angle: [-3.21, 8
 
 ### `motionGloveSDK_example3_3dView.py` — 3D 实时可视化
 
-将左右手所有骨骼关节的位置和姿态实时渲染为 3D 场景，基于 **PySide6 + VTK** 构建。
+将左右手所有骨骼关节的位置和姿态渲染为 3D 场景，基于 **PySide6 + VTK** 构建。支持两种运行模式，通过脚本顶部的 `APP_MODE` 常量切换：
 
-- 监听本机 UDP 5001 端口
-- 每个骨骼关节显示为彩色小球：右手为青蓝色，左手为橙色
-- 每个关节叠加三坐标轴线段，直观表示旋转姿态；父子关节间绘制骨骼连线
-- 约 60fps 实时刷新，左侧面板实时显示帧序号、总帧数、帧率
-- 检测帧序号连续性，丢帧时在状态栏显示丢失范围和累计数
-- **窗口功能**：
-  - 菜单栏：文件 → 退出；窗口 → 切换左/右面板显示；帮助 → 关于 Qt / 开源声明
-  - 左侧面板：实时显示套装名称、UDP 来源 IP/端口、帧序号、总帧数、帧率；含"开始"/"停止"接收按钮；若端口被占用则以红色显示占用程序信息
-  - 右侧面板（绘图配置）：
-    - 关节球半径 Slider（1–10mm）+ 取色板
-    - 骨骼连线粗细 Slider（1–20px）+ 取色板
-    - 坐标轴长度 Slider（1–30mm）
-    - 导出/加载 JSON 配置文件
-  - 底部状态栏
-- **鼠标操作**：左键旋转、右键拖拽缩放、中键平移、**空格键** 重置视角
-- **右键短按** 弹出上下文菜单，可切换：
-  - 坐标轴（显示/隐藏）
-  - 地平面网格（显示/隐藏，灰色 5 cm 间距网格）
+```python
+APP_MODE = AppMode.UDP_STREAM    # 实时接收手套数据（默认）
+APP_MODE = AppMode.CSV_PLAYBACK  # 回放已保存的 CSV 文件
+```
 
 ```bash
 python motionGloveSDK_example3_3dView.py
 ```
 
 > 运行此示例需要先安装依赖：执行 `[Windows]setup_python_libs.cmd` 或 `[Linux]setup_python_libs.sh`（包含 VTK 和 PySide6）。
+
+---
+
+#### 通用界面
+
+- 每个骨骼关节显示为彩色小球：右手青蓝色，左手橙色；父子关节间绘制骨骼连线；指尖末梢节点（`*3End`）以真实坐标位置渲染关节球，不显示局部坐标轴
+- 每个关节叠加三坐标轴线段，直观表示全局旋转姿态
+- 底部状态栏显示加载状态、丢帧警告、播放完毕等提示
+
+**鼠标操作：**
+
+| 操作 | 功能 |
+|---|---|
+| 左键拖拽 | 旋转场景 |
+| 右键拖拽 | 缩放场景 |
+| 中键拖拽 | 平移场景 |
+| 空格键 | 重置视角 |
+| 右键短按 | 弹出上下文菜单 |
+
+**右键上下文菜单：**
+- 显示 / 隐藏 世界坐标原点坐标轴
+- 显示 / 隐藏 地平面网格（灰色，5 cm 间距，默认显示）
+- 重置视角
+
+**菜单栏：**
+- 文件 → 退出
+- 窗口 → 切换左侧面板 / 右侧配置面板的显示
+- 帮助 → 关于 Qt / 开源声明
+
+**右侧绘图配置面板（DrawConfigWidget）：**
+
+| 控件 | 说明 |
+|---|---|
+| 关节球半径 Slider | 调整所有关节球大小（1–10 mm） |
+| 关节球颜色 | 取色板，统一修改所有关节球颜色 |
+| 骨骼连线粗细 Slider | 调整连线和末梢骨骼粗细（1–30 px，默认 10） |
+| 骨骼连线颜色 | 取色板，统一修改所有骨骼连线颜色 |
+| 坐标轴长度 Slider | 调整关节局部坐标轴线段长度（1–30 mm） |
+| 导出配置 | 将当前参数保存为 JSON 文件 |
+| 加载配置 | 从 JSON 文件恢复参数 |
+
+---
+
+#### 模式一：UDP_STREAM — 实时 UDP 数据流
+
+**前提条件：**
+1. 打开 MotionGlove 软件，确保手套连接正常
+2. 菜单栏 **设置 → 选项 → 插件 → 数据转发** 中确认已添加转发地址 `127.0.0.1:5001`
+
+**左侧面板（LeftPanelWidget）功能和操作流程：**
+
+| 控件 / 字段 | 说明 |
+|---|---|
+| 开始接收 按钮 | 绑定 UDP 端口 5001，启动后台接收线程；若端口被占用则以红色显示占用程序名称和 PID |
+| 停止接收 按钮 | 释放 UDP 端口，停止接收 |
+| 套装名称 | 当前收到数据的套装标识（如 `Glove1`） |
+| 来源 IP / 端口 | 最近一次 UDP 数据包的发送方地址 |
+| 帧序号 | 最近消费的帧序号 |
+| 总帧数 | 本次接收会话的累计帧数 |
+| 帧率 | 实时接收帧率（每秒刷新一次） |
+
+**操作流程：**
+1. 运行脚本，点击 **开始接收**
+2. 启动 MotionGlove 软件并连接手套，3D 场景自动开始实时渲染
+3. 若端口 5001 被占用，面板以红色提示占用程序；关闭占用程序后重新点击 **开始接收**
+4. 点击 **停止接收** 可暂停数据接收，场景保持最后一帧静止
+
+---
+
+#### 模式二：CSV_PLAYBACK — CSV 文件回放
+
+MotionGlove 软件可将录制的动作导出为 CSV 文件。此模式加载该文件并按选定帧率逐帧回放，无需连接手套硬件。
+
+**左侧面板（CsvImportWidget）功能和操作流程：**
+
+| 控件 / 字段 | 说明 |
+|---|---|
+| 选择文件… 按钮 | 打开文件对话框，选择 MotionGlove 导出的 `.csv` 文件；选中后立即预加载全部帧到内存并显示第一帧 |
+| 文件路径框 | 显示当前已加载文件的完整路径（只读） |
+| 帧率下拉框 | 选择回放帧率：10 / 24 / 30 / 60 Hz（默认 60 Hz）；播放中切换立即生效 |
+| 帧号标签 | 显示当前帧号和总帧数（格式：`当前帧/总帧数 (百分比%)`） |
+| 进度条 | 拖动可跳转到任意位置；按下时暂停推进，松开时跳转到目标帧 |
+| 开始播放 / 暂停播放 按钮 | 切换播放和暂停状态；播放到末帧后自动停止 |
+| 重置 按钮 | 停止播放并回到第一帧 |
+
+**操作流程：**
+1. 将 `APP_MODE` 改为 `AppMode.CSV_PLAYBACK` 后运行脚本
+2. 点击 **选择文件…**，选择 MotionGlove 导出的 CSV 文件；加载完成后状态栏显示总帧数，3D 场景显示第一帧
+3. 在帧率下拉框中选择所需回放速度
+4. 点击 **开始播放** 开始逐帧回放；可随时点击 **暂停播放** 暂停
+5. 拖动进度条可跳转到任意帧，松手后场景立即更新到目标帧，再次点击 **开始播放** 从该帧继续
+6. 播放到末帧后自动停止，点击 **重置** 可回到第一帧重新播放
 
 ---
 
@@ -247,3 +330,104 @@ python motionGloveSDK_rawReceiver.py --print-raw
 # 组合使用
 python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
 ```
+
+---
+
+## CSV → BVH 转换
+
+`src/csv_to_bvh.py` 提供将 MotionGlove 导出 CSV 文件转换为标准 BVH 动捕文件的功能，可在 3D 查看器的 CSV 回放模式中通过 **"导出 BVH…"** 按钮一键调用，也可以作为模块在代码中直接使用。
+
+### 使用方式
+
+**通过 3D 查看器界面：**
+
+1. 启动 3D 查看器并切换到 CSV 回放模式（启动时选择 **CSV 文件回放**）
+2. 点击 **"选择文件…"** 加载 CSV 文件
+3. 点击 **"导出 BVH…"**，转换完成后弹窗提示保存路径
+4. BVH 文件自动保存在与 CSV 文件相同的目录下，文件名相同，扩展名改为 `.bvh`
+
+**通过代码调用：**
+
+```python
+from src.csv_to_bvh import convert_csv_to_bvh
+
+# 输出路径默认与 CSV 同目录同名，扩展名改为 .bvh
+out_path = convert_csv_to_bvh("path/to/recording.csv")
+
+# 也可以指定输出路径
+out_path = convert_csv_to_bvh("path/to/recording.csv", "path/to/output.bvh")
+```
+
+### 转换流程
+
+```
+CSV 文件
+│
+├─ 第 1 行（列名表头）         跳过
+│
+├─ 第 1 帧（T-pose）           用于计算 BVH HIERARCHY OFFSET
+│   每根骨骼：pos(全局绝对, 米) + euler(ZXY, 度)
+│   → 父子相对位移 × 100 → OFFSET(厘米)
+│
+├─ 前 10 帧时间戳              推算平均帧间隔 → BVH Frame Time
+│
+└─ 全部帧（含第 1 帧）
+    每帧每骨骼：
+      位置：(当前骨骼全局坐标 − 父骨骼全局坐标) × 100  [厘米]
+      旋转：ZXY 欧拉 → 四元数 → ZYX 欧拉               [度]
+    → 写入 BVH MOTION 段，每帧一行，258 个数值
+         (43 关节 × 6 通道，含合成 ROOT)
+```
+
+### 坐标系与单位
+
+| 项目 | CSV | BVH |
+|---|---|---|
+| 位置单位 | 米 | 厘米（× 100） |
+| 位置坐标性质 | 全局绝对坐标 | 父子相对偏移 |
+| 旋转顺序 | ZXY（内旋） | ZYX（外旋，通道顺序 Zrot Yrot Xrot） |
+| 坐标系朝向 | OpenGL 标准（Y 轴朝上，指尖朝 Y+） | 同左，无需轴变换 |
+
+### 骨骼层级结构
+
+BVH 文件包含 **43 个关节**，骨骼结构如下：
+
+```
+ROOT ROOT               ← 合成根节点，位置/旋转始终为零
+├── RightHand
+│   ├── RightHandThumb1 → Thumb2 → Thumb3 → Thumb4
+│   ├── RightHandIndex1 → Index2 → Index3 → Index4
+│   ├── RightHandMiddle1 → Middle2 → Middle3 → Middle4
+│   ├── RightHandRing1  → Ring2  → Ring3  → Ring4
+│   └── RightHandPinky1 → Pinky2 → Pinky3 → Pinky4
+└── LeftHand
+    └── （同右手，对称结构）
+```
+
+CSV 中的末端关节命名（`*3End`）在 BVH 中重命名为 `*4`：
+
+| CSV 骨骼名 | BVH 关节名 |
+|---|---|
+| `RightHandThumb3End` | `RightHandThumb4` |
+| `RightHandIndex3End` | `RightHandIndex4` |
+| `RightHandMiddle3End` | `RightHandMiddle4` |
+| `RightHandRing3End` | `RightHandRing4` |
+| `RightHandPinky3End` | `RightHandPinky4` |
+| `LeftHand*3End`（同上）| `LeftHand*4` |
+
+每个关节均有 **6 通道**（`Xposition Yposition Zposition Zrotation Yrotation Xrotation`），包括末端的 `*4` 节点（在链末附加无通道的 `End Site`）。
+
+### 注意事项
+
+**CSV 文件第一帧需为 T-pose：**
+BVH 文件头（`HIERARCHY` 段）的 `OFFSET` 值取自 CSV 第一帧的骨骼位置，作为静止姿态的骨骼参考偏移。如果第一帧不是 T-pose（所有关节旋转角为零的标准站姿），骨骼的静止形态会发生偏移，但不影响动画数据的正确性（因为每帧都有完整的 position channels，OFFSET 在播放时被覆盖）。
+
+**帧率自动检测：**
+转换器从 CSV 行头的时间戳字段（`time YYYY-MM-DD HH:MM:SS.mmm`）自动推算帧率，取前 10 帧时间戳的平均间隔作为 BVH 的 `Frame Time`。若 CSV 中无时间戳或无法解析，默认使用 60 Hz（`Frame Time: 0.016667`）。
+
+**第三方软件兼容性：**
+生成的 BVH 文件符合标准 BVH 格式（BioVision Hierarchy），可在 BVHacker、Blender、MotionBuilder、Unity、Unreal Engine 等软件中打开。注意 BVH 规范要求 `MOTION` 段前不能有空行，本转换器已处理此细节。
+
+BVH在线查看器：
+
+https://theorangeduck.com/media/uploads/BVHView/bvhview.html

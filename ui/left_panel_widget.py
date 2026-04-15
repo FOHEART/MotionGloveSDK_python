@@ -3,13 +3,21 @@
 从 left_panel.ui 加载 Qt Designer 布局，暴露 lbl_ip / lbl_port 供外部更新。
 """
 
+import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice
 
-_UI_PATH = Path(__file__).parent / "left_panel.ui"
+
+def _ui_path() -> Path:
+    """返回 left_panel.ui 的绝对路径，兼容源码运行和 PyInstaller 打包。"""
+    if hasattr(sys, "_MEIPASS"):
+        # PyInstaller 打包：.ui 文件在 _MEIPASS/ui/left_panel.ui
+        return Path(sys._MEIPASS) / "ui" / "left_panel.ui"
+    # 源码运行：与本文件同目录
+    return Path(__file__).parent / "left_panel.ui"
 
 
 class LeftPanelWidget(QWidget):
@@ -19,14 +27,14 @@ class LeftPanelWidget(QWidget):
         super().__init__(parent)
 
         loader = QUiLoader()
-        ui_file = QFile(str(_UI_PATH))
+        ui_file = QFile(str(_ui_path()))
         if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
-            raise RuntimeError(f"无法打开 UI 文件：{_UI_PATH}")
+            raise RuntimeError(f"无法打开 UI 文件：{_ui_path()}")
         self._ui = loader.load(ui_file)
         ui_file.close()
 
         if self._ui is None:
-            raise RuntimeError(f"QUiLoader 加载失败：{_UI_PATH}")
+            raise RuntimeError(f"QUiLoader 加载失败：{_ui_path()}")
 
         # 将加载的 widget 嵌入 self
         layout = QVBoxLayout(self)

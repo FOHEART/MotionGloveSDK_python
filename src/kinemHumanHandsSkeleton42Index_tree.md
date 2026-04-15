@@ -2,31 +2,41 @@ RightHand
  RightHandThumb1
   RightHandThumb2
    RightHandThumb3
+    RightHandThumb3End
  RightHandIndex1
   RightHandIndex2
    RightHandIndex3
+    RightHandIndex3End
  RightHandMiddle1
   RightHandMiddle2
    RightHandMiddle3
+    RightHandMiddle3End
  RightHandRing1
   RightHandRing2
    RightHandRing3
+    RightHandRing3End
  RightHandPinky1
   RightHandPinky2
    RightHandPinky3
+    RightHandPinky3End
 LeftHand
  LeftHandThumb1
   LeftHandThumb2
    LeftHandThumb3
+    LeftHandThumb3End
  LeftHandIndex1
   LeftHandIndex2
    LeftHandIndex3
+    LeftHandIndex3End
  LeftHandMiddle1
   LeftHandMiddle2
    LeftHandMiddle3
+    LeftHandMiddle3End
  LeftHandRing1
   LeftHandRing2
    LeftHandRing3
+    LeftHandRing3End
  LeftHandPinky1
   LeftHandPinky2
    LeftHandPinky3
+    LeftHandPinky3End

@@ -8,7 +8,14 @@
       "Bash(xargs grep:*)",
       "Bash(ls -d \"d:/Dev/MotionGloveSDK_python/libs\"/*dist-info)",
       "Bash(xargs -I {} basename {})",
-      "Bash(head -5 \"d:/Dev/MotionGloveSDK_python/libs/shiboken6-6.11.0.dist-info\"/*)"
+      "Bash(head -5 \"d:/Dev/MotionGloveSDK_python/libs/shiboken6-6.11.0.dist-info\"/*)",
+      "Bash(python -c ':*)",
+      "Bash(chmod +x \"d:/Dev/MotionGloveSDK_python/scripts/[Linux]build_dist.sh\")",
+      "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py)",
+      "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode UDPStream)",
+      "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode CSVPlayback)",
+      "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode badvalue)",
+      "Bash(echo \"exit:$?\")"
     ]
   }
 }

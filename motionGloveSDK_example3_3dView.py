@@ -1,7 +1,9 @@
 import sys
 import os
+import enum
 import threading
 import time
+import argparse
 
 
 def _force_utf8_stdio():
@@ -31,9 +33,10 @@ from bone_link_actor import BoneLinkActor
 from overlay_text import add_overlay_text
 from ground_plane import build_ground_plane_actor
 from fps_counter import FpsCounter
+from vtk_fps_overlay import VtkFpsOverlay
 
 from src import motionGloveSDK
-from src.definitions import BoneIndex, KHHS32_SKELETON_COUNT, GloveFrame
+from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
 
 # ─────────────────────────────────────────────
 #  配置
@@ -43,6 +46,14 @@ RX_PORT      = 5001
 GLOVE_NAME   = "Glove1"
 WINDOW_WIDTH  = 1366
 WINDOW_HEIGHT = 768
+
+# ── 启动模式 ────────────────────────────────────
+class AppMode(enum.Enum):
+    UDP_STREAM   = "udp"   # 实时 UDP 数据流（默认）
+    CSV_PLAYBACK = "csv"   # 回放硬盘上的 CSV 文件
+
+# 由命令行参数 --bootmode 决定，main() 中赋值
+APP_MODE: AppMode = AppMode.UDP_STREAM
 
 SPHERE_RADIUS_PALM   = 0.005
 SPHERE_RADIUS_FINGER = 0.005
@@ -56,38 +67,58 @@ BONE_LINK_WIDTH       = 3.0
 
 _BONE_LINKS: list[tuple[int, int]] = [
     # 右手
-    (BoneIndex.RightHandThumb1,  BoneIndex.RightHand),
-    (BoneIndex.RightHandThumb2,  BoneIndex.RightHandThumb1),
-    (BoneIndex.RightHandThumb3,  BoneIndex.RightHandThumb2),
-    (BoneIndex.RightHandIndex1,  BoneIndex.RightHand),
-    (BoneIndex.RightHandIndex2,  BoneIndex.RightHandIndex1),
-    (BoneIndex.RightHandIndex3,  BoneIndex.RightHandIndex2),
-    (BoneIndex.RightHandMiddle1, BoneIndex.RightHand),
-    (BoneIndex.RightHandMiddle2, BoneIndex.RightHandMiddle1),
-    (BoneIndex.RightHandMiddle3, BoneIndex.RightHandMiddle2),
-    (BoneIndex.RightHandRing1,   BoneIndex.RightHand),
-    (BoneIndex.RightHandRing2,   BoneIndex.RightHandRing1),
-    (BoneIndex.RightHandRing3,   BoneIndex.RightHandRing2),
-    (BoneIndex.RightHandPinky1,  BoneIndex.RightHand),
-    (BoneIndex.RightHandPinky2,  BoneIndex.RightHandPinky1),
-    (BoneIndex.RightHandPinky3,  BoneIndex.RightHandPinky2),
+    (BoneIndex.RightHandThumb1,    BoneIndex.RightHand),
+    (BoneIndex.RightHandThumb2,    BoneIndex.RightHandThumb1),
+    (BoneIndex.RightHandThumb3,    BoneIndex.RightHandThumb2),
+    (BoneIndex.RightHandThumb3End, BoneIndex.RightHandThumb3),
+    (BoneIndex.RightHandIndex1,    BoneIndex.RightHand),
+    (BoneIndex.RightHandIndex2,    BoneIndex.RightHandIndex1),
+    (BoneIndex.RightHandIndex3,    BoneIndex.RightHandIndex2),
+    (BoneIndex.RightHandIndex3End, BoneIndex.RightHandIndex3),
+    (BoneIndex.RightHandMiddle1,   BoneIndex.RightHand),
+    (BoneIndex.RightHandMiddle2,   BoneIndex.RightHandMiddle1),
+    (BoneIndex.RightHandMiddle3,   BoneIndex.RightHandMiddle2),
+    (BoneIndex.RightHandMiddle3End,BoneIndex.RightHandMiddle3),
+    (BoneIndex.RightHandRing1,     BoneIndex.RightHand),
+    (BoneIndex.RightHandRing2,     BoneIndex.RightHandRing1),
+    (BoneIndex.RightHandRing3,     BoneIndex.RightHandRing2),
+    (BoneIndex.RightHandRing3End,  BoneIndex.RightHandRing3),
+    (BoneIndex.RightHandPinky1,    BoneIndex.RightHand),
+    (BoneIndex.RightHandPinky2,    BoneIndex.RightHandPinky1),
+    (BoneIndex.RightHandPinky3,    BoneIndex.RightHandPinky2),
+    (BoneIndex.RightHandPinky3End, BoneIndex.RightHandPinky3),
     # 左手
-    (BoneIndex.LeftHandThumb1,   BoneIndex.LeftHand),
-    (BoneIndex.LeftHandThumb2,   BoneIndex.LeftHandThumb1),
-    (BoneIndex.LeftHandThumb3,   BoneIndex.LeftHandThumb2),
-    (BoneIndex.LeftHandIndex1,   BoneIndex.LeftHand),
-    (BoneIndex.LeftHandIndex2,   BoneIndex.LeftHandIndex1),
-    (BoneIndex.LeftHandIndex3,   BoneIndex.LeftHandIndex2),
-    (BoneIndex.LeftHandMiddle1,  BoneIndex.LeftHand),
-    (BoneIndex.LeftHandMiddle2,  BoneIndex.LeftHandMiddle1),
-    (BoneIndex.LeftHandMiddle3,  BoneIndex.LeftHandMiddle2),
-    (BoneIndex.LeftHandRing1,    BoneIndex.LeftHand),
-    (BoneIndex.LeftHandRing2,    BoneIndex.LeftHandRing1),
-    (BoneIndex.LeftHandRing3,    BoneIndex.LeftHandRing2),
-    (BoneIndex.LeftHandPinky1,   BoneIndex.LeftHand),
-    (BoneIndex.LeftHandPinky2,   BoneIndex.LeftHandPinky1),
-    (BoneIndex.LeftHandPinky3,   BoneIndex.LeftHandPinky2),
+    (BoneIndex.LeftHandThumb1,     BoneIndex.LeftHand),
+    (BoneIndex.LeftHandThumb2,     BoneIndex.LeftHandThumb1),
+    (BoneIndex.LeftHandThumb3,     BoneIndex.LeftHandThumb2),
+    (BoneIndex.LeftHandThumb3End,  BoneIndex.LeftHandThumb3),
+    (BoneIndex.LeftHandIndex1,     BoneIndex.LeftHand),
+    (BoneIndex.LeftHandIndex2,     BoneIndex.LeftHandIndex1),
+    (BoneIndex.LeftHandIndex3,     BoneIndex.LeftHandIndex2),
+    (BoneIndex.LeftHandIndex3End,  BoneIndex.LeftHandIndex3),
+    (BoneIndex.LeftHandMiddle1,    BoneIndex.LeftHand),
+    (BoneIndex.LeftHandMiddle2,    BoneIndex.LeftHandMiddle1),
+    (BoneIndex.LeftHandMiddle3,    BoneIndex.LeftHandMiddle2),
+    (BoneIndex.LeftHandMiddle3End, BoneIndex.LeftHandMiddle3),
+    (BoneIndex.LeftHandRing1,      BoneIndex.LeftHand),
+    (BoneIndex.LeftHandRing2,      BoneIndex.LeftHandRing1),
+    (BoneIndex.LeftHandRing3,      BoneIndex.LeftHandRing2),
+    (BoneIndex.LeftHandRing3End,   BoneIndex.LeftHandRing3),
+    (BoneIndex.LeftHandPinky1,     BoneIndex.LeftHand),
+    (BoneIndex.LeftHandPinky2,     BoneIndex.LeftHandPinky1),
+    (BoneIndex.LeftHandPinky3,     BoneIndex.LeftHandPinky2),
+    (BoneIndex.LeftHandPinky3End,  BoneIndex.LeftHandPinky3),
 ]
+
+# 每根骨骼的父骨骼索引（-1 表示根骨骼，无父）
+# 拓扑顺序：根在前，子骨骼在后，保证全局四元数计算时父节点已先算完
+_BONE_PARENT: list[int] = [-1] * KHHS42_SKELETON_COUNT
+for _child, _par in _BONE_LINKS:
+    _BONE_PARENT[_child] = _par
+# RightHand(0) 和 LeftHand(21) 保持 -1（根骨骼）
+
+# End-node bone indices — position-only rendering (no axis tripods)
+_END_BONE_INDICES: set[int] = {b for b in BoneIndex if b.name.endswith("End")}
 
 # CI/无界面环境下用于自动化冒烟测试
 _CI_MODE = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
@@ -155,6 +186,7 @@ def _build_qt_app():
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from left_panel_widget import LeftPanelWidget
     from draw_config_widget import DrawConfigWidget
+    from csv_import_widget import CsvImportWidget
 
     class MotionGloveMainWindow(QMainWindow):
         def __init__(self):
@@ -166,7 +198,7 @@ def _build_qt_app():
             self._latest_frame: list[GloveFrame | None] = [None]
             self._frame_lock = threading.Lock()
             self._axes_visible = True
-            self._ground_visible = False
+            self._ground_visible = True
             self._rb_press_pos = None   # 记录右键按下时的位置，用于判断是否发生了拖拽
             self._total_frames = 0       # 本次接收会话的累计帧数
             self._dropped_frames = 0     # 本次接收会话的累计丢失帧数
@@ -174,11 +206,19 @@ def _build_qt_app():
             self._drop_event: tuple[int, int, int] | None = None  # (first_lost_fn, last_lost_fn, cumulative)
             self._fps_counter = FpsCounter()
 
+            # CSV 回放模式专用
+            self._csv_reader = None      # CsvFrameReader 实例
+            self._csv_playing: bool = False          # 是否正在播放
+            self._csv_next_frame_time: float = 0.0   # 下一帧应推进的单调时刻（秒）
+
             self._build_menu()
             self._build_central()
             self._build_status_bar()
             self._build_vtk_scene()
-            self._start_sdk_poll()
+            if APP_MODE == AppMode.UDP_STREAM:
+                self._start_sdk_poll()
+            else:
+                self._start_csv_playback()
             self._start_render_timer()
 
         # ── 菜单栏 ────────────────────────────────────────
@@ -227,11 +267,18 @@ def _build_qt_app():
             h_layout.setContentsMargins(0, 0, 0, 0)
             h_layout.setSpacing(0)
 
-            # ── 左侧信息面板（从 ui/left_panel.ui 加载）──
-            self._left_panel = LeftPanelWidget()
-            self._left_panel.btn_start.clicked.connect(self._on_start_clicked)
-            self._left_panel.btn_stop.clicked.connect(self._on_stop_clicked)
-            h_layout.addWidget(self._left_panel)
+            # ── 左侧面板：根据模式选择 ──
+            if APP_MODE == AppMode.UDP_STREAM:
+                self._left_panel = LeftPanelWidget()
+                self._left_panel.btn_start.clicked.connect(self._on_start_clicked)
+                self._left_panel.btn_stop.clicked.connect(self._on_stop_clicked)
+                self._csv_panel = None
+                left_widget: QWidget = self._left_panel
+            else:
+                self._csv_panel = CsvImportWidget()
+                self._left_panel = None
+                left_widget = self._csv_panel
+            h_layout.addWidget(left_widget)
 
             # ── VTK 视口 ──
             self._vtk_widget = QVTKRenderWindowInteractor(central)
@@ -244,11 +291,11 @@ def _build_qt_app():
             # ── 右侧绘图配置面板 ──
             self._draw_config_widget = DrawConfigWidget()
             h_layout.addWidget(self._draw_config_widget)
-            self._last_applied_config = self._draw_config_widget.current_config()
+            self._last_applied_config = None
 
             # 连接窗口菜单的显示/隐藏信号（widget 已创建后才能连接）
             self._action_show_left.triggered.connect(
-                lambda checked: self._left_panel.setVisible(checked)
+                lambda checked: left_widget.setVisible(checked)
             )
             self._action_show_right.triggered.connect(
                 lambda checked: self._draw_config_widget.setVisible(checked)
@@ -265,12 +312,12 @@ def _build_qt_app():
             self._interactor = render_window.GetInteractor()
             self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
-            # 32 个关节演员
+            # 42 个关节演员
             self._joint_actors = [
                 BoneJointActor(self._renderer,
                                radius=_bone_radius(i),
                                sphere_color=_bone_color(i))
-                for i in range(KHHS32_SKELETON_COUNT)
+                for i in range(KHHS42_SKELETON_COUNT)
             ]
 
             # 骨骼连线演员
@@ -284,11 +331,11 @@ def _build_qt_app():
                 for child, _ in _BONE_LINKS
             ]
 
-            self._axes_actor = add_axes_to_renderer(self._renderer, length=0.05)
+            self._axes_actor = add_axes_to_renderer(self._renderer, length=0.025)
 
             # 地平面网格（默认隐藏）
             self._ground_actor = build_ground_plane_actor(extent=0.30, spacing=0.05)
-            self._ground_actor.SetVisibility(False)
+            self._ground_actor.SetVisibility(True)
             self._renderer.AddActor(self._ground_actor)
 
             _font_file = os.path.join(_SCRIPT_DIR, "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
@@ -302,6 +349,13 @@ def _build_qt_app():
                 color=(0.75, 0.75, 0.75),
                 position=(0.5, 0.97),
                 justification="center",
+            )
+
+            # 左下角渲染帧率叠加（默认不显示）
+            self._render_fps_overlay = VtkFpsOverlay(
+                self._renderer,
+                font_file=_font_file,
+                visible=False,
             )
 
             self._vtk_widget.Initialize()
@@ -354,9 +408,33 @@ def _build_qt_app():
 
         def _on_fps_timer(self):
             self._fps_counter.snapshot()
-            self._left_panel.lbl_fps.setText(f"{self._fps_counter.fps()} fps")
+            self._render_fps_overlay.snapshot()
+            if self._left_panel is not None:
+                self._left_panel.lbl_fps.setText(f"{self._fps_counter.fps()} fps")
 
         def _on_timer(self):
+            # ── CSV 帧推进（时间戳驱动，避免双定时器相互干扰）──
+            if APP_MODE == AppMode.CSV_PLAYBACK and self._csv_playing and self._csv_reader is not None:
+                now = time.monotonic()
+                if now >= self._csv_next_frame_time:
+                    fps = self._csv_panel.fps if self._csv_panel is not None else 60
+                    # 以固定步长推进，防止因渲染耗时导致的积累误差
+                    self._csv_next_frame_time += 1.0 / fps
+                    # 若严重滞后（如窗口最小化恢复），重置到当前时刻
+                    if now - self._csv_next_frame_time > 1.0:
+                        self._csv_next_frame_time = now + 1.0 / fps
+                    frame = self._csv_reader.next_frame()
+                    if frame is not None:
+                        with self._frame_lock:
+                            self._latest_frame[0] = frame
+                    if self._csv_panel is not None:
+                        self._csv_panel.set_frame_index(self._csv_reader.current_index)
+                    if self._csv_reader.at_end:
+                        self._csv_playing = False
+                        if self._csv_panel is not None:
+                            self._csv_panel.set_playing(False)
+                        self.statusBar().showMessage("播放完毕（末帧）")
+
             # ── 推送绘图配置（仅在配置变化时）──────────────
             cfg = self._draw_config_widget.current_config()
             if cfg != self._last_applied_config:
@@ -384,11 +462,37 @@ def _build_qt_app():
                 )
 
             if frame is not None:
-                positions: list = [None] * KHHS32_SKELETON_COUNT
+                positions: list = [None] * KHHS42_SKELETON_COUNT
+
+                # 计算每根骨骼的全局四元数（局部四元数沿父链累乘）
+                # 数据为 relative 旋转，全局 = parent_global * local
+                # _BONE_PARENT 保证父骨骼索引 < 子骨骼索引，顺序遍历即可
+                global_quats: list = [None] * KHHS42_SKELETON_COUNT
+                for i, skel in enumerate(frame.skeletons):
+                    if not skel.contains_quat_wxyz:
+                        continue
+                    lw, lx, ly, lz = skel.quat_wxyz
+                    par = _BONE_PARENT[i]
+                    if par == -1 or global_quats[par] is None:
+                        # 根骨骼或父链断裂：局部即全局
+                        global_quats[i] = (lw, lx, ly, lz)
+                    else:
+                        # 全局 = parent_global * local（四元数左乘）
+                        pw, px, py, pz = global_quats[par]
+                        global_quats[i] = (
+                            pw*lw - px*lx - py*ly - pz*lz,
+                            pw*lx + px*lw + py*lz - pz*ly,
+                            pw*ly - px*lz + py*lw + pz*lx,
+                            pw*lz + px*ly - py*lx + pz*lw,
+                        )
+                    # End-node bones carry real position but no meaningful rotation
+                    if i in _END_BONE_INDICES:
+                        global_quats[i] = None
+
                 for i, skel in enumerate(frame.skeletons):
                     ja = self._joint_actors[i]
-                    if skel.contains_position and skel.contains_quat_wxyz:
-                        ja.set_pose(skel.position, skel.quat_wxyz)
+                    if skel.contains_position and global_quats[i] is not None:
+                        ja.set_pose(skel.position, global_quats[i])
                         positions[i] = skel.position
                     elif skel.contains_position:
                         ja.set_position_only(skel.position)
@@ -405,20 +509,22 @@ def _build_qt_app():
                         la.hide()
 
                 self._vtk_widget.GetRenderWindow().Render()
+                self._render_fps_overlay.tick()
 
-            # 更新左侧网络信息面板
-            addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
-            if addr is not None:
-                self._left_panel.lbl_ip.setText(addr[0])
-                self._left_panel.lbl_port.setText(str(addr[1]))
-            else:
-                self._left_panel.lbl_ip.setText("等待中…")
-                self._left_panel.lbl_port.setText("—")
-            actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
-            self._left_panel.lbl_actor_name.setText(", ".join(actor_names) if actor_names else "—")
-            if frame is not None and self._last_frame_fn is not None:
-                self._left_panel.lbl_frame_id.setText(str(self._last_frame_fn))
-            self._left_panel.lbl_total_frames.setText(str(self._total_frames))
+            # 更新左侧网络信息面板（UDP 模式）
+            if self._left_panel is not None:
+                addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
+                if addr is not None:
+                    self._left_panel.lbl_ip.setText(addr[0])
+                    self._left_panel.lbl_port.setText(str(addr[1]))
+                else:
+                    self._left_panel.lbl_ip.setText("等待中…")
+                    self._left_panel.lbl_port.setText("—")
+                actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
+                self._left_panel.lbl_actor_name.setText(", ".join(actor_names) if actor_names else "—")
+                if frame is not None and self._last_frame_fn is not None:
+                    self._left_panel.lbl_frame_id.setText(str(self._last_frame_fn))
+                self._left_panel.lbl_total_frames.setText(str(self._total_frames))
 
         # ── 右键上下文菜单 ────────────────────────────────
         def eventFilter(self, obj, event):
@@ -449,6 +555,9 @@ def _build_qt_app():
             ground_label = "隐藏地平面" if self._ground_visible else "显示地平面"
             ground_action = menu.addAction(ground_label)
 
+            fps_label = "隐藏渲染帧率" if self._render_fps_overlay.is_visible() else "显示渲染帧率"
+            fps_action = menu.addAction(fps_label)
+
             menu.addSeparator()
             reset_camera_action = menu.addAction("重置视角")
 
@@ -463,6 +572,9 @@ def _build_qt_app():
                 self._ground_visible = not self._ground_visible
                 self._ground_actor.SetVisibility(self._ground_visible)
                 rw.Render()
+            elif action is fps_action:
+                self._render_fps_overlay.set_visible(not self._render_fps_overlay.is_visible())
+                rw.Render()
             elif action is reset_camera_action:
                 self._reset_camera_cb.reset()
 
@@ -470,14 +582,115 @@ def _build_qt_app():
         def closeEvent(self, event):
             self._timer.stop()
             self._fps_timer.stop()
+            self._csv_playing = False
             self._quit_event.set()
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._vtk_widget.GetRenderWindow().Finalize()
             self._interactor.TerminateApp()
             super().closeEvent(event)
 
+        # ── CSV 回放控制 ──────────────────────────────────
+        def _start_csv_playback(self):
+            """CSV 模式初始化：连接面板信号。"""
+            from src.csv_frame_reader import CsvFrameReader as _CsvFrameReader
+            self._CsvFrameReader = _CsvFrameReader
+
+            panel = self._csv_panel
+            if panel is not None:
+                panel.file_selected.connect(self._on_csv_file_selected)
+                panel.play_pause_clicked.connect(self._on_csv_play_pause)
+                panel.reset_clicked.connect(self._on_csv_reset)
+                panel.fps_changed.connect(self._on_csv_fps_changed)
+                panel.seek_started.connect(self._on_csv_seek_started)
+                panel.seek_requested.connect(self._on_csv_seek)
+
+        def _on_csv_file_selected(self, path: str) -> None:
+            """用户选择了新的 CSV 文件。"""
+            self._csv_playing = False
+            if self._csv_panel is not None:
+                self._csv_panel.set_playing(False)
+            try:
+                self._csv_reader = self._CsvFrameReader(path)
+            except Exception as e:
+                self.statusBar().showMessage(f"加载失败：{e}")
+                self._csv_reader = None
+                return
+            self.statusBar().showMessage(
+                f"已加载：{path}  共 {self._csv_reader.total_frames} 帧"
+            )
+            if self._csv_panel is not None:
+                self._csv_panel.set_total_frames(self._csv_reader.total_frames)
+            # 渲染第一帧
+            frame = self._csv_reader.next_frame()
+            if frame is not None:
+                with self._frame_lock:
+                    self._latest_frame[0] = frame
+            self._csv_reader.reset()
+
+        def _on_csv_play_pause(self) -> None:
+            """播放/暂停按钮切换。"""
+            if self._csv_reader is None:
+                return
+            if self._csv_playing:
+                # 暂停
+                self._csv_playing = False
+                if self._csv_panel is not None:
+                    self._csv_panel.set_playing(False)
+            else:
+                # 开始/继续：若已到末帧则先重置
+                if self._csv_reader.at_end:
+                    self._csv_reader.reset()
+                fps = self._csv_panel.fps if self._csv_panel is not None else 60
+                self._csv_next_frame_time = time.monotonic() + 1.0 / fps
+                self._csv_playing = True
+                if self._csv_panel is not None:
+                    self._csv_panel.set_playing(True)
+
+        def _on_csv_reset(self) -> None:
+            """重置到第一帧并停止播放。"""
+            self._csv_playing = False
+            if self._csv_panel is not None:
+                self._csv_panel.set_playing(False)
+            if self._csv_reader is not None:
+                self._csv_reader.reset()
+                frame = self._csv_reader.next_frame()
+                if frame is not None:
+                    with self._frame_lock:
+                        self._latest_frame[0] = frame
+                self._csv_reader.reset()
+                if self._csv_panel is not None:
+                    self._csv_panel.set_frame_index(0)
+
+        def _on_csv_fps_changed(self, _fps: int) -> None:
+            pass
+
+        def _on_csv_seek_started(self) -> None:
+            """用户按下进度条：暂停推进，不改变按钮状态。"""
+            self._csv_playing = False
+
+        def _on_csv_seek(self, target_index: int) -> None:
+            """用户拖动进度条后跳转到指定帧（0-based），不自动恢复播放。"""
+            if self._csv_reader is None:
+                return
+            total = self._csv_reader.total_frames
+            if total == 0:
+                return
+            self._csv_playing = False
+            if self._csv_panel is not None:
+                self._csv_panel.set_playing(False)
+            target_index = max(0, min(target_index, total - 1))
+            self._csv_reader.seek(target_index)
+            frame = self._csv_reader.next_frame()
+            if frame is not None:
+                with self._frame_lock:
+                    self._latest_frame[0] = frame
+            if self._csv_panel is not None:
+                self._csv_panel.set_frame_index(self._csv_reader.current_index)
+
         # ── UDP 接收控制 ──────────────────────────────────
         def _on_stop_clicked(self):
+            if self._left_panel is None:
+                return
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._fps_counter.reset()
             self._left_panel.set_receiving(False)
@@ -488,6 +701,8 @@ def _build_qt_app():
             self._left_panel.lbl_fps.setText("0 fps")
 
         def _on_start_clicked(self):
+            if self._left_panel is None:
+                return
             nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
             if nRet == 0:
                 self._total_frames = 0
@@ -514,23 +729,108 @@ def _build_qt_app():
 
 
 # ─────────────────────────────────────────────
+#  启动模式选择对话框
+# ─────────────────────────────────────────────
+
+def _show_boot_mode_dialog() -> "AppMode | None":
+    """弹出模式选择对话框，返回用户选择的 AppMode，关闭对话框时返回 None。"""
+    from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
+    from PySide6.QtCore import Qt
+
+    chosen: list[AppMode | None] = [None]
+
+    dlg = QDialog()
+    dlg.setWindowTitle("选择启动模式")
+    dlg.setFixedSize(320, 140)
+    dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
+
+    layout = QVBoxLayout(dlg)
+    layout.setSpacing(12)
+    layout.setContentsMargins(20, 20, 20, 20)
+
+    label = QLabel("请选择启动模式：")
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(label)
+
+    btn_layout = QHBoxLayout()
+    btn_layout.setSpacing(16)
+
+    btn_udp = QPushButton("实时 UDP 流")
+    btn_csv = QPushButton("CSV 文件回放")
+    btn_udp.setFixedHeight(36)
+    btn_csv.setFixedHeight(36)
+
+    def _pick_udp():
+        chosen[0] = AppMode.UDP_STREAM
+        dlg.accept()
+
+    def _pick_csv():
+        chosen[0] = AppMode.CSV_PLAYBACK
+        dlg.accept()
+
+    btn_udp.clicked.connect(_pick_udp)
+    btn_csv.clicked.connect(_pick_csv)
+
+    btn_layout.addWidget(btn_udp)
+    btn_layout.addWidget(btn_csv)
+    layout.addLayout(btn_layout)
+
+    dlg.exec()
+    return chosen[0]
+
+
+# ─────────────────────────────────────────────
 #  入口
 # ─────────────────────────────────────────────
 
 def main():
-    print(f"UDP Bind IP:port: 0.0.0.0:{RX_PORT}")
-    nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
-    _port_error_lines: list[str] = []
-    if nRet == -1:
-        print(f"端口 {RX_PORT} 绑定失败，正在查询占用程序…")
-        from src.port_occupier import find_udp_port_occupier
-        _port_error_lines = find_udp_port_occupier(RX_PORT)
-        if not _port_error_lines:
-            _port_error_lines = [f"端口 {RX_PORT} 绑定失败"]
-        for line in _port_error_lines:
-            print(line)
+    global APP_MODE
+
+    # ── 命令行参数解析 ──────────────────────────────
+    parser = argparse.ArgumentParser(
+        prog="motionGloveSDK_example3_3dView.py",
+        description="MotionGlove 3D Viewer — 实时 UDP 流或 CSV 文件回放",
+    )
+    parser.add_argument(
+        "--bootmode",
+        metavar="MODE",
+        default=None,
+        help="启动模式：udpstream（实时 UDP，默认）或 csvplayback（CSV 文件回放）",
+    )
+    args = parser.parse_args()
+
+    # --bootmode 未显式传入时弹出模式选择对话框
+    if args.bootmode is None:
+        from PySide6.QtWidgets import QApplication as _QApp
+        _ = _QApp.instance() or _QApp(sys.argv)
+        chosen = _show_boot_mode_dialog()
+        if chosen is None:
+            sys.exit(0)  # 用户关闭对话框，直接退出
+        APP_MODE = chosen
     else:
-        print(f"[UDP] 端口 {RX_PORT} 绑定成功，开始接收数据...")
+        mode_str = args.bootmode.lower().replace("_", "").replace("-", "")
+        if mode_str == "udpstream":
+            APP_MODE = AppMode.UDP_STREAM
+        elif mode_str == "csvplayback":
+            APP_MODE = AppMode.CSV_PLAYBACK
+        else:
+            parser.error(f"未知的 --bootmode 值：'{args.bootmode}'，可选：udpstream | csvplayback")
+
+    # CSV 模式下不绑定 UDP 端口
+    _port_error_lines: list[str] = []
+    if APP_MODE == AppMode.UDP_STREAM:
+        print(f"UDP Bind IP:port: 0.0.0.0:{RX_PORT}")
+        nRet = motionGloveSDK.MotionGloveSDK_ListenUDPPort(RX_PORT)
+        if nRet == -1:
+            print(f"端口 {RX_PORT} 绑定失败，正在查询占用程序…")
+            from src.port_occupier import find_udp_port_occupier
+            _port_error_lines = find_udp_port_occupier(RX_PORT)
+            if not _port_error_lines:
+                _port_error_lines = [f"端口 {RX_PORT} 绑定失败"]
+            for line in _port_error_lines:
+                print(line)
+        else:
+            print(f"[UDP] 端口 {RX_PORT} 绑定成功，开始接收数据...")
 
     # ── CI 快速路径：不构建任何 Qt 对象 ──
     if _CI_MODE and not _CI_RENDER_ENABLED:
@@ -543,11 +843,12 @@ def main():
 
     app, window = _build_qt_app()
 
-    if _port_error_lines:
-        window._left_panel.show_port_error(_port_error_lines)
-        window._left_panel.set_receiving(False)
-    else:
-        window._left_panel.set_receiving(True)
+    if APP_MODE == AppMode.UDP_STREAM and window._left_panel is not None:
+        if _port_error_lines:
+            window._left_panel.show_port_error(_port_error_lines)
+            window._left_panel.set_receiving(False)
+        else:
+            window._left_panel.set_receiving(True)
 
     if _CI_MODE:
         # CI 渲染冒烟测试：渲染一帧后自动退出

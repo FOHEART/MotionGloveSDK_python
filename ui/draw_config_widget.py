@@ -80,7 +80,7 @@ class DrawConfigWidget(QWidget):
         link_layout.setSpacing(4)
 
         link_layout.addWidget(QLabel("粗细"))
-        self._sld_link_width = self._make_slider(1, 20, int(defaults.link_width))
+        self._sld_link_width = self._make_slider(1, 30, int(defaults.link_width))
         link_layout.addWidget(self._sld_link_width)
 
         link_layout.addWidget(QLabel("颜色"))

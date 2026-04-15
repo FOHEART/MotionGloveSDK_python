@@ -20,7 +20,7 @@ class DrawConfig:
 
     joint_radius: float = 0.005
     joint_color: tuple[float, float, float] = field(default_factory=lambda: (1.0, 1.0, 1.0))
-    link_width: float = 2.0
+    link_width: float = 10.0
     link_color: tuple[float, float, float] = field(default_factory=lambda: (0.7, 0.7, 0.7))
     axis_length: float = 0.010
 
