@@ -799,15 +799,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # --bootmode 未显式传入时弹出模式选择对话框
-    if args.bootmode is None:
-        from PySide6.QtWidgets import QApplication as _QApp
-        _ = _QApp.instance() or _QApp(sys.argv)
-        chosen = _show_boot_mode_dialog()
-        if chosen is None:
-            sys.exit(0)  # 用户关闭对话框，直接退出
-        APP_MODE = chosen
-    else:
+    # --bootmode 解析
+    if args.bootmode is not None:
         mode_str = args.bootmode.lower().replace("_", "").replace("-", "")
         if mode_str == "udpstream":
             APP_MODE = AppMode.UDP_STREAM
@@ -815,6 +808,17 @@ def main():
             APP_MODE = AppMode.CSV_PLAYBACK
         else:
             parser.error(f"未知的 --bootmode 值：'{args.bootmode}'，可选：udpstream | csvplayback")
+    else:
+        # 如果在 CI 且不需要渲染，跳过构建 Qt 对象和弹窗（可在 Windows Runner 自动退出）
+        if _CI_MODE and not _CI_RENDER_ENABLED:
+            APP_MODE = AppMode.UDP_STREAM
+        else:
+            from PySide6.QtWidgets import QApplication as _QApp
+            _ = _QApp.instance() or _QApp(sys.argv)
+            chosen = _show_boot_mode_dialog()
+            if chosen is None:
+                sys.exit(0)  # 用户关闭对话框，直接退出
+            APP_MODE = chosen
 
     # CSV 模式下不绑定 UDP 端口
     _port_error_lines: list[str] = []
