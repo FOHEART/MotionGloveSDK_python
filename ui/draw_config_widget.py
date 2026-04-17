@@ -58,16 +58,16 @@ class DrawConfigWidget(QWidget):
         root.setSpacing(8)
 
         # ── 关节球 ──
-        joint_group = QGroupBox("关节球")
+        joint_group = QGroupBox(self.tr("关节球"))
         joint_layout = QVBoxLayout(joint_group)
         joint_layout.setSpacing(4)
 
-        joint_layout.addWidget(QLabel("半径"))
+        joint_layout.addWidget(QLabel(self.tr("半径")))
         self._sld_joint_radius = self._make_slider(1, 10, int(defaults.joint_radius * 1000))
         joint_layout.addWidget(self._sld_joint_radius)
 
-        joint_layout.addWidget(QLabel("颜色"))
-        self._btn_joint_color = QPushButton("选择颜色")
+        joint_layout.addWidget(QLabel(self.tr("颜色")))
+        self._btn_joint_color = QPushButton(self.tr("选择颜色"))
         _apply_btn_color(self._btn_joint_color, defaults.joint_color)
         self._btn_joint_color.clicked.connect(self._pick_joint_color)
         joint_layout.addWidget(self._btn_joint_color)
@@ -75,16 +75,16 @@ class DrawConfigWidget(QWidget):
         root.addWidget(joint_group)
 
         # ── 骨骼连线 ──
-        link_group = QGroupBox("骨骼连线")
+        link_group = QGroupBox(self.tr("骨骼连线"))
         link_layout = QVBoxLayout(link_group)
         link_layout.setSpacing(4)
 
-        link_layout.addWidget(QLabel("粗细"))
+        link_layout.addWidget(QLabel(self.tr("粗细")))
         self._sld_link_width = self._make_slider(1, 30, int(defaults.link_width))
         link_layout.addWidget(self._sld_link_width)
 
-        link_layout.addWidget(QLabel("颜色"))
-        self._btn_link_color = QPushButton("选择颜色")
+        link_layout.addWidget(QLabel(self.tr("颜色")))
+        self._btn_link_color = QPushButton(self.tr("选择颜色"))
         _apply_btn_color(self._btn_link_color, defaults.link_color)
         self._btn_link_color.clicked.connect(self._pick_link_color)
         link_layout.addWidget(self._btn_link_color)
@@ -92,26 +92,26 @@ class DrawConfigWidget(QWidget):
         root.addWidget(link_group)
 
         # ── 坐标轴 ──
-        axis_group = QGroupBox("坐标轴")
+        axis_group = QGroupBox(self.tr("坐标轴"))
         axis_layout = QVBoxLayout(axis_group)
         axis_layout.setSpacing(4)
 
-        axis_layout.addWidget(QLabel("长度"))
+        axis_layout.addWidget(QLabel(self.tr("长度")))
         self._sld_axis_length = self._make_slider(1, 30, int(defaults.axis_length * 1000))
         axis_layout.addWidget(self._sld_axis_length)
 
         root.addWidget(axis_group)
 
         # ── 配置 IO ──
-        io_group = QGroupBox("配置文件")
+        io_group = QGroupBox(self.tr("配置文件"))
         io_layout = QVBoxLayout(io_group)
         io_layout.setSpacing(4)
 
-        btn_save = QPushButton("导出配置")
+        btn_save = QPushButton(self.tr("导出配置"))
         btn_save.clicked.connect(self._on_save)
         io_layout.addWidget(btn_save)
 
-        btn_load = QPushButton("加载配置")
+        btn_load = QPushButton(self.tr("加载配置"))
         btn_load.clicked.connect(self._on_load)
         io_layout.addWidget(btn_load)
 
@@ -133,7 +133,7 @@ class DrawConfigWidget(QWidget):
     def _pick_joint_color(self) -> None:
         qc = QColor(*[int(c * 255) for c in self._joint_color])
         from PySide6.QtWidgets import QColorDialog
-        chosen = QColorDialog.getColor(qc, self, "选择关节球颜色")
+        chosen = QColorDialog.getColor(qc, self, self.tr("选择关节球颜色"))
         if chosen.isValid():
             self._joint_color = _qcolor_to_color(chosen)
             _apply_btn_color(self._btn_joint_color, self._joint_color)
@@ -141,21 +141,21 @@ class DrawConfigWidget(QWidget):
     def _pick_link_color(self) -> None:
         qc = QColor(*[int(c * 255) for c in self._link_color])
         from PySide6.QtWidgets import QColorDialog
-        chosen = QColorDialog.getColor(qc, self, "选择连线颜色")
+        chosen = QColorDialog.getColor(qc, self, self.tr("选择连线颜色"))
         if chosen.isValid():
             self._link_color = _qcolor_to_color(chosen)
             _apply_btn_color(self._btn_link_color, self._link_color)
 
     def _on_save(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出绘图配置", "", "JSON 文件 (*.json)"
+            self, self.tr("导出绘图配置"), "", self.tr("JSON 文件 (*.json)")
         )
         if path:
             save_config(self.current_config(), path)
 
     def _on_load(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "加载绘图配置", "", "JSON 文件 (*.json)"
+            self, self.tr("加载绘图配置"), "", self.tr("JSON 文件 (*.json)")
         )
         if path:
             try:
@@ -163,7 +163,7 @@ class DrawConfigWidget(QWidget):
                 self.load_from_config(cfg)
             except Exception as e:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self, "加载失败", str(e))
+                QMessageBox.warning(self, self.tr("加载失败"), str(e))
 
     # ── 公开接口 ──────────────────────────────────────
 

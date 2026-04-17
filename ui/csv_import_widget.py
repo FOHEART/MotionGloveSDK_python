@@ -115,25 +115,25 @@ class CsvImportWidget(QWidget):
 
     def set_playing(self, is_playing: bool) -> None:
         """由主窗口调用，同步按钮文字和状态。"""
-        self._btn_play_pause.setText("暂停播放" if is_playing else "开始播放")
+        self._btn_play_pause.setText(self.tr("暂停播放") if is_playing else self.tr("开始播放"))
 
     def set_total_frames(self, total: int) -> None:
         """由主窗口调用，设置总帧数（加载文件后调用一次）。"""
         self._total_frames = total
         self._slider.setValue(0)
         self._slider.setEnabled(total > 0)
-        self._lbl_frame.setText("—")
+        self._lbl_frame.setText(self.tr("—"))
 
     def set_frame_index(self, index: int) -> None:
         """由主窗口调用，更新帧号标签和进度条（1-based，index=0 表示未播放）。
         拖动期间不更新滑块，避免抖动。"""
         if index == 0 or self._total_frames == 0:
-            self._lbl_frame.setText("—")
+            self._lbl_frame.setText(self.tr("—"))
             if not self._slider_pressed:
                 self._slider.setValue(0)
         else:
             pct = round(index / self._total_frames * 100)
-            self._lbl_frame.setText(f"{index}/{self._total_frames} ({pct}%)")
+            self._lbl_frame.setText(self.tr(f"{index}/{self._total_frames} ({pct}%)"))
             if not self._slider_pressed:
                 slider_val = round(index / self._total_frames * _SLIDER_MAX)
                 self._slider.setValue(min(slider_val, _SLIDER_MAX))
@@ -142,7 +142,7 @@ class CsvImportWidget(QWidget):
 
     def _on_browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择 CSV 回放文件", "", "CSV 文件 (*.csv)"
+            self, self.tr("选择 CSV 回放文件"), "", self.tr("CSV 文件 (*.csv)")
         )
         if path:
             self._path_edit.setText(path)
@@ -182,18 +182,18 @@ class CsvImportWidget(QWidget):
         from src.csv_to_bvh import convert_csv_to_bvh
 
         self._btn_export_bvh.setEnabled(False)
-        self._btn_export_bvh.setText("转换中…")
+        self._btn_export_bvh.setText(self.tr("转换中…"))
         try:
             out_path = convert_csv_to_bvh(csv_path)
             QMessageBox.information(
-                self, "导出成功",
-                f"BVH 文件已保存至：\n{out_path}",
+                self, self.tr("导出成功"),
+                self.tr(f"BVH 文件已保存至：\n{out_path}"),
             )
         except Exception as e:
             QMessageBox.critical(
-                self, "导出失败",
-                f"转换过程中发生错误：\n{e}",
+                self, self.tr("导出失败"),
+                self.tr(f"转换过程中发生错误：\n{e}"),
             )
         finally:
             self._btn_export_bvh.setEnabled(True)
-            self._btn_export_bvh.setText("导出 BVH…")
+            self._btn_export_bvh.setText(self.tr("导出 BVH…"))

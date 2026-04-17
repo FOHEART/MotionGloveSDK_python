@@ -118,7 +118,7 @@ class OssLicensesDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("开源声明")
+        self.setWindowTitle(self.tr("开源声明"))
         self.resize(680, 520)
         self.setWindowFlags(
             self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint

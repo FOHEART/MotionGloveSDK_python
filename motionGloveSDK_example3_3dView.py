@@ -4,6 +4,7 @@ import enum
 import threading
 import time
 import argparse
+import subprocess
 
 
 def _force_utf8_stdio():
@@ -36,6 +37,7 @@ from fps_counter import FpsCounter
 from vtk_fps_overlay import VtkFpsOverlay
 
 from src import motionGloveSDK
+from src.boot_mode_dialog import show_boot_mode_dialog
 from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
 
 # ─────────────────────────────────────────────
@@ -145,6 +147,39 @@ def _bone_color(bone_idx):
     return COLOR_RIGHT if bone_idx < BoneIndex.LeftHand else COLOR_LEFT
 
 
+def _install_configured_translator(app):
+    from PySide6.QtCore import QTranslator
+
+    try:
+        from src.config_io import read_config
+        cfg = read_config()
+        lang_code = cfg.get("language", "en")
+    except Exception:
+        lang_code = "en"
+
+    existing_translator = getattr(app, "_motionglove_translator", None)
+    existing_lang = getattr(app, "_motionglove_language", None)
+    if existing_translator is not None and existing_lang == lang_code:
+        return existing_translator, lang_code
+
+    if existing_translator is not None:
+        app.removeTranslator(existing_translator)
+
+    translator = QTranslator()
+    qm_path = os.path.join(_SCRIPT_DIR, "translations", f"{lang_code}.qm")
+    try:
+        if os.path.exists(qm_path) and translator.load(qm_path):
+            app.installTranslator(translator)
+        else:
+            print(f"Translation not loaded (missing): {qm_path}")
+    except Exception as e:
+        print(f"Error loading translator: {e}")
+
+    app._motionglove_translator = translator
+    app._motionglove_language = lang_code
+    return translator, lang_code
+
+
 # ─────────────────────────────────────────────
 #  CI 快速路径（不构建任何 Qt 对象）
 # ─────────────────────────────────────────────
@@ -181,8 +216,8 @@ def _build_qt_app():
         QApplication, QMainWindow, QWidget, QHBoxLayout,
         QMessageBox, QSizePolicy, QMenu,
     )
-    from PySide6.QtCore import QTimer, QEvent, Qt
-    from PySide6.QtGui import QAction
+    from PySide6.QtCore import QTimer, QEvent, Qt, QTranslator
+    from PySide6.QtGui import QAction, QActionGroup
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from left_panel_widget import LeftPanelWidget
     from draw_config_widget import DrawConfigWidget
@@ -191,7 +226,7 @@ def _build_qt_app():
     class MotionGloveMainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
-            self.setWindowTitle("MotionGlove 3D Viewer")
+            self.setWindowTitle(self.tr("MotionGlove 3D Viewer"))
             self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
             self._quit_event = threading.Event()
@@ -225,34 +260,64 @@ def _build_qt_app():
         def _build_menu(self):
             menu_bar = self.menuBar()
 
-            file_menu = menu_bar.addMenu("文件(&F)")
-            exit_action = QAction("退出(&X)", self)
+            file_menu = menu_bar.addMenu(self.tr("文件(&F)"))
+            exit_action = QAction(self.tr("退出(&X)"), self)
             exit_action.triggered.connect(QApplication.quit)
             file_menu.addAction(exit_action)
 
-            win_menu = menu_bar.addMenu("窗口(&W)")
-            self._action_show_left = QAction("数据面板", self)
+            win_menu = menu_bar.addMenu(self.tr("窗口(&W)"))
+            self._action_show_left = QAction(self.tr("数据面板"), self)
             self._action_show_left.setCheckable(True)
             self._action_show_left.setChecked(True)
             win_menu.addAction(self._action_show_left)
 
-            self._action_show_right = QAction("配置面板", self)
+            self._action_show_right = QAction(self.tr("配置面板"), self)
             self._action_show_right.setCheckable(True)
             self._action_show_right.setChecked(True)
             win_menu.addAction(self._action_show_right)
 
-            help_menu = menu_bar.addMenu("帮助(&H)")
-            about_qt_action = QAction("关于 Qt(&Q)", self)
+            # 设置 -> 语言 菜单
+            settings_menu = menu_bar.addMenu(self.tr("设置(&S)"))
+            language_menu = settings_menu.addMenu(self.tr("语言"))
+            # QActionGroup 用于互斥选择
+            ag = QActionGroup(self)
+            ag.setExclusive(True)
+            act_zh = QAction(self.tr("中文"), self)
+            act_zh.setCheckable(True)
+            act_en = QAction(self.tr("English"), self)
+            act_en.setCheckable(True)
+            ag.addAction(act_zh)
+            ag.addAction(act_en)
+            language_menu.addAction(act_zh)
+            language_menu.addAction(act_en)
+
+            # 读取当前配置以设置初始选中状态
+            try:
+                from src.config_io import read_config
+                cfg = read_config()
+                cur = cfg.get("language", "en")
+            except Exception:
+                cur = "en"
+            if cur.lower() in ("zh_cn", "zh", "zh-cn"):
+                act_zh.setChecked(True)
+            else:
+                act_en.setChecked(True)
+
+            act_zh.triggered.connect(lambda: self._on_language_selected("zh_CN"))
+            act_en.triggered.connect(lambda: self._on_language_selected("en"))
+
+            help_menu = menu_bar.addMenu(self.tr("帮助(&H)"))
+            about_qt_action = QAction(self.tr("关于 Qt(&Q)"), self)
             about_qt_action.triggered.connect(lambda: QMessageBox.aboutQt(self))
             help_menu.addAction(about_qt_action)
 
-            oss_action = QAction("开源声明(&O)", self)
+            oss_action = QAction(self.tr("开源声明(&O)"), self)
             oss_action.triggered.connect(self._show_oss_dialog)
             help_menu.addAction(oss_action)
 
         # ── 状态栏 ────────────────────────────────────────
         def _build_status_bar(self):
-            self.statusBar().showMessage("就绪")
+            self.statusBar().showMessage(self.tr("就绪"))
 
         def _show_oss_dialog(self):
             from oss_licenses_dialog import OssLicensesDialog
@@ -343,7 +408,7 @@ def _build_qt_app():
                 _font_file = None
             add_overlay_text(
                 self._renderer,
-                text="鼠标左键 旋转    鼠标右键 缩放    鼠标中键 平移    空格 重置视角",
+                text=self.tr("鼠标左键 旋转    鼠标右键 缩放    鼠标中键 平移    空格 重置视角"),
                 font_file=_font_file,
                 font_size=15,
                 color=(0.75, 0.75, 0.75),
@@ -357,6 +422,27 @@ def _build_qt_app():
                 font_file=_font_file,
                 visible=False,
             )
+
+            # 右上角小坐标系（gizmo），使用 vtkOrientationMarkerWidget
+            self._gizmo_axes_actor = vtk.vtkAxesActor()
+            self._gizmo_axes_actor.SetTotalLength(0.08, 0.08, 0.08)
+            self._gizmo_axes_actor.SetShaftTypeToCylinder()
+            # 禁用 caption 自动缩放以保证在小尺寸下显示合理
+            for cap in (
+                self._gizmo_axes_actor.GetXAxisCaptionActor2D(),
+                self._gizmo_axes_actor.GetYAxisCaptionActor2D(),
+                self._gizmo_axes_actor.GetZAxisCaptionActor2D(),
+            ):
+                cap.GetTextActor().SetTextScaleModeToNone()
+
+            self._gizmo_marker = vtk.vtkOrientationMarkerWidget()
+            self._gizmo_marker.SetOrientationMarker(self._gizmo_axes_actor)
+            self._gizmo_marker.SetInteractor(self._interactor)
+            # 放置在右上角 -- 小一点并留出边距
+            self._gizmo_marker.SetViewport(0.84, 0.84, 0.99, 0.99)
+            self._gizmo_marker.SetEnabled(1)
+            # 不让小坐标系本身响应拖拽（只作为指示器）
+            self._gizmo_marker.InteractiveOff()
 
             self._vtk_widget.Initialize()
             setup_camera(self._renderer, render_window)
@@ -433,7 +519,7 @@ def _build_qt_app():
                         self._csv_playing = False
                         if self._csv_panel is not None:
                             self._csv_panel.set_playing(False)
-                        self.statusBar().showMessage("播放完毕（末帧）")
+                        self.statusBar().showMessage(self.tr("播放完毕（末帧）"))
 
             # ── 推送绘图配置（仅在配置变化时）──────────────
             cfg = self._draw_config_widget.current_config()
@@ -518,7 +604,7 @@ def _build_qt_app():
                     self._left_panel.lbl_ip.setText(addr[0])
                     self._left_panel.lbl_port.setText(str(addr[1]))
                 else:
-                    self._left_panel.lbl_ip.setText("等待中…")
+                    self._left_panel.lbl_ip.setText(self.tr("Waiting..."))
                     self._left_panel.lbl_port.setText("—")
                 actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
                 self._left_panel.lbl_actor_name.setText(", ".join(actor_names) if actor_names else "—")
@@ -549,17 +635,17 @@ def _build_qt_app():
         def _show_context_menu(self, global_pos):
             menu = QMenu(self)
 
-            axes_label = "隐藏坐标轴" if self._axes_visible else "显示坐标轴"
+            axes_label = self.tr("隐藏坐标轴") if self._axes_visible else self.tr("显示坐标轴")
             axes_action = menu.addAction(axes_label)
 
-            ground_label = "隐藏地平面" if self._ground_visible else "显示地平面"
+            ground_label = self.tr("隐藏地平面") if self._ground_visible else self.tr("显示地平面")
             ground_action = menu.addAction(ground_label)
 
-            fps_label = "隐藏渲染帧率" if self._render_fps_overlay.is_visible() else "显示渲染帧率"
+            fps_label = self.tr("隐藏渲染帧率") if self._render_fps_overlay.is_visible() else self.tr("显示渲染帧率")
             fps_action = menu.addAction(fps_label)
 
             menu.addSeparator()
-            reset_camera_action = menu.addAction("重置视角")
+            reset_camera_action = menu.addAction(self.tr("重置视角"))
 
             action = menu.exec(global_pos)
             rw = self._vtk_widget.GetRenderWindow()
@@ -577,6 +663,48 @@ def _build_qt_app():
                 rw.Render()
             elif action is reset_camera_action:
                 self._reset_camera_cb.reset()
+
+        def _on_language_selected(self, lang_code: str) -> None:
+            from PySide6.QtWidgets import QMessageBox, QApplication
+            try:
+                from src.config_io import read_config, write_config
+            except Exception:
+                QMessageBox.warning(self, self.tr("错误"), self.tr("无法访问配置模块，语言更改失败"))
+                return
+
+            cfg = read_config()
+            cur = cfg.get("language", "en")
+            if lang_code == cur:
+                return
+            cfg["language"] = lang_code
+            try:
+                write_config(cfg)
+            except Exception as e:
+                QMessageBox.warning(
+                    self,
+                    self.tr("错误"),
+                    self.tr("保存配置失败：{error}").format(error=e),
+                )
+                return
+
+            # 提示重启
+            reply = QMessageBox.question(
+                self,
+                self.tr("重启以应用语言"),
+                self.tr("已更改语言，需要重启应用以生效。现在重启？"),
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                try:
+                    subprocess.Popen([sys.executable] + sys.argv)
+                except Exception as e:
+                    QMessageBox.warning(
+                        self,
+                        self.tr("重启失败"),
+                        self.tr("自动重启失败：{error}\n请手动重启应用。").format(error=e),
+                    )
+                    return
+                QApplication.quit()
 
         # ── 窗口关闭处理 ──────────────────────────────────
         def closeEvent(self, event):
@@ -612,11 +740,14 @@ def _build_qt_app():
             try:
                 self._csv_reader = self._CsvFrameReader(path)
             except Exception as e:
-                self.statusBar().showMessage(f"加载失败：{e}")
+                self.statusBar().showMessage(self.tr("加载失败：{error}").format(error=e))
                 self._csv_reader = None
                 return
             self.statusBar().showMessage(
-                f"已加载：{path}  共 {self._csv_reader.total_frames} 帧"
+                self.tr("已加载：{path}  共 {frames} 帧").format(
+                    path=path,
+                    frames=self._csv_reader.total_frames,
+                )
             )
             if self._csv_panel is not None:
                 self._csv_panel.set_total_frames(self._csv_reader.total_frames)
@@ -694,7 +825,7 @@ def _build_qt_app():
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._fps_counter.reset()
             self._left_panel.set_receiving(False)
-            self._left_panel.lbl_ip.setText("等待中…")
+            self._left_panel.lbl_ip.setText(self.tr("Waiting..."))
             self._left_panel.lbl_port.setText("—")
             self._left_panel.lbl_actor_name.setText("—")
             self._left_panel.lbl_frame_id.setText("—")
@@ -723,60 +854,14 @@ def _build_qt_app():
                 self._left_panel.set_receiving(False)
 
     app = QApplication.instance() or QApplication(sys.argv)
+    translator, lang_code = _install_configured_translator(app)
+
     window = MotionGloveMainWindow()
+    # 保存 translator 与当前语言，供运行时使用
+    window._translator = translator
+    window._current_language = lang_code
     window.show()
     return app, window
-
-
-# ─────────────────────────────────────────────
-#  启动模式选择对话框
-# ─────────────────────────────────────────────
-
-def _show_boot_mode_dialog() -> "AppMode | None":
-    """弹出模式选择对话框，返回用户选择的 AppMode，关闭对话框时返回 None。"""
-    from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
-    from PySide6.QtCore import Qt
-
-    chosen: list[AppMode | None] = [None]
-
-    dlg = QDialog()
-    dlg.setWindowTitle("选择启动模式")
-    dlg.setFixedSize(320, 140)
-    dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
-
-    layout = QVBoxLayout(dlg)
-    layout.setSpacing(12)
-    layout.setContentsMargins(20, 20, 20, 20)
-
-    label = QLabel("请选择启动模式：")
-    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    layout.addWidget(label)
-
-    btn_layout = QHBoxLayout()
-    btn_layout.setSpacing(16)
-
-    btn_udp = QPushButton("实时 UDP 流")
-    btn_csv = QPushButton("CSV 文件回放")
-    btn_udp.setFixedHeight(36)
-    btn_csv.setFixedHeight(36)
-
-    def _pick_udp():
-        chosen[0] = AppMode.UDP_STREAM
-        dlg.accept()
-
-    def _pick_csv():
-        chosen[0] = AppMode.CSV_PLAYBACK
-        dlg.accept()
-
-    btn_udp.clicked.connect(_pick_udp)
-    btn_csv.clicked.connect(_pick_csv)
-
-    btn_layout.addWidget(btn_udp)
-    btn_layout.addWidget(btn_csv)
-    layout.addLayout(btn_layout)
-
-    dlg.exec()
-    return chosen[0]
 
 
 # ─────────────────────────────────────────────
@@ -802,8 +887,9 @@ def main():
     # --bootmode 未显式传入时弹出模式选择对话框
     if args.bootmode is None:
         from PySide6.QtWidgets import QApplication as _QApp
-        _ = _QApp.instance() or _QApp(sys.argv)
-        chosen = _show_boot_mode_dialog()
+        app = _QApp.instance() or _QApp(sys.argv)
+        _install_configured_translator(app)
+        chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
         if chosen is None:
             sys.exit(0)  # 用户关闭对话框，直接退出
         APP_MODE = chosen
