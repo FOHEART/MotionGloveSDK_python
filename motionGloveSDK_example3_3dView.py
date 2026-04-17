@@ -37,7 +37,6 @@ from fps_counter import FpsCounter
 from vtk_fps_overlay import VtkFpsOverlay
 
 from src import motionGloveSDK
-from src.boot_mode_dialog import show_boot_mode_dialog
 from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
 
 # ─────────────────────────────────────────────
@@ -893,6 +892,8 @@ def main():
             from PySide6.QtWidgets import QApplication as _QApp
             app = _QApp.instance() or _QApp(sys.argv)
             _install_configured_translator(app)
+            # Import the boot dialog lazily to avoid importing PySide6 in headless CI
+            from src.boot_mode_dialog import show_boot_mode_dialog
             chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
             if chosen is None:
                 sys.exit(0)  # 用户关闭对话框，直接退出
