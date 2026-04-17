@@ -35,7 +35,26 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1
+          # libEGL is required by PySide6/shiboken6 (libEGL.so.1).
+          # Try several package names to cover Ubuntu variants; succeed if any installs.
+          sudo apt-get install -y libgl1 || true
+          EGL_PKGS=(libegl1-mesa libegl-mesa0 libgl1-mesa-glx libgl1-mesa-dri)
+          for p in "${EGL_PKGS[@]}"; do
+            echo "Trying to install $p..."
+            if sudo apt-get install -y "$p"; then
+              echo "Installed $p"
+              break
+            else
+              echo "Package $p not available, trying next"
+            fi
+          done
+          # Install common Qt XCB runtime packages so the xcb platform plugin can load
+          QT_XCB_PKGS=(libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 libxcb-keysyms1 \
+                       libxcb-image0 libxcb-icccm4 libxcb-render0 libxcb-render-util0)
+          for q in "${QT_XCB_PKGS[@]}"; do
+            echo "Installing $q..."
+            sudo apt-get install -y "$q" || echo "Warning: failed to install $q"
+          done
 
       - name: Install VTK/runtime deps into libs (Windows)
         if: runner.os == 'Windows'

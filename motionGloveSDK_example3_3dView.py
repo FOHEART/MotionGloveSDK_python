@@ -884,15 +884,19 @@ def main():
     )
     args = parser.parse_args()
 
-    # --bootmode 未显式传入时弹出模式选择对话框
+    # --bootmode: 当未传入时弹出模式选择对话框（确保翻译器已安装以便对话框被翻译）
     if args.bootmode is None:
-        from PySide6.QtWidgets import QApplication as _QApp
-        app = _QApp.instance() or _QApp(sys.argv)
-        _install_configured_translator(app)
-        chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
-        if chosen is None:
-            sys.exit(0)  # 用户关闭对话框，直接退出
-        APP_MODE = chosen
+        # CI 环境且不需要渲染时，直接进入 UDP 模式
+        if _CI_MODE and not _CI_RENDER_ENABLED:
+            APP_MODE = AppMode.UDP_STREAM
+        else:
+            from PySide6.QtWidgets import QApplication as _QApp
+            app = _QApp.instance() or _QApp(sys.argv)
+            _install_configured_translator(app)
+            chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
+            if chosen is None:
+                sys.exit(0)  # 用户关闭对话框，直接退出
+            APP_MODE = chosen
     else:
         mode_str = args.bootmode.lower().replace("_", "").replace("-", "")
         if mode_str == "udpstream":
