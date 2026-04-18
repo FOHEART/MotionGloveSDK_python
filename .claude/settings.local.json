@@ -15,7 +15,9 @@
       "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode UDPStream)",
       "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode CSVPlayback)",
       "Bash(MOTIONGLOVE_CI=1 MOTIONGLOVE_CI_RENDER=0 python motionGloveSDK_example3_3dView.py --bootmode badvalue)",
-      "Bash(echo \"exit:$?\")"
+      "Bash(echo \"exit:$?\")",
+      "Bash(python src/csv_to_bvh.py --input csvfile/stance4.csv --output stance4.bvh --outputdir csvfile)",
+      "Bash(PYTHONIOENCODING=utf-8 python src/csv_to_bvh.py --input csvfile/stance4.csv --output stance4.bvh --outputdir csvfile)"
     ]
   }
 }

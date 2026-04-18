@@ -23,6 +23,7 @@ class DrawConfig:
     link_width: float = 10.0
     link_color: tuple[float, float, float] = field(default_factory=lambda: (0.7, 0.7, 0.7))
     axis_length: float = 0.010
+    blender_exe: str = ""
 
     @classmethod
     def default(cls) -> DrawConfig:
@@ -46,6 +47,7 @@ def save_config(config: DrawConfig, path: str) -> None:
         "link_width": config.link_width,
         "link_color": list(config.link_color),
         "axis_length": config.axis_length,
+        "blender_exe": config.blender_exe,
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -83,4 +85,5 @@ def load_config(path: str) -> DrawConfig:
         link_width=float(_get("link_width", defaults.link_width)),
         link_color=_get_color("link_color", defaults.link_color),
         axis_length=float(_get("axis_length", defaults.axis_length)),
+        blender_exe=str(_get("blender_exe", "")),
     )

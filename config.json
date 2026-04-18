@@ -1,3 +1,16 @@
 {
-  "language": "zh_CN"
+  "joint_radius": 0.005,
+  "joint_color": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "link_width": 10.0,
+  "link_color": [
+    0.7,
+    0.7,
+    0.7
+  ],
+  "axis_length": 0.01,
+  "blender_exe": "D:\\Dev\\MotionGloveSDK_python\\libs\\blender-4.5.8-windows-x64\\blender.exe"
 }

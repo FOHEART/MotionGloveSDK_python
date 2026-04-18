@@ -6,7 +6,7 @@ Python 代码只负责信号连接和运行时逻辑。
 
 公开接口
 --------
-CsvImportWidget(parent)
+CsvImportWidget(parent, config_path)
     .fps -> int                          — 当前选定帧率（Hz）
     .set_playing(is_playing: bool)       — 由主窗口驱动按钮文字和状态
     .set_total_frames(total: int)        — 加载文件后设置总帧数，重置进度条
@@ -19,15 +19,23 @@ CsvImportWidget(parent)
     .seek_started                        — Signal()：用户按下进度条，通知主窗口停止定时器
 """
 
+import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit,
-    QPushButton, QComboBox, QSlider, QFileDialog, QMessageBox,
-)
+from PySide6.QtCore import QFile, QIODevice, QThread, Signal
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import Signal, QFile, QIODevice
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 # QComboBox 选项：显示文字 → 实际帧率值
@@ -43,6 +51,34 @@ def _ui_path() -> Path:
     return Path(__file__).parent / "csv_import_panel.ui"
 
 
+class _BvhConvertThread(QThread):
+    """在后台线程中运行 Blender 后台转换，完成后发出信号。"""
+
+    finished = Signal(int, str, str)  # exit_code, stdout, stderr
+
+    def __init__(self, blender_exe: str, bvh_path: str, script_path: str) -> None:
+        super().__init__()
+        self._blender_exe = blender_exe
+        self._bvh_path = bvh_path
+        self._script_path = script_path
+
+    def run(self) -> None:
+        try:
+            result = subprocess.run(
+                [
+                    self._blender_exe,
+                    "--background",
+                    "--python", self._script_path,
+                    "--", self._bvh_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.finished.emit(result.returncode, result.stdout, result.stderr)
+        except Exception as e:
+            self.finished.emit(-1, "", str(e))
+
+
 class CsvImportWidget(QWidget):
     """CSV 回放模式左侧面板（固定宽度 220px）。"""
 
@@ -53,9 +89,12 @@ class CsvImportWidget(QWidget):
     seek_started       = Signal()      # 进度条按下：通知主窗口停止定时器（不切换播放状态）
     seek_requested     = Signal(int)   # 进度条松开：传递目标帧索引（0-based），不自动恢复播放
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, config_path: str = "") -> None:
         super().__init__(parent)
         self.setFixedWidth(220)
+
+        # config.json 路径
+        self._config_path = config_path or str(Path(__file__).parent.parent / "config.json")
 
         # ── 加载 .ui ──────────────────────────────────
         loader = QUiLoader()
@@ -86,14 +125,28 @@ class CsvImportWidget(QWidget):
         self._btn_export_bvh: QPushButton = _find(QPushButton, "btn_export_bvh")
         btn_browse:           QPushButton = _find(QPushButton, "btn_browse")
 
+        # BVH→FBX 控件
+        self._bvh2fbx_blender_edit:   QLineEdit   = _find(QLineEdit,   "bvh2fbx_blender_edit")
+        self._bvh2fbx_blender_btn:    QPushButton = _find(QPushButton, "bvh2fbx_blender_btn")
+        self._bvh2fbx_blender_auto_btn: QPushButton = _find(QPushButton, "bvh2fbx_blender_auto_btn")
+        self._bvh2fbx_bvh_edit:       QLineEdit   = _find(QLineEdit,   "bvh2fbx_bvh_edit")
+        self._bvh2fbx_bvh_btn:        QPushButton = _find(QPushButton, "bvh2fbx_bvh_btn")
+        self._bvh2fbx_convert_btn:    QPushButton = _find(QPushButton, "bvh2fbx_convert_btn")
+        self._bvh2fbx_open_btn:       QPushButton = _find(QPushButton, "bvh2fbx_open_btn")
+
         # ── QComboBox userData（.ui 中只能存文字，这里补充整数 data）──
         for i, fps in enumerate(_FPS_OPTIONS):
             self._fps_combo.setItemData(i, fps)
         self._fps_combo.setCurrentIndex(_FPS_OPTIONS.index(_DEFAULT_FPS))
 
         # ── 内部状态 ───────────────────────────────────
-        self._total_frames:  int  = 0
+        self._total_frames:   int  = 0
         self._slider_pressed: bool = False
+        self._fbx_path:       str  = ""
+        self._convert_thread: _BvhConvertThread | None = None
+
+        # ── 从 config.json 读取 Blender 路径 ──────────
+        self._load_blender_path()
 
         # ── 信号连接 ───────────────────────────────────
         btn_browse.clicked.connect(self._on_browse)
@@ -103,6 +156,12 @@ class CsvImportWidget(QWidget):
         self._slider.sliderReleased.connect(self._on_slider_released)
         self._btn_play_pause.clicked.connect(self.play_pause_clicked)
         self._btn_reset.clicked.connect(self.reset_clicked)
+
+        self._bvh2fbx_blender_btn.clicked.connect(self._on_blender_browse)
+        self._bvh2fbx_blender_auto_btn.clicked.connect(self._on_auto_detect_blender)
+        self._bvh2fbx_bvh_btn.clicked.connect(self._on_bvh_browse)
+        self._bvh2fbx_convert_btn.clicked.connect(self._on_convert)
+        self._bvh2fbx_open_btn.clicked.connect(self._on_open_output)
 
     # ── 属性 ──────────────────────────────────────────
 
@@ -197,3 +256,145 @@ class CsvImportWidget(QWidget):
         finally:
             self._btn_export_bvh.setEnabled(True)
             self._btn_export_bvh.setText(self.tr("导出 BVH…"))
+
+    # ── BVH→FBX 槽 ───────────────────────────────────
+
+    def _load_blender_path(self) -> None:
+        """从 config.json 读取 blender_exe 并填入编辑框。"""
+        config_p = Path(self._config_path)
+        if not config_p.exists():
+            return
+        try:
+            import sys as _sys
+            _root = str(Path(__file__).parent.parent)
+            if _root not in _sys.path:
+                _sys.path.insert(0, _root)
+            from python_draw3d.draw_config_io import load_config
+            cfg = load_config(self._config_path)
+            if cfg.blender_exe:
+                self._bvh2fbx_blender_edit.setText(cfg.blender_exe)
+                self._update_convert_btn_state()
+        except Exception:
+            pass
+
+    def _save_blender_path(self, path: str) -> None:
+        """将 blender_exe 写回 config.json，其他字段保持不变。"""
+        try:
+            from python_draw3d.draw_config_io import DrawConfig, load_config, save_config
+            config_p = Path(self._config_path)
+            cfg = load_config(self._config_path) if config_p.exists() else DrawConfig()
+            cfg.blender_exe = path
+            save_config(cfg, self._config_path)
+        except Exception:
+            pass
+
+    def _on_blender_browse(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("选择 Blender 可执行文件"), "", self.tr("Blender (blender.exe)")
+        )
+        if path:
+            self._bvh2fbx_blender_edit.setText(path)
+            self._save_blender_path(path)
+            self._update_convert_btn_state()
+
+    def _on_auto_detect_blender(self) -> None:
+        try:
+            from src.blender_path_detector import detect_blender_executable
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                self.tr("检测失败"),
+                self.tr("无法加载 Blender 路径检测模块：{error}").format(error=e),
+            )
+            return
+
+        result = detect_blender_executable(Path.cwd())
+        if result.found and result.executable_path is not None:
+            detected_path = str(result.executable_path)
+            self._bvh2fbx_blender_edit.setText(detected_path)
+            self._save_blender_path(detected_path)
+            self._update_convert_btn_state()
+            QMessageBox.information(
+                self,
+                self.tr("检测成功"),
+                self.tr("已自动找到 Blender 路径：\n{path}").format(path=detected_path),
+            )
+            return
+
+        if result.status == "missing-libs":
+            message = self.tr("未找到 libs 文件夹：\n{path}").format(path=result.libs_dir)
+        elif result.status == "missing-candidate":
+            message = self.tr("未在以下目录中找到名称包含 blender 的文件夹：\n{path}").format(path=result.libs_dir)
+        elif result.status == "missing-executable":
+            message = self.tr("已找到候选 Blender 文件夹，但其中没有 blender.exe：\n{path}").format(path=result.libs_dir)
+        else:
+            message = self.tr("自动检测 Blender 路径时发生错误：\n{error}").format(error=result.error)
+
+        QMessageBox.information(self, self.tr("未找到 Blender"), message)
+
+    def _on_bvh_browse(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("选择 BVH 文件"), "", self.tr("BVH 文件 (*.bvh)")
+        )
+        if path:
+            self._bvh2fbx_bvh_edit.setText(path)
+            self._update_convert_btn_state()
+
+    def _update_convert_btn_state(self) -> None:
+        ready = bool(self._bvh2fbx_blender_edit.text()) and bool(self._bvh2fbx_bvh_edit.text())
+        self._bvh2fbx_convert_btn.setEnabled(ready)
+
+    def _on_convert(self) -> None:
+        blender_exe = self._bvh2fbx_blender_edit.text()
+        bvh_path    = self._bvh2fbx_bvh_edit.text()
+        script_path = str(Path(__file__).parent.parent / "src" / "bvh_to_fbx.py")
+
+        self._fbx_path = str(Path(bvh_path).with_suffix(".fbx"))
+        self._bvh2fbx_open_btn.setEnabled(False)
+        self._bvh2fbx_convert_btn.setEnabled(False)
+        self._bvh2fbx_convert_btn.setText(self.tr("转换中…"))
+
+        self._convert_thread = _BvhConvertThread(blender_exe, bvh_path, script_path)
+        self._convert_thread.finished.connect(self._on_convert_finished)
+        self._convert_thread.start()
+
+    def _on_convert_finished(self, exit_code: int, stdout: str, stderr: str) -> None:
+        self._bvh2fbx_convert_btn.setEnabled(True)
+        self._bvh2fbx_convert_btn.setText(self.tr("转换为 FBX"))
+        fbx_path = Path(self._fbx_path) if self._fbx_path else None
+        if exit_code == 0 and fbx_path is not None and fbx_path.is_file():
+            QMessageBox.information(
+                self, self.tr("转换成功"),
+                self.tr("FBX 文件已保存至：\n{path}").format(path=self._fbx_path),
+            )
+            self._bvh2fbx_open_btn.setEnabled(True)
+        else:
+            details = stderr.strip() or stdout.strip()
+            if exit_code == 0 and (fbx_path is None or not fbx_path.is_file()):
+                details = details or self.tr("Blender 进程返回成功，但未生成目标 FBX 文件。")
+                details = self.tr("目标路径：{path}\n\n{details}").format(
+                    path=self._fbx_path,
+                    details=details,
+                )
+            else:
+                details = details or self.tr("Blender 未返回额外错误信息。")
+            QMessageBox.critical(
+                self, self.tr("转换失败"),
+                self.tr("Blender 进程退出码：{code}\n\n{details}").format(
+                    code=exit_code,
+                    details=details,
+                ),
+            )
+
+    def _on_open_output(self) -> None:
+        fbx = self._fbx_path
+        if not fbx:
+            return
+        import platform
+        system = platform.system()
+        if system == "Windows":
+            subprocess.Popen(["explorer", "/select,", fbx])
+        elif system == "Darwin":
+            subprocess.Popen(["open", "-R", fbx])
+        else:
+            subprocess.Popen(["xdg-open", str(Path(fbx).parent)])

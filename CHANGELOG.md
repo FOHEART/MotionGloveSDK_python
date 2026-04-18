@@ -14,6 +14,9 @@
 - **AppMode 双启动模式**（`motionGloveSDK_example3_3dView.py`）：新增 `AppMode.CSV_PLAYBACK` 模式，通过顶部 `APP_MODE` 常量切换；CSV 回放使用单定时器架构（`time.monotonic()` 驱动），消除双定时器帧率抖动问题。
 - **地平面默认显示**：`build_ground_plane_actor` 返回的地平面 Actor 初始可见性改为 `True`。
 
+### Fixed
+- **`src/csv_to_bvh.py` BVH 骨骼首尾脱节**：手指关节错误使用 6 通道（含位置），导致 Blender 等工具在父骨骼旋转后子骨骼位置错位。修复：手指关节改为 3 通道（仅旋转），骨骼方向完全由 HIERARCHY OFFSET 定义；RightHand / LeftHand 根节点保留 6 通道。
+
 ### Changed
 - **末梢虚拟骨骼移除**：删除固定长度末梢骨骼合成逻辑（`FINGERTIP_BONE_LENGTH`、`_FINGERTIP_BONES`、`_fingertip_actors` 及 `_on_timer` 中的四元数 Y 轴投影代码），改由发送端传入的真实 `*3End` 骨骼位置替代。
 - `src/decode_glove_csv.py`：骨骼计数从 `KHHS32_SKELETON_COUNT` 更新为 `KHHS42_SKELETON_COUNT`，支持 42 骨骼帧的解析；欧拉角转四元数改用 `src/xsqeconverter.py`，移除对旧 `euler_to_quat.py` 的依赖。

@@ -41,7 +41,8 @@ else:
 
 _ZYX = int(ChannelOrder.ZYX)   # 5
 
-_CHANNELS = "CHANNELS 6 Xposition Yposition Zposition Zrotation Yrotation Xrotation"
+_CHANNELS6 = "CHANNELS 6 Xposition Yposition Zposition Zrotation Yrotation Xrotation"
+_CHANNELS3 = "CHANNELS 3 Zrotation Yrotation Xrotation"
 
 # CSV BoneIndex (0-41) → BVH 关节名（*3End → *4）
 _BVH_NAMES: list[str] = [
@@ -117,7 +118,7 @@ def _write_chain(first: int, count: int, offsets: list[list[float]], indent: str
         f"{indent}JOINT {name}",
         f"{indent}{{",
         f"{indent}\tOFFSET {ox:.6f} {oy:.6f} {oz:.6f}",
-        f"{indent}\t{_CHANNELS}",
+        f"{indent}\t{_CHANNELS3}",
     ]
     if count > 1:
         lines += _write_chain(first + 1, count - 1, offsets, indent + "\t")
@@ -140,7 +141,7 @@ def _write_hand(hand_base: int, offsets: list[list[float]], indent: str) -> list
         f"{indent}JOINT {name}",
         f"{indent}{{",
         f"{indent}\tOFFSET {ox:.6f} {oy:.6f} {oz:.6f}",
-        f"{indent}\t{_CHANNELS}",
+        f"{indent}\t{_CHANNELS6}",
     ]
     # 5 根手指，每根 4 节，相对 hand_base 的偏移：1,5,9,13,17
     for finger_offset in (1, 5, 9, 13, 17):
@@ -159,7 +160,7 @@ def _build_hierarchy(offsets: list[list[float]]) -> str:
         "ROOT ROOT",
         "{",
         "\tOFFSET 0 0 0",
-        f"\t{_CHANNELS}",
+        f"\t{_CHANNELS6}",
     ]
     lines += _write_hand(0,  offsets, "\t")   # 右手
     lines += _write_hand(21, offsets, "\t")   # 左手
@@ -170,32 +171,20 @@ def _build_hierarchy(offsets: list[list[float]]) -> str:
 # ── 帧数据转换 ───────────────────────────────────────────────────────────────
 
 def _frame_to_bvh_row(frame: GloveFrame) -> str:
-    """将一帧 GloveFrame 转换为 BVH 帧数据行（258 个空格分隔的数值）。
+    """将一帧 GloveFrame 转换为 BVH 帧数据行。
 
-    CSV position 是全局绝对坐标，BVH position channels 需要父子相对坐标，
-    因此每个骨骼位置减去其父骨骼位置（ROOT 骨骼保持原始全局坐标）。
+    ROOT (合成): 6 channels (全零)
+    RightHand / LeftHand (p==-1): 6 channels (位置+旋转)
+    手指关节: 3 channels (仅旋转，OFFSET 已定义骨骼方向，无需运行时位置)
     """
     rot_order = int(frame.header.channel_order)
     values: list[float] = [0.0] * 6   # 合成 ROOT：全零
-
-    pos = [sk.position for sk in frame.skeletons]   # 全局绝对位置（米）
 
     for i in range(42):
         sk = frame.skeletons[i]
         p = _PARENT[i]
 
-        # 位置：减去父节点全局坐标，得父子相对偏移，再米→厘米
-        if p == -1:
-            # RightHand / LeftHand 直接挂在合成 ROOT 下，保留全局坐标
-            px = sk.position[0] * 100.0
-            py = sk.position[1] * 100.0
-            pz = sk.position[2] * 100.0
-        else:
-            px = (sk.position[0] - pos[p][0]) * 100.0
-            py = (sk.position[1] - pos[p][1]) * 100.0
-            pz = (sk.position[2] - pos[p][2]) * 100.0
-
-        # 旋转：CSV ZXY → BVH ZYX
+        # 旋转：确保输出为 ZYX 顺序
         if sk.contains_euler_degree:
             ex, ey, ez = sk.euler_degree
             if rot_order != _ZYX:
@@ -206,8 +195,15 @@ def _frame_to_bvh_row(frame: GloveFrame) -> str:
         else:
             ex, ey, ez = 0.0, 0.0, 0.0
 
-        # BVH 通道顺序：Xpos Ypos Zpos Zrot Yrot Xrot
-        values += [px, py, pz, ez, ey, ex]
+        if p == -1:
+            # RightHand / LeftHand：6 channels，位置保留全局坐标（米→厘米）
+            px = sk.position[0] * 100.0
+            py = sk.position[1] * 100.0
+            pz = sk.position[2] * 100.0
+            values += [px, py, pz, ez, ey, ex]
+        else:
+            # 手指关节：3 channels，仅旋转
+            values += [ez, ey, ex]
 
     return " ".join(f"{v:.6f}" for v in values)
 

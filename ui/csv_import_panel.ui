@@ -2,6 +2,14 @@
 <ui version="4.0">
  <class>csv_import_panel</class>
  <widget class="QWidget" name="csv_import_panel">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>220</width>
+    <height>606</height>
+   </rect>
+  </property>
   <property name="minimumSize">
    <size>
     <width>220</width>
@@ -15,6 +23,9 @@
    </size>
   </property>
   <layout class="QVBoxLayout" name="root_layout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
    <property name="leftMargin">
     <number>8</number>
    </property>
@@ -26,9 +37,6 @@
    </property>
    <property name="bottomMargin">
     <number>12</number>
-   </property>
-   <property name="spacing">
-    <number>8</number>
    </property>
    <item>
     <widget class="QLabel" name="lbl_title">
@@ -65,11 +73,11 @@
       </item>
       <item>
        <widget class="QPushButton" name="btn_export_bvh">
-        <property name="text">
-         <string>导出 BVH…</string>
-        </property>
         <property name="enabled">
          <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>导出 BVH…</string>
         </property>
        </widget>
       </item>
@@ -161,6 +169,9 @@
       </item>
       <item>
        <widget class="QSlider" name="slider_progress">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="minimum">
          <number>0</number>
         </property>
@@ -173,28 +184,113 @@
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_play_pause">
-        <property name="text">
-         <string>开始播放</string>
-        </property>
         <property name="enabled">
          <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>开始播放</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_reset">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
         <property name="text">
          <string>重置</string>
         </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="group_bvh_to_fbx">
+     <property name="title">
+      <string>BVH → FBX</string>
+     </property>
+     <layout class="QVBoxLayout" name="bvh2fbx_layout">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLineEdit" name="bvh2fbx_blender_edit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="placeholderText">
+         <string>Blender 路径…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QPushButton" name="bvh2fbx_blender_btn">
+          <property name="text">
+           <string>选择 Blender…</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="bvh2fbx_blender_auto_btn">
+          <property name="text">
+           <string>自动查找</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="bvh2fbx_bvh_edit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="placeholderText">
+         <string>BVH 文件路径…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QPushButton" name="bvh2fbx_bvh_btn">
+          <property name="text">
+           <string>选择 BVH…</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="bvh2fbx_convert_btn">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>转换 FBX</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="bvh2fbx_open_btn">
         <property name="enabled">
          <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>打开输出路径</string>
         </property>
        </widget>
       </item>
