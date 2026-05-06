@@ -8,18 +8,66 @@ DrawConfigWidget(parent)
     .load_from_config(config: DrawConfig) — 将配置反写回控件
 """
 
-import os
 import sys
+from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
-    QPushButton, QGroupBox, QFileDialog, QSizePolicy,
+    QWidget,
+    QVBoxLayout,
+    QSlider,
+    QPushButton,
+    QFileDialog,
 )
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QFile, QIODevice
 
 # draw_config_io 与本文件同在 python_draw3d/（通过 sys.path 已包含）
 from draw_config_io import DrawConfig, save_config, load_config
+
+
+def _ui_path() -> Path:
+    """返回 draw_config_panel.ui 的绝对路径，兼容源码运行和 PyInstaller 打包。"""
+    candidates: list[Path] = []
+
+    candidates.append(Path(__file__).parent / "draw_config_panel.ui")
+    candidates.append(Path(__file__).parent.parent / "ui" / "draw_config_panel.ui")
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "ui" / "draw_config_panel.ui")
+        candidates.append(Path(meipass) / "_internal" / "ui" / "draw_config_panel.ui")
+
+    try:
+        exe_dir = Path(sys.executable).parent
+        candidates.append(exe_dir / "ui" / "draw_config_panel.ui")
+        candidates.append(exe_dir / "_internal" / "ui" / "draw_config_panel.ui")
+    except Exception:
+        exe_dir = None
+
+    candidates.append(Path.cwd() / "ui" / "draw_config_panel.ui")
+    candidates.append(Path.cwd() / "_internal" / "ui" / "draw_config_panel.ui")
+
+    for p in candidates:
+        try:
+            if p.exists():
+                return p
+        except Exception:
+            continue
+
+    search_roots = [Path(__file__).parent, Path(__file__).parent.parent]
+    if exe_dir is not None:
+        search_roots.append(exe_dir)
+    search_roots.append(Path.cwd())
+
+    for root in search_roots:
+        try:
+            for p in root.rglob("draw_config_panel.ui"):
+                return p
+        except Exception:
+            continue
+
+    return Path(__file__).parent / "draw_config_panel.ui"
 
 
 def _color_to_qcolor(color: tuple[float, float, float]) -> QColor:
@@ -47,88 +95,62 @@ class DrawConfigWidget(QWidget):
         super().__init__(parent)
         self.setFixedWidth(220)
 
+        loader = QUiLoader()
+        ui_file = QFile(str(_ui_path()))
+        if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
+            raise RuntimeError(f"无法打开 UI 文件：{_ui_path()}")
+        self._ui = loader.load(ui_file)
+        ui_file.close()
+        if self._ui is None:
+            raise RuntimeError(f"QUiLoader 加载失败：{_ui_path()}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self._ui)
+
+        def _find(typ, name):  # type: ignore[no-untyped-def]
+            w = self._ui.findChild(typ, name)
+            assert w is not None, f"UI 控件未找到：{name}"
+            return w
+
+        self._sld_joint_radius: QSlider = _find(QSlider, "sld_joint_radius")
+        self._btn_joint_color: QPushButton = _find(QPushButton, "btn_joint_color")
+        self._sld_link_width: QSlider = _find(QSlider, "sld_link_width")
+        self._btn_link_color: QPushButton = _find(QPushButton, "btn_link_color")
+        self._sld_axis_length: QSlider = _find(QSlider, "sld_axis_length")
+        btn_save: QPushButton = _find(QPushButton, "btn_save_config")
+        btn_load: QPushButton = _find(QPushButton, "btn_load_config")
+
         defaults = DrawConfig.default()
 
         # 当前颜色状态（float tuple，避免每次从按钮 stylesheet 反解析）
         self._joint_color = defaults.joint_color
         self._link_color = defaults.link_color
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(8, 12, 8, 12)
-        root.setSpacing(8)
+        self._sld_joint_radius.setMinimum(1)
+        self._sld_joint_radius.setMaximum(10)
+        self._sld_joint_radius.setTickInterval(1)
+        self._sld_joint_radius.setValue(int(defaults.joint_radius * 1000))
 
-        # ── 关节球 ──
-        joint_group = QGroupBox(self.tr("关节球"))
-        joint_layout = QVBoxLayout(joint_group)
-        joint_layout.setSpacing(4)
+        self._sld_link_width.setMinimum(1)
+        self._sld_link_width.setMaximum(30)
+        self._sld_link_width.setTickInterval(1)
+        self._sld_link_width.setValue(int(defaults.link_width))
 
-        joint_layout.addWidget(QLabel(self.tr("半径")))
-        self._sld_joint_radius = self._make_slider(1, 10, int(defaults.joint_radius * 1000))
-        joint_layout.addWidget(self._sld_joint_radius)
+        self._sld_axis_length.setMinimum(1)
+        self._sld_axis_length.setMaximum(30)
+        self._sld_axis_length.setTickInterval(1)
+        self._sld_axis_length.setValue(int(defaults.axis_length * 1000))
 
-        joint_layout.addWidget(QLabel(self.tr("颜色")))
-        self._btn_joint_color = QPushButton(self.tr("选择颜色"))
         _apply_btn_color(self._btn_joint_color, defaults.joint_color)
-        self._btn_joint_color.clicked.connect(self._pick_joint_color)
-        joint_layout.addWidget(self._btn_joint_color)
-
-        root.addWidget(joint_group)
-
-        # ── 骨骼连线 ──
-        link_group = QGroupBox(self.tr("骨骼连线"))
-        link_layout = QVBoxLayout(link_group)
-        link_layout.setSpacing(4)
-
-        link_layout.addWidget(QLabel(self.tr("粗细")))
-        self._sld_link_width = self._make_slider(1, 30, int(defaults.link_width))
-        link_layout.addWidget(self._sld_link_width)
-
-        link_layout.addWidget(QLabel(self.tr("颜色")))
-        self._btn_link_color = QPushButton(self.tr("选择颜色"))
         _apply_btn_color(self._btn_link_color, defaults.link_color)
+
+        self._btn_joint_color.clicked.connect(self._pick_joint_color)
         self._btn_link_color.clicked.connect(self._pick_link_color)
-        link_layout.addWidget(self._btn_link_color)
-
-        root.addWidget(link_group)
-
-        # ── 坐标轴 ──
-        axis_group = QGroupBox(self.tr("坐标轴"))
-        axis_layout = QVBoxLayout(axis_group)
-        axis_layout.setSpacing(4)
-
-        axis_layout.addWidget(QLabel(self.tr("长度")))
-        self._sld_axis_length = self._make_slider(1, 30, int(defaults.axis_length * 1000))
-        axis_layout.addWidget(self._sld_axis_length)
-
-        root.addWidget(axis_group)
-
-        # ── 配置 IO ──
-        io_group = QGroupBox(self.tr("配置文件"))
-        io_layout = QVBoxLayout(io_group)
-        io_layout.setSpacing(4)
-
-        btn_save = QPushButton(self.tr("导出配置"))
         btn_save.clicked.connect(self._on_save)
-        io_layout.addWidget(btn_save)
-
-        btn_load = QPushButton(self.tr("加载配置"))
         btn_load.clicked.connect(self._on_load)
-        io_layout.addWidget(btn_load)
-
-        root.addWidget(io_group)
-
-        root.addStretch()
 
     # ── 内部工具 ──────────────────────────────────────
-
-    @staticmethod
-    def _make_slider(min_val: int, max_val: int, value: int) -> QSlider:
-        s = QSlider(Qt.Orientation.Horizontal)
-        s.setMinimum(min_val)
-        s.setMaximum(max_val)
-        s.setValue(value)
-        s.setTickInterval(1)
-        return s
 
     def _pick_joint_color(self) -> None:
         qc = QColor(*[int(c * 255) for c in self._joint_color])

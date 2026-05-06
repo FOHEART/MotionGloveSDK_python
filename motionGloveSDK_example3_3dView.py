@@ -39,6 +39,7 @@ from vtk_fps_overlay import VtkFpsOverlay
 
 from src import motionGloveSDK
 from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
+from src.translator_helper import install_configured_translator
 
 # ─────────────────────────────────────────────
 #  配置
@@ -184,37 +185,7 @@ def _quat_rotate_vec3(q, v):
     )
 
 
-def _install_configured_translator(app):
-    from PySide6.QtCore import QTranslator
 
-    try:
-        from src.config_io import read_config
-        cfg = read_config()
-        lang_code = cfg.get("language", "en")
-    except Exception:
-        lang_code = "en"
-
-    existing_translator = getattr(app, "_motionglove_translator", None)
-    existing_lang = getattr(app, "_motionglove_language", None)
-    if existing_translator is not None and existing_lang == lang_code:
-        return existing_translator, lang_code
-
-    if existing_translator is not None:
-        app.removeTranslator(existing_translator)
-
-    translator = QTranslator()
-    qm_path = os.path.join(_SCRIPT_DIR, "translations", f"{lang_code}.qm")
-    try:
-        if os.path.exists(qm_path) and translator.load(qm_path):
-            app.installTranslator(translator)
-        else:
-            print(f"Translation not loaded (missing): {qm_path}")
-    except Exception as e:
-        print(f"Error loading translator: {e}")
-
-    app._motionglove_translator = translator
-    app._motionglove_language = lang_code
-    return translator, lang_code
 
 
 # ─────────────────────────────────────────────
@@ -258,6 +229,7 @@ def _build_qt_app():
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from left_panel_widget import LeftPanelWidget
     from draw_config_widget import DrawConfigWidget
+    from right_panel_widget import RightPanelWidget
     from csv_import_widget import CsvImportWidget
 
     class MotionGloveMainWindow(QMainWindow):
@@ -390,9 +362,10 @@ def _build_qt_app():
             self._vtk_widget.installEventFilter(self)
             h_layout.addWidget(self._vtk_widget)
 
-            # ── 右侧绘图配置面板 ──
-            self._draw_config_widget = DrawConfigWidget()
-            h_layout.addWidget(self._draw_config_widget)
+            # ── 右侧面板（含 QTabWidget，第一个 Tab 为绘图配置）──
+            self._right_panel = RightPanelWidget()
+            self._draw_config_widget = self._right_panel.draw_config
+            h_layout.addWidget(self._right_panel)
             self._last_applied_config = None
 
             # 连接窗口菜单的显示/隐藏信号（widget 已创建后才能连接）
@@ -400,7 +373,7 @@ def _build_qt_app():
                 lambda checked: left_widget.setVisible(checked)
             )
             self._action_show_right.triggered.connect(
-                lambda checked: self._draw_config_widget.setVisible(checked)
+                lambda checked: self._right_panel.setVisible(checked)
             )
 
         # ── VTK 场景 ──────────────────────────────────────
@@ -921,7 +894,7 @@ def _build_qt_app():
                 self._left_panel.set_receiving(False)
 
     app = QApplication.instance() or QApplication(sys.argv)
-    translator, lang_code = _install_configured_translator(app)
+    translator, lang_code = install_configured_translator(app, _SCRIPT_DIR)
 
     window = MotionGloveMainWindow()
     # 保存 translator 与当前语言，供运行时使用
@@ -988,7 +961,7 @@ def main():
             else:
                 from PySide6.QtWidgets import QApplication as _QApp
                 app = _QApp.instance() or _QApp(sys.argv)
-                _install_configured_translator(app)
+                install_configured_translator(app, _SCRIPT_DIR)
                 # Import the boot dialog lazily to avoid importing PySide6 in headless CI
                 from src.boot_mode_dialog import show_boot_mode_dialog
                 chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)

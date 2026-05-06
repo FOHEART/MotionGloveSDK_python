@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DrawConfigPanel</class>
+ <widget class="QWidget" name="DrawConfigPanel">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>220</width>
+    <height>520</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="leftMargin">
+    <number>8</number>
+   </property>
+   <property name="topMargin">
+    <number>12</number>
+   </property>
+   <property name="rightMargin">
+    <number>8</number>
+   </property>
+   <property name="bottomMargin">
+    <number>12</number>
+   </property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <item>
+    <widget class="QGroupBox" name="group_joint">
+     <property name="title">
+      <string>关节球</string>
+     </property>
+     <layout class="QVBoxLayout" name="layout_joint">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="lbl_joint_radius">
+        <property name="text">
+         <string>半径</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSlider" name="sld_joint_radius">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_joint_color">
+        <property name="text">
+         <string>颜色</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_joint_color">
+        <property name="text">
+         <string>选择颜色</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="group_link">
+     <property name="title">
+      <string>骨骼连线</string>
+     </property>
+     <layout class="QVBoxLayout" name="layout_link">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="lbl_link_width">
+        <property name="text">
+         <string>粗细</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSlider" name="sld_link_width">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_link_color">
+        <property name="text">
+         <string>颜色</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_link_color">
+        <property name="text">
+         <string>选择颜色</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="group_axis">
+     <property name="title">
+      <string>坐标轴</string>
+     </property>
+     <layout class="QVBoxLayout" name="layout_axis">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="lbl_axis_length">
+        <property name="text">
+         <string>长度</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSlider" name="sld_axis_length">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="group_io">
+     <property name="title">
+      <string>配置文件</string>
+     </property>
+     <layout class="QVBoxLayout" name="layout_io">
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QPushButton" name="btn_save_config">
+        <property name="text">
+         <string>导出配置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_load_config">
+        <property name="text">
+         <string>加载配置</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="spacer_bottom">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
