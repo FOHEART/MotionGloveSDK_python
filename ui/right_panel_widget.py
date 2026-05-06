@@ -19,6 +19,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice
 
 from draw_config_widget import DrawConfigWidget
+from bone_viewer_widget import BoneViewerWidget
 
 
 def _ui_path() -> Path:
@@ -96,8 +97,18 @@ class RightPanelWidget(QWidget):
         self._draw_config = DrawConfigWidget()
         tab0_layout.addWidget(self._draw_config)
 
-        # 固定宽度与 .ui 保持一致
-        self.setFixedWidth(236)
+        # 获取第二个 Tab 页及其布局，嵌入 BoneViewerWidget
+        tab1: QWidget = self._tab_widget.widget(1)
+        assert tab1 is not None, "right_panel.ui 中第二个 Tab 页缺失"
+        tab1_layout: QVBoxLayout = tab1.layout()
+        assert tab1_layout is not None, "right_panel.ui 中第二个 Tab 页布局缺失"
+
+        self._bone_viewer = BoneViewerWidget()
+        tab1_layout.addWidget(self._bone_viewer)
+
+        # 设置最小宽度，允许用户拖动调整
+        self.setMinimumWidth(300)
+        self.setMaximumWidth(400)
 
     # ── 公开属性 ──────────────────────────────────────
 
@@ -105,6 +116,11 @@ class RightPanelWidget(QWidget):
     def draw_config(self) -> DrawConfigWidget:
         """绘图配置子控件（转发 current_config / load_from_config）。"""
         return self._draw_config
+
+    @property
+    def bone_viewer(self) -> BoneViewerWidget:
+        """骨骼查看子控件（显示骨骼树和欧拉角）。"""
+        return self._bone_viewer
 
     @property
     def tab_widget(self) -> QTabWidget:

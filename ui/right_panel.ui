@@ -6,21 +6,27 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>236</width>
+    <width>472</width>
     <height>600</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>236</width>
+    <width>472</width>
     <height>0</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
-    <width>236</width>
+    <width>16777215</width>
     <height>16777215</height>
    </size>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <property name="leftMargin">
@@ -45,6 +51,25 @@
        <string>绘图配置</string>
       </attribute>
       <layout class="QVBoxLayout" name="layout_tab_draw_config">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_bone_viewer">
+      <attribute name="title">
+       <string>骨骼查看</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layout_tab_bone_viewer">
        <property name="leftMargin">
         <number>0</number>
        </property>

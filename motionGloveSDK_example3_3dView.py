@@ -596,18 +596,15 @@ def _build_qt_app():
                     elif skel.contains_position:
                         positions[i] = skel.position
 
-                # 32 节点数据流：为每根手指第三节追加固定 20mm 虚拟末梢点
+                # 32 节点数据流：为每根手指第三节追加虚拟末梢点
                 if len(frame.skeletons) == 32:
                     for end_idx, third_idx, second_idx in _VIRTUAL_TIP_RULES:
                         p3 = positions[third_idx]
-                        if p3 is None:
+                        q3 = global_quats[third_idx]
+                        if p3 is None or q3 is None:
                             continue
-                        p2 = positions[second_idx]
-                        direction = None
-                        if p2 is not None:
-                            direction = _normalize_vec3((p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]))
-                        if direction is None and global_quats[third_idx] is not None:
-                            direction = _normalize_vec3(_quat_rotate_vec3(global_quats[third_idx], (0.0, 1.0, 0.0)))
+                        # 虚拟末端球沿第三段骨骼的本地 X 轴前向延伸。
+                        direction = _normalize_vec3(_quat_rotate_vec3(q3, (1.0, 0.0, 0.0)))
                         if direction is None:
                             continue
                         positions[end_idx] = [
@@ -615,7 +612,8 @@ def _build_qt_app():
                             p3[1] + direction[1] * _VIRTUAL_TIP_LENGTH_M,
                             p3[2] + direction[2] * _VIRTUAL_TIP_LENGTH_M,
                         ]
-                        global_quats[end_idx] = None
+                        # 虚拟末梢点继承第三段的全局旋转（axis tripod 朝向与第三段一致）
+                        global_quats[end_idx] = q3
 
                 for i, ja in enumerate(self._joint_actors):
                     pos = positions[i]
@@ -636,6 +634,9 @@ def _build_qt_app():
 
                 self._vtk_widget.GetRenderWindow().Render()
                 self._render_fps_overlay.tick()
+
+                # 更新骨骼查看面板的欧拉角显示
+                self._right_panel.bone_viewer.update_euler_angles(frame)
 
             # 更新左侧网络信息面板（UDP 模式）
             if self._left_panel is not None:
