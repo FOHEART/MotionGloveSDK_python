@@ -5,6 +5,8 @@ setlocal enabledelayedexpansion
 
 cd /d "%~dp0\.."
 
+set PYTHONPATH=%CD%\libs;%CD%\src;%PYTHONPATH%
+
 echo Building csv_to_bvh with PyInstaller...
 
 REM Parse args and support --bundle-python to include an embeddable Python folder
@@ -29,7 +31,7 @@ if "%BUNDLE_PY%"=="1" (
   )
 )
 
-python -m PyInstaller --noconfirm --clean --onefile --console --name csv_to_bvh --paths src --hidden-import=src.csv_frame_reader --hidden-import=src.definitions --hidden-import=src.xsqeconverter %ADD_DATA_ARGS% "src\csv_to_bvh.py" %FORWARDED_ARGS%
+python -m PyInstaller --noconfirm --clean "%~dp0\..\csv_to_bvh.spec" %FORWARDED_ARGS%
 
 if %ERRORLEVEL% neq 0 (
   echo Build failed with error %ERRORLEVEL%.

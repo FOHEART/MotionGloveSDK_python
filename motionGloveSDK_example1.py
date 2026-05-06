@@ -6,8 +6,12 @@
 # /*******************************************/
 
 import time
-import threading
 from src import motionGloveSDK
+
+try:
+    import msvcrt  # Windows non-blocking keyboard input
+except ImportError:
+    msvcrt = None
 
 # 绑定本机的5001端口 开始读取数据
 # 端口号要与MotionGlove中 设置->选项->插件->数据转发 中的端口号一致
@@ -25,19 +29,31 @@ else:
 gloveName    = "Glove1"
 frameCounter = 0
 
-# 用独立线程等待 Enter，避免阻塞主循环
-_quit = threading.Event()
-threading.Thread(target=lambda: (input(), _quit.set()), daemon=True).start()
-print("按 Enter 键退出程序")
+def _is_enter_pressed() -> bool:
+    if msvcrt is not None:
+        while msvcrt.kbhit():
+            ch = msvcrt.getwch()
+            if ch in ("\r", "\n"):
+                return True
+    return False
 
-while not _quit.is_set():
-    # 接收到的数据包为60Hz
-    if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(gloveName):
-        print(f"[{frameCounter}]New frame received")
-        frameCounter += 1
-        motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(gloveName)
 
-    time.sleep(0.01)  # 10ms，对应 C++ Sleep(10) / usleep(10000)
+print("Press Enter to exit.")
 
-motionGloveSDK.MotionGloveSDK_CloseUDPPort()
-print("程序退出。")
+try:
+    while True:
+        if _is_enter_pressed():
+            break
+
+        # 接收到的数据包为60Hz
+        if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(gloveName):
+            print(f"[{frameCounter}]New frame received")
+            frameCounter += 1
+            motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(gloveName)
+
+        time.sleep(0.01)  # 10ms，对应 C++ Sleep(10) / usleep(10000)
+except KeyboardInterrupt:
+    pass
+finally:
+    motionGloveSDK.MotionGloveSDK_CloseUDPPort()
+    print("Program exited.")

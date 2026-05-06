@@ -1,6 +1,7 @@
 import sys
 import os
 import enum
+import math
 import threading
 import time
 import argparse
@@ -121,6 +122,22 @@ for _child, _par in _BONE_LINKS:
 # End-node bone indices — position-only rendering (no axis tripods)
 _END_BONE_INDICES: set[int] = {b for b in BoneIndex if b.name.endswith("End")}
 
+# 32 节点流（无 End）时，为每根手指第三节补一个固定 20mm 虚拟末梢点
+_VIRTUAL_TIP_LENGTH_M = 0.02
+_VIRTUAL_TIP_RULES: list[tuple[int, int, int]] = [
+    # (virtual_end_idx, third_idx, second_idx)
+    (BoneIndex.RightHandThumb3End, BoneIndex.RightHandThumb3, BoneIndex.RightHandThumb2),
+    (BoneIndex.RightHandIndex3End, BoneIndex.RightHandIndex3, BoneIndex.RightHandIndex2),
+    (BoneIndex.RightHandMiddle3End, BoneIndex.RightHandMiddle3, BoneIndex.RightHandMiddle2),
+    (BoneIndex.RightHandRing3End, BoneIndex.RightHandRing3, BoneIndex.RightHandRing2),
+    (BoneIndex.RightHandPinky3End, BoneIndex.RightHandPinky3, BoneIndex.RightHandPinky2),
+    (BoneIndex.LeftHandThumb3End, BoneIndex.LeftHandThumb3, BoneIndex.LeftHandThumb2),
+    (BoneIndex.LeftHandIndex3End, BoneIndex.LeftHandIndex3, BoneIndex.LeftHandIndex2),
+    (BoneIndex.LeftHandMiddle3End, BoneIndex.LeftHandMiddle3, BoneIndex.LeftHandMiddle2),
+    (BoneIndex.LeftHandRing3End, BoneIndex.LeftHandRing3, BoneIndex.LeftHandRing2),
+    (BoneIndex.LeftHandPinky3End, BoneIndex.LeftHandPinky3, BoneIndex.LeftHandPinky2),
+]
+
 # CI/无界面环境下用于自动化冒烟测试
 _CI_MODE = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
            os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
@@ -144,6 +161,27 @@ def _bone_radius(bone_idx):
 
 def _bone_color(bone_idx):
     return COLOR_RIGHT if bone_idx < BoneIndex.LeftHand else COLOR_LEFT
+
+
+def _normalize_vec3(v):
+    x, y, z = v
+    n = math.sqrt(x * x + y * y + z * z)
+    if n <= 1e-9:
+        return None
+    return (x / n, y / n, z / n)
+
+
+def _quat_rotate_vec3(q, v):
+    qw, qx, qy, qz = q
+    vx, vy, vz = v
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + (qy * tz - qz * ty),
+        vy + qw * ty + (qz * tx - qx * tz),
+        vz + qw * tz + (qx * ty - qy * tx),
+    )
 
 
 def _install_configured_translator(app):
@@ -551,9 +589,11 @@ def _build_qt_app():
 
                 # 计算每根骨骼的全局四元数（局部四元数沿父链累乘）
                 # 数据为 relative 旋转，全局 = parent_global * local
-                # _BONE_PARENT 保证父骨骼索引 < 子骨骼索引，顺序遍历即可
                 global_quats: list = [None] * KHHS42_SKELETON_COUNT
-                for i, skel in enumerate(frame.skeletons):
+                for skel in frame.skeletons:
+                    i = skel.bone_index
+                    if i < 0 or i >= KHHS42_SKELETON_COUNT:
+                        continue
                     if not skel.contains_quat_wxyz:
                         continue
                     lw, lx, ly, lz = skel.quat_wxyz
@@ -574,16 +614,44 @@ def _build_qt_app():
                     if i in _END_BONE_INDICES:
                         global_quats[i] = None
 
-                for i, skel in enumerate(frame.skeletons):
-                    ja = self._joint_actors[i]
+                for skel in frame.skeletons:
+                    i = skel.bone_index
+                    if i < 0 or i >= KHHS42_SKELETON_COUNT:
+                        continue
                     if skel.contains_position and global_quats[i] is not None:
-                        ja.set_pose(skel.position, global_quats[i])
                         positions[i] = skel.position
                     elif skel.contains_position:
-                        ja.set_position_only(skel.position)
                         positions[i] = skel.position
-                    else:
+
+                # 32 节点数据流：为每根手指第三节追加固定 20mm 虚拟末梢点
+                if len(frame.skeletons) == 32:
+                    for end_idx, third_idx, second_idx in _VIRTUAL_TIP_RULES:
+                        p3 = positions[third_idx]
+                        if p3 is None:
+                            continue
+                        p2 = positions[second_idx]
+                        direction = None
+                        if p2 is not None:
+                            direction = _normalize_vec3((p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]))
+                        if direction is None and global_quats[third_idx] is not None:
+                            direction = _normalize_vec3(_quat_rotate_vec3(global_quats[third_idx], (0.0, 1.0, 0.0)))
+                        if direction is None:
+                            continue
+                        positions[end_idx] = [
+                            p3[0] + direction[0] * _VIRTUAL_TIP_LENGTH_M,
+                            p3[1] + direction[1] * _VIRTUAL_TIP_LENGTH_M,
+                            p3[2] + direction[2] * _VIRTUAL_TIP_LENGTH_M,
+                        ]
+                        global_quats[end_idx] = None
+
+                for i, ja in enumerate(self._joint_actors):
+                    pos = positions[i]
+                    if pos is None:
                         ja.hide()
+                    elif global_quats[i] is not None:
+                        ja.set_pose(pos, global_quats[i])
+                    else:
+                        ja.set_position_only(pos)
 
                 for la, (child, parent) in zip(self._link_actors, _BONE_LINKS):
                     pc = positions[child]
@@ -883,29 +951,50 @@ def main():
     )
     args = parser.parse_args()
 
-    # --bootmode: 当未传入时弹出模式选择对话框（确保翻译器已安装以便对话框被翻译）
-    if args.bootmode is None:
-        # CI 环境且不需要渲染时，直接进入 UDP 模式
-        if _CI_MODE and not _CI_RENDER_ENABLED:
-            APP_MODE = AppMode.UDP_STREAM
-        else:
-            from PySide6.QtWidgets import QApplication as _QApp
-            app = _QApp.instance() or _QApp(sys.argv)
-            _install_configured_translator(app)
-            # Import the boot dialog lazily to avoid importing PySide6 in headless CI
-            from src.boot_mode_dialog import show_boot_mode_dialog
-            chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
-            if chosen is None:
-                sys.exit(0)  # 用户关闭对话框，直接退出
-            APP_MODE = chosen
+    def _parse_boot_mode(mode_text: str | None) -> AppMode | None:
+        if mode_text is None:
+            return None
+        normalized = mode_text.strip().lower().replace("_", "").replace("-", "")
+        if normalized == "udpstream":
+            return AppMode.UDP_STREAM
+        if normalized == "csvplayback":
+            return AppMode.CSV_PLAYBACK
+        return None
+
+    # --bootmode 优先；未传入时读取 config.json 的 default_boot_mode
+    cli_mode = _parse_boot_mode(args.bootmode)
+    if args.bootmode is not None and cli_mode is None:
+        parser.error(f"未知的 --bootmode 值：'{args.bootmode}'，可选：udpstream | csvplayback")
+
+    if cli_mode is not None:
+        APP_MODE = cli_mode
     else:
-        mode_str = args.bootmode.lower().replace("_", "").replace("-", "")
-        if mode_str == "udpstream":
-            APP_MODE = AppMode.UDP_STREAM
-        elif mode_str == "csvplayback":
-            APP_MODE = AppMode.CSV_PLAYBACK
+        cfg_mode = None
+        try:
+            from src.config_io import read_config
+            cfg = read_config()
+            cfg_mode = _parse_boot_mode(str(cfg.get("default_boot_mode", "")))
+        except Exception:
+            cfg_mode = None
+
+        # 配置有有效默认启动模式时，直接进入对应功能
+        if cfg_mode is not None:
+            APP_MODE = cfg_mode
+        # 配置为空、缺失或非法时，保留原逻辑：弹出模式选择对话框
         else:
-            parser.error(f"未知的 --bootmode 值：'{args.bootmode}'，可选：udpstream | csvplayback")
+        # CI 环境且不需要渲染时，直接进入 UDP 模式
+            if _CI_MODE and not _CI_RENDER_ENABLED:
+                APP_MODE = AppMode.UDP_STREAM
+            else:
+                from PySide6.QtWidgets import QApplication as _QApp
+                app = _QApp.instance() or _QApp(sys.argv)
+                _install_configured_translator(app)
+                # Import the boot dialog lazily to avoid importing PySide6 in headless CI
+                from src.boot_mode_dialog import show_boot_mode_dialog
+                chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
+                if chosen is None:
+                    sys.exit(0)  # 用户关闭对话框，直接退出
+                APP_MODE = chosen
 
     # CSV 模式下不绑定 UDP 端口
     _port_error_lines: list[str] = []

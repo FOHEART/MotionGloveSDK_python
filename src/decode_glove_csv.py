@@ -13,9 +13,14 @@ decode_glove_csv.py - MotionGloveSDK Python
       frame = decode_glove_csv(actor, fn, body_csv, header_tokens)
 """
 
+import os
+
 from .definitions import (
     KHHS42_SKELETON_COUNT,
+    KHHS32_SKELETON_COUNT,
     BONE_NAMES,
+    BONE_NAMES_32,
+    BONE_INDEX_MAP_32_TO_42,
     SkeletonPosition,
     SkeletonAttitude,
     SkeletonCoordinate,
@@ -27,6 +32,15 @@ from .definitions import (
     GloveFrame,
 )
 from .xsqeconverter import euler_degree_to_quat_xyzw
+
+
+_DEBUG = os.getenv("MOTIONGLOVE_DEBUG", "0") == "1"
+_decode_drop_count = 0
+
+
+def _debug_log(msg: str) -> None:
+    if _DEBUG:
+        print(f"[MOTIONGLOVE_DEBUG][decode] {msg}")
 
 
 def parse_header_tokens(tokens: list[str]) -> StreamHeader:
@@ -134,20 +148,56 @@ def decode_glove_csv(actor: str,
         group_item_count += 4           # x y z w
 
     if group_item_count == 0:
+        _debug_log(
+            f"drop actor={actor} fn={fn} reason=group_item_count_zero "
+            f"header={' '.join(header_tokens[:16])}"
+        )
         return None
 
     # ------------------------------------------------------------------
     # 3. 分割 CSV 数值
     # ------------------------------------------------------------------
     values_str = [v for v in body_csv.split(",") if v.strip()]
-    expected   = group_item_count * KHHS42_SKELETON_COUNT
+    actual = len(values_str)
+    expected_42 = group_item_count * KHHS42_SKELETON_COUNT
+    expected_32 = group_item_count * KHHS32_SKELETON_COUNT
 
-    if len(values_str) != expected:
+    if actual == expected_42:
+        skeleton_count = KHHS42_SKELETON_COUNT
+        bone_names = BONE_NAMES
+        bone_index_map = None
+    elif actual == expected_32:
+        skeleton_count = KHHS32_SKELETON_COUNT
+        bone_names = BONE_NAMES_32
+        bone_index_map = BONE_INDEX_MAP_32_TO_42
+    else:
+        global _decode_drop_count
+        _decode_drop_count += 1
+        if group_item_count > 0 and actual % group_item_count == 0:
+            inferred = actual // group_item_count
+            _debug_log(
+                f"drop#{_decode_drop_count} actor={actor} fn={fn} reason=value_count_mismatch "
+                f"expected=({expected_32}/s32 or {expected_42}/s42) actual={actual} "
+                f"group_item_count={group_item_count} inferred_skeletons={inferred}"
+            )
+        else:
+            _debug_log(
+                f"drop#{_decode_drop_count} actor={actor} fn={fn} reason=value_count_mismatch "
+                f"expected=({expected_32}/s32 or {expected_42}/s42) actual={actual} "
+                f"group_item_count={group_item_count}"
+            )
         return None
+
+    if _DEBUG and (fn <= 3 or fn % 120 == 0):
+        _debug_log(
+            f"decode actor={actor} fn={fn} skeleton_count={skeleton_count} "
+            f"group_item_count={group_item_count}"
+        )
 
     try:
         values = [float(v) for v in values_str]
     except ValueError:
+        _debug_log(f"drop actor={actor} fn={fn} reason=non_float_value")
         return None
 
     # ------------------------------------------------------------------
@@ -156,11 +206,11 @@ def decode_glove_csv(actor: str,
     # ------------------------------------------------------------------
     skeletons: list[SingleSkeleton] = []
 
-    for i in range(KHHS42_SKELETON_COUNT):
+    for i in range(skeleton_count):
         base = i * group_item_count
         skel = SingleSkeleton()
-        skel.bone_index = i
-        skel.bone_name  = BONE_NAMES[i]
+        skel.bone_index = bone_index_map[i] if bone_index_map is not None else i
+        skel.bone_name  = bone_names[i]
 
         offset = 0
 

@@ -46,8 +46,56 @@ _SLIDER_MAX  = 1000   # 千分比精度
 
 def _ui_path() -> Path:
     """返回 csv_import_panel.ui 的绝对路径，兼容源码运行和 PyInstaller 打包。"""
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "ui" / "csv_import_panel.ui"  # type: ignore[attr-defined]
+    # Candidate locations to look for the .ui file. This covers:
+    # - source tree layout (ui/ next to this module)
+    # - developer layout (project root ui/)
+    # - PyInstaller's temporary _MEIPASS extraction dir
+    # - possible "_internal/ui" layout created by packaging
+    candidates: list[Path] = []
+
+    # Next to this file (source and dev installs)
+    candidates.append(Path(__file__).parent / "csv_import_panel.ui")
+    candidates.append(Path(__file__).parent.parent / "ui" / "csv_import_panel.ui")
+
+    # PyInstaller bundle extraction dir
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(Path(meipass) / "ui" / "csv_import_panel.ui")
+        candidates.append(Path(meipass) / "_internal" / "ui" / "csv_import_panel.ui")
+
+    # Executable sibling dirs (when running from bundled dist)
+    try:
+        exe_dir = Path(sys.executable).parent
+        candidates.append(exe_dir / "ui" / "csv_import_panel.ui")
+        candidates.append(exe_dir / "_internal" / "ui" / "csv_import_panel.ui")
+    except Exception:
+        exe_dir = None
+
+    # Current working directory fallback
+    candidates.append(Path.cwd() / "ui" / "csv_import_panel.ui")
+    candidates.append(Path.cwd() / "_internal" / "ui" / "csv_import_panel.ui")
+
+    # Return the first existing path
+    for p in candidates:
+        try:
+            if p.exists():
+                return p
+        except Exception:
+            continue
+
+    # As a last resort, try a recursive search from a few roots
+    search_roots = [Path(__file__).parent, Path(__file__).parent.parent]
+    if exe_dir is not None:
+        search_roots.append(exe_dir)
+    search_roots.append(Path.cwd())
+    for root in search_roots:
+        try:
+            for p in root.rglob("csv_import_panel.ui"):
+                return p
+        except Exception:
+            continue
+
+    # Preserve original behavior for error message if nothing found
     return Path(__file__).parent / "csv_import_panel.ui"
 
 

@@ -4,6 +4,8 @@ set -e
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+export PYTHONPATH="$ROOT_DIR/libs:$ROOT_DIR/src:$PYTHONPATH"
+
 # Control console window visibility via argument.
 # Usage: build_dist.sh [--console]
 # Default: no console window (--noconsole)
@@ -19,27 +21,9 @@ echo "[build] Console window: $CONSOLE_FLAG"
 pyinstaller \
     --noconfirm \
     --clean \
-    --onedir \
-    $CONSOLE_FLAG \
-    --name "MotionGlove3DViewer" \
     --distpath "$ROOT_DIR/dist" \
     --workpath "$ROOT_DIR/build" \
-    --specpath "$ROOT_DIR/build" \
-    --paths "$ROOT_DIR/libs" \
-    --paths "$ROOT_DIR/src" \
-    --paths "$ROOT_DIR/python_draw3d" \
-    --paths "$ROOT_DIR/ui" \
-    --add-data "$ROOT_DIR/fonts:fonts" \
-    --add-data "$ROOT_DIR/ui/left_panel.ui:ui" \
-    --hidden-import vtkmodules.all \
-    --hidden-import vtkmodules.qt.QVTKRenderWindowInteractor \
-    --hidden-import PySide6.QtWidgets \
-    --hidden-import PySide6.QtCore \
-    --hidden-import PySide6.QtGui \
-    --collect-all vtk \
-    --collect-all vtkmodules \
-    --collect-all PySide6 \
-    "$ROOT_DIR/motionGloveSDK_example3_3dView.py"
+    "$ROOT_DIR/MotionGlove3DViewer.spec"
 
 echo
 echo "[build] Done. Output: $ROOT_DIR/dist/MotionGlove3DViewer/"

@@ -1,12 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 a = Analysis(
-    ['src\\csv_to_bvh.py'],
-    pathex=['src'],
+    ['src/csv_to_bvh.py'],
+    pathex=['libs', 'src'],
     binaries=[],
     datas=[],
-    hiddenimports=['src.csv_frame_reader', 'src.definitions', 'src.xsqeconverter'],
+    hiddenimports=['csv_frame_reader', 'definitions', 'xsqeconverter'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

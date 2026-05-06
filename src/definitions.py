@@ -19,6 +19,38 @@ KHHS42_SKELETON_COUNT = 42      # 对应 C++ KHHS42_SkeletonCount
 KHHS32_SKELETON_COUNT = 32      # legacy alias — kept for CSV compatibility
 ACTOR_NAME_LEN_MAX    = 64      # 对应 C++ ACTOR_NAME_LEN_MAX
 
+# 32 节点骨架顺序（无 *End 节点），与 kinemHumanHandsSkeleton32Index_tree.md 保持一致
+BONE_NAMES_32: list[str] = [
+    # Right hand
+    "RightHand",
+    "RightHandThumb1", "RightHandThumb2", "RightHandThumb3",
+    "RightHandIndex1", "RightHandIndex2", "RightHandIndex3",
+    "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3",
+    "RightHandRing1", "RightHandRing2", "RightHandRing3",
+    "RightHandPinky1", "RightHandPinky2", "RightHandPinky3",
+    # Left hand
+    "LeftHand",
+    "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3",
+    "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3",
+    "LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3",
+    "LeftHandRing1", "LeftHandRing2", "LeftHandRing3",
+    "LeftHandPinky1", "LeftHandPinky2", "LeftHandPinky3",
+]
+
+# 32 节点流索引映射到 42 节点 BoneIndex（无 End 节点）
+BONE_INDEX_MAP_32_TO_42: list[int] = [
+    0, 1, 2, 3,
+    5, 6, 7,
+    9, 10, 11,
+    13, 14, 15,
+    17, 18, 19,
+    21, 22, 23, 24,
+    26, 27, 28,
+    30, 31, 32,
+    34, 35, 36,
+    38, 39, 40,
+]
+
 
 # ---------------------------------------------------------------------------
 # 枚举：对应 motionGloveSDK_commonDef.h

@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+export PYTHONPATH="$SCRIPT_DIR/../libs:$SCRIPT_DIR/../src:$PYTHONPATH"
+
 echo "Building csv_to_bvh with PyInstaller..."
 
 # Parse args and support --bundle-python to include an embeddable Python folder
@@ -31,7 +33,7 @@ if [ "$BUNDLE_PY" -eq 1 ]; then
   fi
 fi
 
-python3 -m PyInstaller --noconfirm --clean --onefile --console --name csv_to_bvh --paths src --hidden-import=src.csv_frame_reader --hidden-import=src.definitions --hidden-import=src.xsqeconverter "src/csv_to_bvh.py" "${ADD_DATA_ARGS[@]}" "${FORWARDED_ARGS[@]}"
+python3 -m PyInstaller --noconfirm --clean "$SCRIPT_DIR/../csv_to_bvh.spec" "${ADD_DATA_ARGS[@]}" "${FORWARDED_ARGS[@]}"
 
 # Ensure output is under dist/csv_to_bvh directory
 if [ -d "dist/csv_to_bvh" ]; then

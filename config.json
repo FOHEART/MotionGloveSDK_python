@@ -12,5 +12,7 @@
     0.7
   ],
   "axis_length": 0.01,
-  "blender_exe": "D:\\Dev\\MotionGloveSDK_python\\libs\\blender-4.5.8-windows-x64\\blender.exe"
+  "default_boot_mode": "udpstream",
+  "blender_exe": "D:\\Dev\\MotionGloveSDK_python\\libs\\blender-4.5.8-windows-x64\\blender.exe",
+  "language": "zh_CN"
 }

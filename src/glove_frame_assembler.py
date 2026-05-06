@@ -20,6 +20,7 @@ Glove Frame Assembler - MotionGloveSDK Python
   assembler.feed(raw_text)  # 每收到一个 UDP 包调用一次
 """
 
+import os
 from typing import Callable
 
 
@@ -62,8 +63,18 @@ class GloveFrameAssembler:
         """
         self._on_complete = on_complete_frame
         self._states: dict[str, _SubpackageState] = {}
+        self._debug = os.getenv("MOTIONGLOVE_DEBUG", "0") == "1"
+        self._drop_count = 0
 
         self.complete_frame_count: int = 0   # 已拼接完成的完整帧总数
+
+    def _log_drop(self, reason: str, raw_text: str) -> None:
+        self._drop_count += 1
+        if not self._debug:
+            return
+        if self._drop_count <= 5 or self._drop_count % 60 == 0:
+            snippet = raw_text[:120].replace("\n", " ").replace("\r", " ")
+            print(f"[MOTIONGLOVE_DEBUG][assembler] drop#{self._drop_count} reason={reason} sample={snippet}")
 
     def feed(self, raw_text: str) -> bool:
         """
@@ -81,6 +92,7 @@ class GloveFrameAssembler:
         # ------------------------------------------------------------------
         comma_idx = raw_text.find(",")
         if comma_idx == -1:
+            self._log_drop("missing_comma", raw_text)
             return False
 
         header_str = raw_text[:comma_idx].strip()
@@ -88,6 +100,7 @@ class GloveFrameAssembler:
 
         tokens = header_str.split()
         if not tokens:
+            self._log_drop("empty_header_tokens", raw_text)
             return False
 
         actor_name = tokens[0]
@@ -100,6 +113,7 @@ class GloveFrameAssembler:
             fn_idx = tokens.index("fn")
             fn = int(tokens[fn_idx + 1])
         except (ValueError, IndexError):
+            self._log_drop("invalid_fn", raw_text)
             return False
 
         # ------------------------------------------------------------------
@@ -113,6 +127,7 @@ class GloveFrameAssembler:
             sub_cur = int(sp_cur)
             sub_max = int(sp_max)
         except (ValueError, IndexError):
+            self._log_drop("invalid_subpackage", raw_text)
             return False
 
         # ------------------------------------------------------------------
@@ -144,6 +159,11 @@ class GloveFrameAssembler:
         if len(state.received) == state.sub_max:
             full_body = "".join(state.body_parts[i] for i in range(1, state.sub_max + 1))
             self.complete_frame_count += 1
+            if self._debug and (self.complete_frame_count <= 3 or self.complete_frame_count % 60 == 0):
+                print(
+                    f"[MOTIONGLOVE_DEBUG][assembler] complete actor={actor_name} fn={fn} "
+                    f"subpackage={state.sub_max} body_chars={len(full_body)} complete_count={self.complete_frame_count}"
+                )
             self._on_complete(actor_name, fn, full_body, state.header_tokens)
             state.reset()
 
