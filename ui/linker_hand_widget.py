@@ -84,14 +84,19 @@ class LinkerHandWidget(QWidget):
 
     def _bind_labels(self):
         row_specs = [
-            ("左手拇指根部", "lbl_text_thumb",  ["LeftHandThumb1",  "LeftHandThumb2",  "LeftHandThumb3"]),
-            ("左手食指根部", "lbl_text_index",  ["LeftHandIndex1",  "LeftHandIndex2",  "LeftHandIndex3"]),
-            ("左手中指根部", "lbl_text_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"]),
-            ("左手无名指根部", "lbl_text_ring",  ["LeftHandRing1",   "LeftHandRing2",   "LeftHandRing3"]),
-            ("左手小指根部", "lbl_text_pinky",  ["LeftHandPinky1",  "LeftHandPinky2",  "LeftHandPinky3"]),
+            ("左手拇指根部", "lbl_text_thumb",  ["LeftHandThumb1",  "LeftHandThumb2",  "LeftHandThumb3"], "y"),
+            ("拇指侧摆", "lbl_text_thumb_adduction", ["LeftHandThumb1"], "y"),
+            ("左手食指根部", "lbl_text_index",  ["LeftHandIndex1",  "LeftHandIndex2",  "LeftHandIndex3"], "y"),
+            ("左手中指根部", "lbl_text_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"], "y"),
+            ("左手无名指根部", "lbl_text_ring",  ["LeftHandRing1",   "LeftHandRing2",   "LeftHandRing3"], "y"),
+            ("左手小指根部", "lbl_text_pinky",  ["LeftHandPinky1",  "LeftHandPinky2",  "LeftHandPinky3"], "y"),
+            ("左手食指侧摆", "lbl_text_index_adduction", ["LeftHandIndex1"], "z"),
+            ("左手无名指侧摆", "lbl_text_ring_adduction", ["LeftHandRing1"], "z"),
+            ("左手小指侧摆", "lbl_text_pinky_adduction", ["LeftHandPinky1"], "z"),
+            ("左手拇指旋转", "lbl_text_thumb_rotation", ["LeftHandThumb1"], "z"),
         ]
 
-        for finger_key, obj_name, bones in row_specs:
+        for finger_key, obj_name, bones, axis in row_specs:
             label = self._ui.findChild(QLabel, obj_name)
             if label is None:
                 raise RuntimeError(f"UI 控件未找到：{obj_name}")
@@ -99,6 +104,7 @@ class LinkerHandWidget(QWidget):
                 "label":      label,
                 "base_text":  finger_key,
                 "bones":      bones,
+                "axis":       axis,
             }
     
     def update_linker_angles(self, frame):
@@ -120,8 +126,23 @@ class LinkerHandWidget(QWidget):
 
         return None
 
+    def _extract_z_deg(self, skel, channel_order: int):
+        """Read Z-angle from Euler if present, otherwise derive from quaternion."""
+        if bool(getattr(skel, "contains_euler_degree", 0)):
+            return float(skel.euler_degree[2])
+
+        if bool(getattr(skel, "contains_quat_wxyz", 0)):
+            try:
+                from src.xsqeconverter import quat_to_euler_degree
+                e = quat_to_euler_degree(list(skel.quat_wxyz), int(channel_order))
+                return float(e[2])
+            except Exception:
+                return None
+
+        return None
+
     def _refresh_from_latest_frame(self):
-        """Update Y-axis rotation sum display for all fingers at fixed 30Hz."""
+        """Update rotation sum display for all fingers at fixed 30Hz."""
         frame = self._latest_frame
         if frame is None:
             return
@@ -153,11 +174,18 @@ class LinkerHandWidget(QWidget):
         for finger_key, info in self.finger_labels.items():
             label = info["label"]
             bone_names = info["bones"]
+            axis = info.get("axis", "y")  # default to Y-axis for backward compatibility
             
-            total_y_abs = 0.0
+            # Choose extraction method based on axis
+            if axis == "z":
+                extract_func = self._extract_z_deg
+            else:
+                extract_func = self._extract_y_deg
+            
+            total_abs = 0.0
             valid_count = 0
             
-            # Sum absolute Y-axis rotation angles for the three bones
+            # Sum absolute rotation angles for the specified bones
             for bone_name in bone_names:
                 try:
                     bone_idx = BoneIndex[bone_name]
@@ -165,12 +193,12 @@ class LinkerHandWidget(QWidget):
                     if skel is None:
                         skel = skeleton_by_name.get(bone_name)
                     if skel is not None:
-                        y_deg = self._extract_y_deg(skel, channel_order)
-                        if y_deg is not None:
-                            total_y_abs += abs(y_deg)
+                        angle_deg = extract_func(skel, channel_order)
+                        if angle_deg is not None:
+                            total_abs += abs(angle_deg)
                             valid_count += 1
                 except (KeyError, ValueError):
                     pass
             
             # Always show a numeric value so the UI does not stay blank.
-            label.setText(f"{info['base_text']}：{total_y_abs:.1f}")
+            label.setText(f"{info['base_text']}：{total_abs:.1f}")

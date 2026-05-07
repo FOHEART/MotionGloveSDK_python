@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>220</width>
-    <height>180</height>
+    <height>360</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
@@ -36,23 +36,48 @@
       </widget>
      </item>
      <item row="1" column="0">
+      <widget class="QLabel" name="lbl_text_thumb_adduction">
+       <property name="text"><string>拇指侧摆</string></property>
+      </widget>
+     </item>
+     <item row="2" column="0">
       <widget class="QLabel" name="lbl_text_index">
        <property name="text"><string>左手食指根部</string></property>
       </widget>
      </item>
-     <item row="2" column="0">
+     <item row="3" column="0">
       <widget class="QLabel" name="lbl_text_middle">
        <property name="text"><string>左手中指根部</string></property>
       </widget>
      </item>
-     <item row="3" column="0">
+     <item row="4" column="0">
       <widget class="QLabel" name="lbl_text_ring">
        <property name="text"><string>左手无名指根部</string></property>
       </widget>
      </item>
-     <item row="4" column="0">
+     <item row="5" column="0">
       <widget class="QLabel" name="lbl_text_pinky">
        <property name="text"><string>左手小指根部</string></property>
+      </widget>
+     </item>
+     <item row="6" column="0">
+      <widget class="QLabel" name="lbl_text_index_adduction">
+       <property name="text"><string>左手食指侧摆</string></property>
+      </widget>
+     </item>
+     <item row="7" column="0">
+      <widget class="QLabel" name="lbl_text_ring_adduction">
+       <property name="text"><string>左手无名指侧摆</string></property>
+      </widget>
+     </item>
+     <item row="8" column="0">
+      <widget class="QLabel" name="lbl_text_pinky_adduction">
+       <property name="text"><string>左手小指侧摆</string></property>
+      </widget>
+     </item>
+     <item row="9" column="0">
+      <widget class="QLabel" name="lbl_text_thumb_rotation">
+       <property name="text"><string>左手拇指旋转</string></property>
       </widget>
      </item>
     </layout>
