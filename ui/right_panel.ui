@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>472</width>
+        <width>360</width>
     <height>600</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>472</width>
+        <width>300</width>
     <height>0</height>
    </size>
   </property>
@@ -70,6 +70,25 @@
        <string>骨骼查看</string>
       </attribute>
       <layout class="QVBoxLayout" name="layout_tab_bone_viewer">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_linker_hand">
+      <attribute name="title">
+       <string>LinkerHand L10</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layout_tab_linker_hand">
        <property name="leftMargin">
         <number>0</number>
        </property>
