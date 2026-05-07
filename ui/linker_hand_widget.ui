@@ -102,6 +102,46 @@
           <property name="text"><string>拇指根部：0</string></property>
          </widget>
         </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="lbl_motor_thumb_adduction">
+          <property name="text"><string>拇指侧摆：0</string></property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="lbl_motor_index">
+          <property name="text"><string>食指根部：0</string></property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="lbl_motor_middle">
+          <property name="text"><string>中指根部：0</string></property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="lbl_motor_ring">
+          <property name="text"><string>无名指根部：0</string></property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="lbl_motor_pinky">
+          <property name="text"><string>小指根部：0</string></property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="lbl_motor_index_adduction">
+          <property name="text"><string>食指侧摆：0</string></property>
+         </widget>
+        </item>
+        <item row="7" column="0">
+         <widget class="QLabel" name="lbl_motor_ring_adduction">
+          <property name="text"><string>无名指侧摆：0</string></property>
+         </widget>
+        </item>
+        <item row="8" column="0">
+         <widget class="QLabel" name="lbl_motor_pinky_adduction">
+          <property name="text"><string>小指侧摆：0</string></property>
+         </widget>
+        </item>
        </layout>
       </item>
      </layout>

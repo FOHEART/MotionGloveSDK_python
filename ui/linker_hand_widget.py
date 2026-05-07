@@ -123,6 +123,31 @@ class LinkerHandWidget(QWidget):
         self.lbl_motor_thumb = self._ui.findChild(QLabel, "lbl_motor_thumb")
         if self.lbl_motor_thumb is None:
             raise RuntimeError(f"UI 控件未找到：lbl_motor_thumb")
+        self.lbl_motor_thumb_adduction = self._ui.findChild(QLabel, "lbl_motor_thumb_adduction")
+        if self.lbl_motor_thumb_adduction is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_thumb_adduction")
+        
+        self.lbl_motor_index = self._ui.findChild(QLabel, "lbl_motor_index")
+        if self.lbl_motor_index is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_index")
+        self.lbl_motor_middle = self._ui.findChild(QLabel, "lbl_motor_middle")
+        if self.lbl_motor_middle is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_middle")
+        self.lbl_motor_ring = self._ui.findChild(QLabel, "lbl_motor_ring")
+        if self.lbl_motor_ring is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_ring")
+        self.lbl_motor_pinky = self._ui.findChild(QLabel, "lbl_motor_pinky")
+        if self.lbl_motor_pinky is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_pinky")
+        self.lbl_motor_index_adduction = self._ui.findChild(QLabel, "lbl_motor_index_adduction")
+        if self.lbl_motor_index_adduction is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_index_adduction")
+        self.lbl_motor_ring_adduction = self._ui.findChild(QLabel, "lbl_motor_ring_adduction")
+        if self.lbl_motor_ring_adduction is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_ring_adduction")
+        self.lbl_motor_pinky_adduction = self._ui.findChild(QLabel, "lbl_motor_pinky_adduction")
+        if self.lbl_motor_pinky_adduction is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_pinky_adduction")
 
         # Bind buttons
         self.btn_connect = self._ui.findChild(QPushButton, "btn_connect")
@@ -233,18 +258,83 @@ class LinkerHandWidget(QWidget):
         if api is None:
             return
 
-        # Index 0: thumb motor value from lbl_motor_thumb, others = 255
+        # Extract all motor values from labels
+        motor_values = [255] * 10  # default all 255
+
+        # Index 0: thumb motor value
         try:
             text = self.lbl_motor_thumb.text()
             if "：" in text:
-                thumb_val = int(round(float(text.split("：")[1])))
-            else:
-                thumb_val = 255
+                motor_values[0] = int(round(float(text.split("：")[1])))
         except (ValueError, IndexError):
-            thumb_val = 255
+            pass
 
-        thumb_val = max(0, min(255, thumb_val))
-        pose = [thumb_val] + [255] * 9
+        # Index 1: thumb adduction motor value
+        try:
+            text = self.lbl_motor_thumb_adduction.text()
+            if "：" in text:
+                motor_values[1] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 2: index finger motor value
+        try:
+            text = self.lbl_motor_index.text()
+            if "：" in text:
+                motor_values[2] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 3: middle finger motor value
+        try:
+            text = self.lbl_motor_middle.text()
+            if "：" in text:
+                motor_values[3] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 4: ring finger motor value
+        try:
+            text = self.lbl_motor_ring.text()
+            if "：" in text:
+                motor_values[4] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 5: pinky finger motor value
+        try:
+            text = self.lbl_motor_pinky.text()
+            if "：" in text:
+                motor_values[5] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 6: index adduction motor value
+        try:
+            text = self.lbl_motor_index_adduction.text()
+            if "：" in text:
+                motor_values[6] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 7: ring adduction motor value
+        try:
+            text = self.lbl_motor_ring_adduction.text()
+            if "：" in text:
+                motor_values[7] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Index 8: pinky adduction motor value
+        try:
+            text = self.lbl_motor_pinky_adduction.text()
+            if "：" in text:
+                motor_values[8] = int(round(float(text.split("：")[1])))
+        except (ValueError, IndexError):
+            pass
+
+        # Clamp all values to [0, 255]
+        pose = [max(0, min(255, v)) for v in motor_values]
 
         try:
             api.finger_move(pose=pose)
@@ -351,14 +441,99 @@ class LinkerHandWidget(QWidget):
         # Calculate motor angle (inverse of thumb root value with range clamping)
         try:
             thumb_text = self.finger_labels["左手拇指根部"]["label"].text()
-            # Extract numeric value from "左手拇指根部：23.5"
             if "：" in thumb_text:
-                value_str = thumb_text.split("：")[1]
-                raw_value = float(value_str)
-                # Clamp to 0-255 range
+                raw_value = float(thumb_text.split("：")[1])
                 clamped_value = max(0.0, min(255.0, raw_value))
-                # Inverse: 255 - clamped
                 motor_value = 255.0 - clamped_value
                 self.lbl_motor_thumb.setText(f"拇指根部：{motor_value:.1f}")
-        except (KeyError, ValueError, IndexError) as e:
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate thumb adduction motor value: 0~120 → 255~0
+        try:
+            adduction_text = self.finger_labels["左手拇指侧摆"]["label"].text()
+            if "：" in adduction_text:
+                raw_adduction = float(adduction_text.split("：")[1])
+                clamped_adduction = max(0.0, min(120.0, raw_adduction))
+                mapped_adduction = (clamped_adduction / 120.0) * 255.0
+                motor_adduction = 255.0 - mapped_adduction
+                self.lbl_motor_thumb_adduction.setText(f"拇指侧摆：{motor_adduction:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate index adduction motor value: 0~30 → 0~255 (正向，不反向)
+        try:
+            index_adduction_text = self.finger_labels["左手食指侧摆"]["label"].text()
+            if "：" in index_adduction_text:
+                raw_index_adduction = float(index_adduction_text.split("：")[1])
+                clamped_index_adduction = max(0.0, min(30.0, raw_index_adduction))
+                motor_index_adduction = (clamped_index_adduction / 30.0) * 255.0
+                self.lbl_motor_index_adduction.setText(f"食指侧摆：{motor_index_adduction:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate ring adduction motor value: 0~30 → 0~255 (正向，不反向)
+        try:
+            ring_adduction_text = self.finger_labels["左手无名指侧摆"]["label"].text()
+            if "：" in ring_adduction_text:
+                raw_ring_adduction = float(ring_adduction_text.split("：")[1])
+                clamped_ring_adduction = max(0.0, min(30.0, raw_ring_adduction))
+                motor_ring_adduction = (clamped_ring_adduction / 30.0) * 255.0
+                self.lbl_motor_ring_adduction.setText(f"无名指侧摆：{motor_ring_adduction:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate pinky adduction motor value: 0~30 → 0~255 (正向，不反向)
+        try:
+            pinky_adduction_text = self.finger_labels["左手小指侧摆"]["label"].text()
+            if "：" in pinky_adduction_text:
+                raw_pinky_adduction = float(pinky_adduction_text.split("：")[1])
+                clamped_pinky_adduction = max(0.0, min(30.0, raw_pinky_adduction))
+                motor_pinky_adduction = (clamped_pinky_adduction / 30.0) * 255.0
+                self.lbl_motor_pinky_adduction.setText(f"小指侧摆：{motor_pinky_adduction:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate index finger motor value: same as thumb (0~255 → 255~0)
+        try:
+            index_text = self.finger_labels["左手食指根部"]["label"].text()
+            if "：" in index_text:
+                raw_index = float(index_text.split("：")[1])
+                clamped_index = max(0.0, min(255.0, raw_index))
+                motor_index = 255.0 - clamped_index
+                self.lbl_motor_index.setText(f"食指根部：{motor_index:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate middle finger motor value: same as thumb (0~255 → 255~0)
+        try:
+            middle_text = self.finger_labels["左手中指根部"]["label"].text()
+            if "：" in middle_text:
+                raw_middle = float(middle_text.split("：")[1])
+                clamped_middle = max(0.0, min(255.0, raw_middle))
+                motor_middle = 255.0 - clamped_middle
+                self.lbl_motor_middle.setText(f"中指根部：{motor_middle:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate ring finger motor value: same as thumb (0~255 → 255~0)
+        try:
+            ring_text = self.finger_labels["左手无名指根部"]["label"].text()
+            if "：" in ring_text:
+                raw_ring = float(ring_text.split("：")[1])
+                clamped_ring = max(0.0, min(255.0, raw_ring))
+                motor_ring = 255.0 - clamped_ring
+                self.lbl_motor_ring.setText(f"无名指根部：{motor_ring:.1f}")
+        except (KeyError, ValueError, IndexError):
+            pass
+
+        # Calculate pinky finger motor value: same as thumb (0~255 → 255~0)
+        try:
+            pinky_text = self.finger_labels["左手小指根部"]["label"].text()
+            if "：" in pinky_text:
+                raw_pinky = float(pinky_text.split("：")[1])
+                clamped_pinky = max(0.0, min(255.0, raw_pinky))
+                motor_pinky = 255.0 - clamped_pinky
+                self.lbl_motor_pinky.setText(f"小指根部：{motor_pinky:.1f}")
+        except (KeyError, ValueError, IndexError):
             pass
