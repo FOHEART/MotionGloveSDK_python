@@ -1,11 +1,16 @@
 """Linker hand panel loaded from linker_hand_widget.ui."""
 
+import os
 import sys
+import threading
 from pathlib import Path
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QIODevice, QTimer
+from PySide6.QtCore import QFile, QIODevice, QTimer, Slot
+
+# LinkerHand SDK root (sibling folder to this project)
+_LINKERHAND_SDK_ROOT = str(Path(__file__).parent.parent / "linkerhand-python-sdk")
 
 
 def _ui_path() -> Path:
@@ -54,10 +59,17 @@ def _ui_path() -> Path:
 class LinkerHandWidget(QWidget):
     """Display left hand finger linker angles (Y-axis rotation sum)."""
     
+    # Data send rate to LinkerHand (Hz)
+    SEND_HZ: float = 30.0
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.finger_labels = {}  # finger_name -> QLabel
         self._latest_frame = None
+        # LinkerHand connection state
+        self._linker_api = None
+        self._send_timer = None
+        self._connect_lock = threading.Lock()
         self._load_ui()
         self._bind_labels()
         self._start_refresh_timer()
@@ -111,7 +123,135 @@ class LinkerHandWidget(QWidget):
         self.lbl_motor_thumb = self._ui.findChild(QLabel, "lbl_motor_thumb")
         if self.lbl_motor_thumb is None:
             raise RuntimeError(f"UI 控件未找到：lbl_motor_thumb")
-    
+
+        # Bind buttons
+        self.btn_connect = self._ui.findChild(QPushButton, "btn_connect")
+        self.btn_disconnect = self._ui.findChild(QPushButton, "btn_disconnect")
+        if self.btn_connect is None or self.btn_disconnect is None:
+            raise RuntimeError("UI 控件未找到：btn_connect / btn_disconnect")
+        self.btn_connect.clicked.connect(self._on_connect)
+        self.btn_disconnect.clicked.connect(self._on_disconnect)
+
+    # ------------------------------------------------------------------
+    # LinkerHand connection / disconnection
+    # ------------------------------------------------------------------
+
+    def _on_connect(self):
+        """Initialize CAN bus and LinkerHand API in a background thread."""
+        self.btn_connect.setEnabled(False)
+        self.btn_disconnect.setEnabled(False)
+        self.btn_connect.setText("连接中…")
+
+        def _connect_worker():
+            log_lines = []
+            success = False
+            try:
+                if _LINKERHAND_SDK_ROOT not in sys.path:
+                    sys.path.insert(0, _LINKERHAND_SDK_ROOT)
+
+                from LinkerHand.utils.setup_can_interface import initialize_can_interface
+                log_lines.append("正在初始化 CAN 接口 can0 …")
+                ok = initialize_can_interface(can_interface="can0", bitrate=1000000)
+                log_lines.append(f"CAN 初始化结果: {'成功' if ok else '失败（继续尝试）'}")
+
+                from LinkerHand.linker_hand_api import LinkerHandApi
+                log_lines.append("正在连接灵巧手 (left L10) …")
+                with self._connect_lock:
+                    self._linker_api = LinkerHandApi(
+                        hand_type="left",
+                        hand_joint="L10",
+                        can="can0",
+                        modbus="None",
+                    )
+                log_lines.append("✓ 灵巧手连接成功")
+                success = True
+
+            except Exception as exc:
+                log_lines.append(f"✗ 连接失败: {exc}")
+
+            # Print results to stdout (visible in terminal)
+            for line in log_lines:
+                print(f"[LinkerHand] {line}")
+
+            # Update UI back on main thread via stored flag + QTimer single-shot
+            self._connect_success = success
+            from PySide6.QtCore import QMetaObject, Qt
+            QMetaObject.invokeMethod(self, "_on_connect_done", Qt.ConnectionType.QueuedConnection)
+
+        threading.Thread(target=_connect_worker, daemon=True).start()
+
+    @Slot()
+    def _on_connect_done(self):
+        """Called on main thread after connect worker finishes."""
+        success = getattr(self, "_connect_success", False)
+        if success:
+            self.btn_connect.setText("已连接")
+            self.btn_connect.setEnabled(False)
+            self.btn_disconnect.setEnabled(True)
+            self._start_send_timer()
+        else:
+            self.btn_connect.setText("连接灵巧手")
+            self.btn_connect.setEnabled(True)
+            self.btn_disconnect.setEnabled(False)
+
+    def _on_disconnect(self):
+        """Stop send timer and close CAN connection."""
+        self._stop_send_timer()
+        with self._connect_lock:
+            if self._linker_api is not None:
+                try:
+                    self._linker_api.close_can()
+                except Exception as exc:
+                    print(f"[LinkerHand] 断开时发生错误: {exc}")
+                finally:
+                    self._linker_api = None
+        print("[LinkerHand] 灵巧手已断开")
+        self.btn_connect.setText("连接灵巧手")
+        self.btn_connect.setEnabled(True)
+        self.btn_disconnect.setEnabled(False)
+
+    # ------------------------------------------------------------------
+    # Periodic data send to LinkerHand
+    # ------------------------------------------------------------------
+
+    def _start_send_timer(self):
+        interval_ms = int(1000.0 / self.SEND_HZ)
+        self._send_timer = QTimer(self)
+        self._send_timer.timeout.connect(self._send_to_linker_hand)
+        self._send_timer.start(interval_ms)
+
+    def _stop_send_timer(self):
+        if self._send_timer is not None:
+            self._send_timer.stop()
+            self._send_timer.deleteLater()
+            self._send_timer = None
+
+    def _send_to_linker_hand(self):
+        """Build 10-element pose and call finger_move at SEND_HZ."""
+        with self._connect_lock:
+            api = self._linker_api
+        if api is None:
+            return
+
+        # Index 0: thumb motor value from lbl_motor_thumb, others = 255
+        try:
+            text = self.lbl_motor_thumb.text()
+            if "：" in text:
+                thumb_val = int(round(float(text.split("：")[1])))
+            else:
+                thumb_val = 255
+        except (ValueError, IndexError):
+            thumb_val = 255
+
+        thumb_val = max(0, min(255, thumb_val))
+        pose = [thumb_val] + [255] * 9
+
+        try:
+            api.finger_move(pose=pose)
+        except Exception as exc:
+            print(f"[LinkerHand] 发送失败: {exc}")
+            self._on_disconnect()
+
     def update_linker_angles(self, frame):
         """Accept newest frame from host view; actual UI paint runs at 30Hz timer."""
         self._latest_frame = frame
