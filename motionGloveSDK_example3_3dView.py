@@ -932,17 +932,6 @@ def _build_qt_app():
 def main():
     global APP_MODE
 
-    # ── Qt 全局属性（必须在 QApplication 构造前设置）──
-    # 修复 Linux/X11 上 VTK + Qt 组合时的 BadWindow X Error
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication as _QAppEarly
-    _QAppEarly.setAttribute(Qt.AA_ShareOpenGLContexts)
-
-    # VTK 使用 GLX (X11) 渲染；在 Wayland 会话下 Qt 默认选择 Wayland 后端，
-    # 两者不兼容会导致 BadWindow X Error。强制使用 xcb (X11/XWayland) 保持一致。
-    if os.environ.get("XDG_SESSION_TYPE") == "wayland":
-        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
-
     # ── 命令行参数解析 ──────────────────────────────
     parser = argparse.ArgumentParser(
         prog="motionGloveSDK_example3_3dView.py",
@@ -985,21 +974,19 @@ def main():
         # 配置有有效默认启动模式时，直接进入对应功能
         if cfg_mode is not None:
             APP_MODE = cfg_mode
+        # CI 环境直接进入 UDP 模式，避免等待交互式启动对话框
+        elif _CI_MODE:
+            APP_MODE = AppMode.UDP_STREAM
         # 配置为空、缺失或非法时，保留原逻辑：弹出模式选择对话框
         else:
-        # CI 环境且不需要渲染时，直接进入 UDP 模式
-            if _CI_MODE and not _CI_RENDER_ENABLED:
-                APP_MODE = AppMode.UDP_STREAM
-            else:
-                from PySide6.QtWidgets import QApplication as _QApp
-                app = _QApp.instance() or _QApp(sys.argv)
-                install_configured_translator(app, _SCRIPT_DIR)
-                # Import the boot dialog lazily to avoid importing PySide6 in headless CI
-                from src.boot_mode_dialog import show_boot_mode_dialog
-                chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
-                if chosen is None:
-                    sys.exit(0)  # 用户关闭对话框，直接退出
-                APP_MODE = chosen
+            from PySide6.QtWidgets import QApplication as _QApp
+            app = _QApp.instance() or _QApp(sys.argv)
+            install_configured_translator(app, _SCRIPT_DIR)
+            from src.boot_mode_dialog import show_boot_mode_dialog
+            chosen = show_boot_mode_dialog(AppMode.UDP_STREAM, AppMode.CSV_PLAYBACK)
+            if chosen is None:
+                sys.exit(0)  # 用户关闭对话框，直接退出
+            APP_MODE = chosen
 
     # CSV 模式下不绑定 UDP 端口
     _port_error_lines: list[str] = []
@@ -1025,6 +1012,16 @@ def main():
     # ── CI 离屏渲染路径：设置无头 Qt 平台 ──
     if _CI_MODE and _CI_RENDER_ENABLED:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    # VTK 使用 GLX (X11) 渲染；在 Wayland 会话下 Qt 默认选择 Wayland 后端，
+    # 两者不兼容会导致 BadWindow X Error。强制使用 xcb (X11/XWayland) 保持一致。
+    elif os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
+    # ── Qt 全局属性（必须在 QApplication 构造前设置）──
+    # 修复 Linux/X11 上 VTK + Qt 组合时的 BadWindow X Error
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication as _QAppEarly
+    _QAppEarly.setAttribute(Qt.AA_ShareOpenGLContexts)
 
     app, window = _build_qt_app()
 
