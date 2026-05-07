@@ -496,7 +496,7 @@ def _build_qt_app():
         def _start_render_timer(self):
             self._timer = QTimer(self)
             self._timer.timeout.connect(self._on_timer)
-            self._timer.start(16)   # ~60 fps
+            self._timer.start(33)   # ~30 fps
 
             self._fps_timer = QTimer(self)
             self._fps_timer.timeout.connect(self._on_fps_timer)

@@ -149,6 +149,7 @@ class BoneViewerWidget(QWidget):
             # Checkbox
             checkbox = QCheckBox(bone_name)
             checkbox.setMaximumWidth(150)
+            checkbox.setChecked(True)  # 默认选中
             row_layout.addWidget(checkbox)
             self.bone_checkboxes[bone_name] = checkbox
             
@@ -172,6 +173,13 @@ class BoneViewerWidget(QWidget):
         
         self.current_frame = frame
         
+        # Build a lookup map: bone_index -> skeleton for faster queries
+        skeleton_by_index = {}
+        for skel in frame.skeletons:
+            # 使用 bone_index 作为键，但同一个 bone_index 只存一个（防止重复）
+            if skel.bone_index not in skeleton_by_index:
+                skeleton_by_index[skel.bone_index] = skel
+        
         # Update labels for checked bones
         for bone_name, checkbox in self.bone_checkboxes.items():
             if not checkbox.isChecked():
@@ -184,10 +192,10 @@ class BoneViewerWidget(QWidget):
                 continue
             
             euler_text = "—"
-            for skel in frame.skeletons:
-                if skel.bone_index == bone_idx and skel.contains_euler_degree:
-                    ex, ey, ez = skel.euler_degree
-                    euler_text = f"({ex:.1f}°, {ey:.1f}°, {ez:.1f}°)"
-                    break
+            # 用构建的 map 进行快速查询
+            skel = skeleton_by_index.get(bone_idx)
+            if skel is not None and skel.contains_euler_degree:
+                ex, ey, ez = skel.euler_degree
+                euler_text = f"({ex:.1f}°, {ey:.1f}°, {ez:.1f}°)"
             
             self.bone_labels[bone_name].setText(euler_text)
