@@ -85,7 +85,7 @@ class LinkerHandWidget(QWidget):
     def _bind_labels(self):
         row_specs = [
             ("左手拇指根部", "lbl_text_thumb",  ["LeftHandThumb1",  "LeftHandThumb2",  "LeftHandThumb3"], "y"),
-            ("拇指侧摆", "lbl_text_thumb_adduction", ["LeftHandThumb1"], "y"),
+            ("左手拇指侧摆", "lbl_text_thumb_adduction", ["LeftHandThumb1"], "y"),
             ("左手食指根部", "lbl_text_index",  ["LeftHandIndex1",  "LeftHandIndex2",  "LeftHandIndex3"], "y"),
             ("左手中指根部", "lbl_text_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"], "y"),
             ("左手无名指根部", "lbl_text_ring",  ["LeftHandRing1",   "LeftHandRing2",   "LeftHandRing3"], "y"),
@@ -106,6 +106,11 @@ class LinkerHandWidget(QWidget):
                 "bones":      bones,
                 "axis":       axis,
             }
+        
+        # Bind motor angle label
+        self.lbl_motor_thumb = self._ui.findChild(QLabel, "lbl_motor_thumb")
+        if self.lbl_motor_thumb is None:
+            raise RuntimeError(f"UI 控件未找到：lbl_motor_thumb")
     
     def update_linker_angles(self, frame):
         """Accept newest frame from host view; actual UI paint runs at 30Hz timer."""
@@ -202,3 +207,18 @@ class LinkerHandWidget(QWidget):
             
             # Always show a numeric value so the UI does not stay blank.
             label.setText(f"{info['base_text']}：{total_abs:.1f}")
+        
+        # Calculate motor angle (inverse of thumb root value with range clamping)
+        try:
+            thumb_text = self.finger_labels["左手拇指根部"]["label"].text()
+            # Extract numeric value from "左手拇指根部：23.5"
+            if "：" in thumb_text:
+                value_str = thumb_text.split("：")[1]
+                raw_value = float(value_str)
+                # Clamp to 0-255 range
+                clamped_value = max(0.0, min(255.0, raw_value))
+                # Inverse: 255 - clamped
+                motor_value = 255.0 - clamped_value
+                self.lbl_motor_thumb.setText(f"拇指根部：{motor_value:.1f}")
+        except (KeyError, ValueError, IndexError) as e:
+            pass

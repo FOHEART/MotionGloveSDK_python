@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>220</width>
-    <height>360</height>
+    <height>420</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
@@ -27,470 +27,90 @@
     <number>8</number>
    </property>
    <item>
-    <layout class="QGridLayout" name="gridFingers">
-     <property name="horizontalSpacing"><number>6</number></property>
-     <property name="verticalSpacing"><number>6</number></property>
-     <item row="0" column="0">
-      <widget class="QLabel" name="lbl_text_thumb">
-       <property name="text"><string>左手拇指根部</string></property>
-      </widget>
-     </item>
-     <item row="1" column="0">
-      <widget class="QLabel" name="lbl_text_thumb_adduction">
-       <property name="text"><string>拇指侧摆</string></property>
-      </widget>
-     </item>
-     <item row="2" column="0">
-      <widget class="QLabel" name="lbl_text_index">
-       <property name="text"><string>左手食指根部</string></property>
-      </widget>
-     </item>
-     <item row="3" column="0">
-      <widget class="QLabel" name="lbl_text_middle">
-       <property name="text"><string>左手中指根部</string></property>
-      </widget>
-     </item>
-     <item row="4" column="0">
-      <widget class="QLabel" name="lbl_text_ring">
-       <property name="text"><string>左手无名指根部</string></property>
-      </widget>
-     </item>
-     <item row="5" column="0">
-      <widget class="QLabel" name="lbl_text_pinky">
-       <property name="text"><string>左手小指根部</string></property>
-      </widget>
-     </item>
-     <item row="6" column="0">
-      <widget class="QLabel" name="lbl_text_index_adduction">
-       <property name="text"><string>左手食指侧摆</string></property>
-      </widget>
-     </item>
-     <item row="7" column="0">
-      <widget class="QLabel" name="lbl_text_ring_adduction">
-       <property name="text"><string>左手无名指侧摆</string></property>
-      </widget>
-     </item>
-     <item row="8" column="0">
-      <widget class="QLabel" name="lbl_text_pinky_adduction">
-       <property name="text"><string>左手小指侧摆</string></property>
-      </widget>
-     </item>
-     <item row="9" column="0">
-      <widget class="QLabel" name="lbl_text_thumb_rotation">
-       <property name="text"><string>左手拇指旋转</string></property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation"><enum>Qt::Vertical</enum></property>
-     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
-    </spacer>
-   </item>
-  </layout>
- </widget>
- <resources/>
- <connections/>
-</ui>
-
-<ui version="4.0">
- <class>LinkerHandPanel</class>
- <widget class="QWidget" name="LinkerHandPanel">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>220</width>
-    <height>180</height>
-   </rect>
-  </property>
-  <layout class="QVBoxLayout" name="rootLayout">
-   <property name="spacing">
-    <number>4</number>
-   </property>
-   <property name="leftMargin">
-    <number>8</number>
-   </property>
-   <property name="topMargin">
-    <number>8</number>
-   </property>
-   <property name="rightMargin">
-    <number>8</number>
-   </property>
-   <property name="bottomMargin">
-    <number>8</number>
-   </property>
-   <item>
-    <layout class="QGridLayout" name="gridFingers">
-     <property name="horizontalSpacing">
-      <number>6</number>
-     </property>
-     <property name="verticalSpacing">
-      <number>6</number>
-     </property>
-     <!-- thumb row -->
-     <item row="0" column="0">
-      <widget class="QLabel" name="lbl_text_thumb">
-       <property name="text"><string>左手拇指根部</string></property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QLabel" name="lbl_value_thumb">
-       <property name="styleSheet"><string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string></property>
-       <property name="text"><string>—</string></property>
-       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      </widget>
-     </item>
-     <!-- index row -->
-     <item row="1" column="0">
-      <widget class="QLabel" name="lbl_text_index">
-       <property name="text"><string>左手食指根部</string></property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="QLabel" name="lbl_value_index">
-       <property name="styleSheet"><string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string></property>
-       <property name="text"><string>—</string></property>
-       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      </widget>
-     </item>
-     <!-- middle row -->
-     <item row="2" column="0">
-      <widget class="QLabel" name="lbl_text_middle">
-       <property name="text"><string>左手中指根部</string></property>
-      </widget>
-     </item>
-     <item row="2" column="1">
-      <widget class="QLabel" name="lbl_value_middle">
-       <property name="styleSheet"><string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string></property>
-       <property name="text"><string>—</string></property>
-       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      </widget>
-     </item>
-     <!-- ring row -->
-     <item row="3" column="0">
-      <widget class="QLabel" name="lbl_text_ring">
-       <property name="text"><string>左手无名指根部</string></property>
-      </widget>
-     </item>
-     <item row="3" column="1">
-      <widget class="QLabel" name="lbl_value_ring">
-       <property name="styleSheet"><string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string></property>
-       <property name="text"><string>—</string></property>
-       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      </widget>
-     </item>
-     <!-- pinky row -->
-     <item row="4" column="0">
-      <widget class="QLabel" name="lbl_text_pinky">
-       <property name="text"><string>左手小指根部</string></property>
-      </widget>
-     </item>
-     <item row="4" column="1">
-      <widget class="QLabel" name="lbl_value_pinky">
-       <property name="styleSheet"><string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string></property>
-       <property name="text"><string>—</string></property>
-       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation"><enum>Qt::Vertical</enum></property>
-     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
-    </spacer>
-   </item>
-  </layout>
- </widget>
- <resources/>
- <connections/>
-</ui>
-
-<ui version="4.0">
- <class>LinkerHandPanel</class>
- <widget class="QWidget" name="LinkerHandPanel">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>320</width>
-    <height>220</height>
-   </rect>
-  </property>
-  <layout class="QVBoxLayout" name="rootLayout">
-   <property name="spacing">
-    <number>8</number>
-   </property>
-   <property name="leftMargin">
-    <number>10</number>
-   </property>
-   <property name="topMargin">
-    <number>10</number>
-   </property>
-   <property name="rightMargin">
-    <number>10</number>
-   </property>
-   <property name="bottomMargin">
-    <number>10</number>
-   </property>
-   <item>
-    <layout class="QHBoxLayout" name="rowThumb">
-     <item>
-      <widget class="QLabel" name="lbl_text_thumb">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>左手拇指根部</string>
-       </property>
-      </widget>
-     </item>
-        <item>
-         <spacer name="spacerThumb">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-                <width>40</width>
-                <height>20</height>
-             </size>
-            </property>
-         </spacer>
+    <widget class="QGroupBox" name="QGB_leftHandRawAngle">
+     <property name="title"><string>左手原始角度</string></property>
+     <layout class="QVBoxLayout" name="groupBoxLayout">
+      <item>
+       <layout class="QGridLayout" name="gridFingers">
+        <property name="horizontalSpacing"><number>6</number></property>
+        <property name="verticalSpacing"><number>6</number></property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="lbl_text_thumb">
+          <property name="text"><string>左手拇指根部</string></property>
+         </widget>
         </item>
-     <item>
-      <widget class="QLabel" name="lbl_value_thumb">
-       <property name="minimumSize">
-        <size>
-         <width>60</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-                <string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string>
-       </property>
-       <property name="text">
-                <string>—</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
+        <item row="1" column="0">
+         <widget class="QLabel" name="lbl_text_thumb_adduction">
+          <property name="text"><string>左手拇指侧摆</string></property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="lbl_text_index">
+          <property name="text"><string>左手食指根部</string></property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="lbl_text_middle">
+          <property name="text"><string>左手中指根部</string></property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="lbl_text_ring">
+          <property name="text"><string>左手无名指根部</string></property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="lbl_text_pinky">
+          <property name="text"><string>左手小指根部</string></property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="lbl_text_index_adduction">
+          <property name="text"><string>左手食指侧摆</string></property>
+         </widget>
+        </item>
+        <item row="7" column="0">
+         <widget class="QLabel" name="lbl_text_ring_adduction">
+          <property name="text"><string>左手无名指侧摆</string></property>
+         </widget>
+        </item>
+        <item row="8" column="0">
+         <widget class="QLabel" name="lbl_text_pinky_adduction">
+          <property name="text"><string>左手小指侧摆</string></property>
+         </widget>
+        </item>
+        <item row="9" column="0">
+         <widget class="QLabel" name="lbl_text_thumb_rotation">
+          <property name="text"><string>左手拇指旋转</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="rowIndex">
-     <item>
-      <widget class="QLabel" name="lbl_text_index">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>左手食指根部</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="spacerIndex">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QLabel" name="lbl_value_index">
-       <property name="minimumSize">
-        <size>
-         <width>60</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-         <string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string>
-       </property>
-       <property name="text">
-        <string>—</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="rowMiddle">
-     <item>
-      <widget class="QLabel" name="lbl_text_middle">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>左手中指根部</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="spacerMiddle">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QLabel" name="lbl_value_middle">
-       <property name="minimumSize">
-        <size>
-         <width>60</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-         <string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string>
-       </property>
-       <property name="text">
-        <string>—</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="rowRing">
-     <item>
-      <widget class="QLabel" name="lbl_text_ring">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>左手无名指根部</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="spacerRing">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QLabel" name="lbl_value_ring">
-       <property name="minimumSize">
-        <size>
-         <width>60</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-         <string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string>
-       </property>
-       <property name="text">
-        <string>—</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="rowPinky">
-     <item>
-      <widget class="QLabel" name="lbl_text_pinky">
-       <property name="minimumSize">
-        <size>
-         <width>100</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>左手小指根部</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <spacer name="spacerPinky">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QLabel" name="lbl_value_pinky">
-       <property name="minimumSize">
-        <size>
-         <width>60</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-         <string notr="true">color: #ffffff; font-weight: bold; font-size: 12px;</string>
-       </property>
-       <property name="text">
-        <string>—</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
+    <widget class="QGroupBox" name="QGB_motorAngle">
+     <property name="title"><string>马达角度</string></property>
+     <layout class="QVBoxLayout" name="motorLayout">
+      <item>
+       <layout class="QGridLayout" name="gridMotor">
+        <property name="horizontalSpacing"><number>6</number></property>
+        <property name="verticalSpacing"><number>6</number></property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="lbl_motor_thumb">
+          <property name="text"><string>拇指根部：0</string></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
     </spacer>
    </item>
   </layout>
