@@ -454,9 +454,13 @@ def _build_qt_app():
             # 不让小坐标系本身响应拖拽（只作为指示器）
             self._gizmo_marker.InteractiveOff()
 
+            # 初始化交互器（vtkGenericOpenGLRenderWindow 不需要 GL 上下文即可调用）
             self._vtk_widget.Initialize()
+            render_window = self._vtk_widget.GetRenderWindow()
             setup_camera(self._renderer, render_window)
-            self._reset_camera_cb = bind_space_reset_camera(self._interactor, self._renderer, render_window)
+            self._reset_camera_cb = bind_space_reset_camera(
+                self._interactor, self._renderer, render_window
+            )
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
@@ -914,6 +918,17 @@ def _build_qt_app():
 
 def main():
     global APP_MODE
+
+    # ── Qt 全局属性（必须在 QApplication 构造前设置）──
+    # 修复 Linux/X11 上 VTK + Qt 组合时的 BadWindow X Error
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication as _QAppEarly
+    _QAppEarly.setAttribute(Qt.AA_ShareOpenGLContexts)
+
+    # VTK 使用 GLX (X11) 渲染；在 Wayland 会话下 Qt 默认选择 Wayland 后端，
+    # 两者不兼容会导致 BadWindow X Error。强制使用 xcb (X11/XWayland) 保持一致。
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
     # ── 命令行参数解析 ──────────────────────────────
     parser = argparse.ArgumentParser(
