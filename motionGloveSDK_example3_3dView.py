@@ -462,6 +462,19 @@ def _build_qt_app():
                 self._interactor, self._renderer, render_window
             )
 
+            # 交互结束时打印相机姿态（用于确定默认相机参数）
+            def _print_camera(obj, event):
+                cam = self._renderer.GetActiveCamera()
+                pos  = cam.GetPosition()
+                fp   = cam.GetFocalPoint()
+                up   = cam.GetViewUp()
+                print(
+                    f"[Camera] position=({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})  "
+                    f"focal=({fp[0]:.4f}, {fp[1]:.4f}, {fp[2]:.4f})  "
+                    f"viewup=({up[0]:.4f}, {up[1]:.4f}, {up[2]:.4f})"
+                )
+            self._interactor.AddObserver("EndInteractionEvent", _print_camera)
+
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
             def _poll():

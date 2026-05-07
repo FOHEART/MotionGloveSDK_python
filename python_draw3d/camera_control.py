@@ -2,9 +2,9 @@
 
 
 def setup_camera(renderer, render_window,
-                 position=(0.0, 0.0, 0.4),
-                 focal_point=(0.0, 0.08, 0.0),
-                 view_up=(0.0, 1.0, 0.0)):
+                 position=(-0.0011, 0.5294, 0.7502),
+                 focal_point=(-0.0117, 0.0795, 0.0005),
+                 view_up=(-0.0033, 0.8574, -0.5146)):
     """
     设置相机初始位置。
     默认视角：Z 轴正方向朝向屏幕外，Y 轴向上。

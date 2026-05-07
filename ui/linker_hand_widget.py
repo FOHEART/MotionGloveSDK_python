@@ -3,9 +3,9 @@
 import sys
 from pathlib import Path
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
+from PySide6.QtCore import QFile, QIODevice, QTimer
 
 
 def _ui_path() -> Path:
@@ -82,42 +82,23 @@ class LinkerHandWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._ui)
 
-        # Apply an object-name stylesheet at the panel root so parent styles do not
-        # wipe out the value label foreground color when embedded in the main window.
-        self._ui.setStyleSheet(
-            "QLabel#lbl_value_thumb, "
-            "QLabel#lbl_value_index, "
-            "QLabel#lbl_value_middle, "
-            "QLabel#lbl_value_ring, "
-            "QLabel#lbl_value_pinky {"
-            "color: #ffffff;"
-            "background: transparent;"
-            "font-weight: bold;"
-            "font-size: 12px;"
-            "}"
-        )
-
     def _bind_labels(self):
-        # Key = panel row label; value = (ui object name, corresponding 3-bone list)
         row_specs = [
-            ("左手拇指根部", "lbl_value_thumb", ["LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3"]),
-            ("左手食指根部", "lbl_value_index", ["LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3"]),
-            ("左手中指根部", "lbl_value_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"]),
-            ("左手无名指根部", "lbl_value_ring", ["LeftHandRing1", "LeftHandRing2", "LeftHandRing3"]),
-            ("左手小指根部", "lbl_value_pinky", ["LeftHandPinky1", "LeftHandPinky2", "LeftHandPinky3"]),
+            ("左手拇指根部", "lbl_text_thumb",  ["LeftHandThumb1",  "LeftHandThumb2",  "LeftHandThumb3"]),
+            ("左手食指根部", "lbl_text_index",  ["LeftHandIndex1",  "LeftHandIndex2",  "LeftHandIndex3"]),
+            ("左手中指根部", "lbl_text_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"]),
+            ("左手无名指根部", "lbl_text_ring",  ["LeftHandRing1",   "LeftHandRing2",   "LeftHandRing3"]),
+            ("左手小指根部", "lbl_text_pinky",  ["LeftHandPinky1",  "LeftHandPinky2",  "LeftHandPinky3"]),
         ]
 
         for finger_key, obj_name, bones in row_specs:
             label = self._ui.findChild(QLabel, obj_name)
             if label is None:
                 raise RuntimeError(f"UI 控件未找到：{obj_name}")
-            label.setMinimumWidth(72)
-            label.setMaximumWidth(96)
-            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
             self.finger_labels[finger_key] = {
-                "label": label,
-                "bones": bones,
+                "label":      label,
+                "base_text":  finger_key,
+                "bones":      bones,
             }
     
     def update_linker_angles(self, frame):
@@ -192,6 +173,4 @@ class LinkerHandWidget(QWidget):
                     pass
             
             # Always show a numeric value so the UI does not stay blank.
-            angle_text = f"{total_y_abs:.1f}°"
-            
-            label.setText(angle_text)
+            label.setText(f"{info['base_text']}：{total_y_abs:.1f}")
