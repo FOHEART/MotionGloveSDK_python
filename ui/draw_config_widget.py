@@ -89,11 +89,10 @@ def _apply_btn_color(btn: QPushButton, color: tuple[float, float, float]) -> Non
 
 
 class DrawConfigWidget(QWidget):
-    """右侧绘图属性配置面板（固定宽度 220px）。"""
+    """右侧绘图属性配置面板（自动伸缩，填满父容器宽度）。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(220)
 
         loader = QUiLoader()
         ui_file = QFile(str(_ui_path()))
@@ -107,6 +106,11 @@ class DrawConfigWidget(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._ui)
+
+        # 设置尺寸策略，使控件自动伸缩填充父容器
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._ui.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         def _find(typ, name):  # type: ignore[no-untyped-def]
             w = self._ui.findChild(typ, name)

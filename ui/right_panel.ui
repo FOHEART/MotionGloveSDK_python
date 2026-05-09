@@ -84,25 +84,6 @@
        </property>
       </layout>
      </widget>
-     <widget class="QWidget" name="tab_linker_hand">
-      <attribute name="title">
-       <string>LinkerHand L10</string>
-      </attribute>
-      <layout class="QVBoxLayout" name="layout_tab_linker_hand">
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
-      </layout>
-     </widget>
     </widget>
    </item>
   </layout>

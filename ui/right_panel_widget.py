@@ -20,7 +20,6 @@ from PySide6.QtCore import QFile, QIODevice
 
 from draw_config_widget import DrawConfigWidget
 from bone_viewer_widget import BoneViewerWidget
-from linker_hand_widget import LinkerHandWidget
 
 
 def _ui_path() -> Path:
@@ -107,15 +106,6 @@ class RightPanelWidget(QWidget):
         self._bone_viewer = BoneViewerWidget()
         tab1_layout.addWidget(self._bone_viewer)
 
-        # 获取第三个 Tab 页及其布局，嵌入 LinkerHandWidget
-        tab2: QWidget = self._tab_widget.widget(2)
-        assert tab2 is not None, "right_panel.ui 中第三个 Tab 页缺失"
-        tab2_layout: QVBoxLayout = tab2.layout()
-        assert tab2_layout is not None, "right_panel.ui 中第三个 Tab 页布局缺失"
-
-        self._linker_hand = LinkerHandWidget()
-        tab2_layout.addWidget(self._linker_hand)
-
         # 设置最小宽度，允许用户拖动调整
         self.setMinimumWidth(300)
         self.setMaximumWidth(400)
@@ -131,11 +121,6 @@ class RightPanelWidget(QWidget):
     def bone_viewer(self) -> BoneViewerWidget:
         """骨骼查看子控件（显示骨骼树和欧拉角）。"""
         return self._bone_viewer
-
-    @property
-    def linker_hand(self) -> LinkerHandWidget:
-        """左手 linker 角度子控件（显示左手各指 Y 轴旋转角绝对值求和）。"""
-        return self._linker_hand
 
     @property
     def tab_widget(self) -> QTabWidget:

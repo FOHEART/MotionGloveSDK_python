@@ -654,9 +654,6 @@ def _build_qt_app():
 
                 # 更新骨骼查看面板的欧拉角显示
                 self._right_panel.bone_viewer.update_euler_angles(frame)
-                
-                # 更新左手 linker 角度面板
-                self._right_panel.linker_hand.update_linker_angles(frame)
 
             # 更新左侧网络信息面板（UDP 模式）
             if self._left_panel is not None:
