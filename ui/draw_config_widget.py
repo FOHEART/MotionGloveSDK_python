@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QPushButton,
     QFileDialog,
+    QSizePolicy,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtUiTools import QUiLoader
@@ -89,11 +90,13 @@ def _apply_btn_color(btn: QPushButton, color: tuple[float, float, float]) -> Non
 
 
 class DrawConfigWidget(QWidget):
-    """右侧绘图属性配置面板（固定宽度 220px）。"""
+    """右侧绘图属性配置面板（自动伸缩，填满父容器宽度）。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(220)
+
+        # 设置尺寸策略，使控件自动伸缩填充父容器
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         loader = QUiLoader()
         ui_file = QFile(str(_ui_path()))
