@@ -21,6 +21,8 @@ from typing import Optional
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QMenu
 
 # 导入 SteamVR 状态检查器
 from triad_openvr.steamvr_status_checker import SteamVRStatusChecker
@@ -128,6 +130,10 @@ class ViveTrackerWidget(QWidget):
         self._right_offline_counter = 0
         self._offline_threshold = 20  # 连续帧数阈值
         
+        # 显示模式（True 表示显示四元数，False 表示显示欧拉角）
+        self._left_show_quat = False
+        self._right_show_quat = False
+        
         # 模型加载/卸载回调（外部可以设置这些来响应模型状态变化）
         self._model_load_callback = None  # 回调签名：(side: str, renderer) -> None
         self._model_unload_callback = None  # 回调签名：(side: str, renderer) -> None
@@ -135,6 +141,9 @@ class ViveTrackerWidget(QWidget):
         
         # 模型对象引用（用于跟踪已加载的模型）
         self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
+        
+        # LightHouse 信息缓存（用于检测内容变化）
+        self._last_lighthouse_content = None  # 存储上一次的基站信息内容
         
         self._init_ui()
         self._load_config()
@@ -148,6 +157,11 @@ class ViveTrackerWidget(QWidget):
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._on_update_timer)
         self._update_timer.setInterval(33)  # ~30Hz
+        
+        # LightHouse 信息更新定时器（1Hz，与 SteamVR 检测频率相同）
+        self._lighthouse_update_timer = QTimer()
+        self._lighthouse_update_timer.timeout.connect(self._update_light_house_info)
+        self._lighthouse_update_timer.setInterval(1000)  # 1Hz
 
     def _init_ui(self):
         """从 UI 文件加载界面。"""
@@ -194,7 +208,6 @@ class ViveTrackerWidget(QWidget):
         assert self._left_quat_label is not None, "UI 控件未找到：leftHandQuatLabel"
         assert self._right_quat_label is not None, "UI 控件未找到：rightHandQuatLabel"
         assert self._start_tracking_btn is not None, "UI 控件未找到：startTrackingButton"
-        assert self._refresh_btn is not None, "UI 控件未找到：refreshButton"
         assert self._connection_status_text is not None, "UI 控件未找到：connectionStatusText"
         assert self._steamvr_status_label is not None, "UI 控件未找到：steamvrStatusLabel"
         
@@ -202,9 +215,19 @@ class ViveTrackerWidget(QWidget):
         self._set_groupbox_online_status(self._left_group, False)
         self._set_groupbox_online_status(self._right_group, False)
         
+        # 默认隐藏四元数标签
+        self._left_quat_label.setVisible(False)
+        self._right_quat_label.setVisible(False)
+        
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
-        self._refresh_btn.clicked.connect(self._load_config)
+        
+        # 为 GroupBox 设置右键菜单
+        self._left_group.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._left_group.customContextMenuRequested.connect(self._on_left_group_context_menu)
+        
+        self._right_group.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._right_group.customContextMenuRequested.connect(self._on_right_group_context_menu)
 
     def _set_steamvr_status(self, running: bool):
         """更新 SteamVR 状态标签。
@@ -269,6 +292,57 @@ class ViveTrackerWidget(QWidget):
         else:
             self._right_config_label.setText("<font color='gray'>未配置</font>")
             self._right_group.setEnabled(False)
+
+    def _format_config(self, config: dict) -> str:
+        """将配置字典格式化为显示文本。"""
+        lines = []
+        for key, value in config.items():
+            if isinstance(value, (str, int, float, bool)):
+                lines.append(f"<b>{key}:</b> {value}")
+            elif isinstance(value, dict):
+                lines.append(f"<b>{key}:</b>")
+                for k, v in value.items():
+                    lines.append(f"&nbsp;&nbsp;{k}: {v}")
+            else:
+                lines.append(f"<b>{key}:</b> {value}")
+
+        return "<br>".join(lines) if lines else "无配置数据"
+
+    def _on_left_group_context_menu(self, pos):
+        """左手 GroupBox 的右键菜单。"""
+        menu = QMenu(self)
+        
+        euler_action = menu.addAction("显示欧拉角" if self._left_show_quat else "✓ 显示欧拉角")
+        quat_action = menu.addAction("✓ 显示四元数" if self._left_show_quat else "显示四元数")
+        
+        action = menu.exec(QCursor.pos())
+        
+        if action == euler_action:
+            self._left_show_quat = False
+            self._left_rotation_label.setVisible(True)
+            self._left_quat_label.setVisible(False)
+        elif action == quat_action:
+            self._left_show_quat = True
+            self._left_rotation_label.setVisible(False)
+            self._left_quat_label.setVisible(True)
+
+    def _on_right_group_context_menu(self, pos):
+        """右手 GroupBox 的右键菜单。"""
+        menu = QMenu(self)
+        
+        euler_action = menu.addAction("显示欧拉角" if self._right_show_quat else "✓ 显示欧拉角")
+        quat_action = menu.addAction("✓ 显示四元数" if self._right_show_quat else "显示四元数")
+        
+        action = menu.exec(QCursor.pos())
+        
+        if action == euler_action:
+            self._right_show_quat = False
+            self._right_rotation_label.setVisible(True)
+            self._right_quat_label.setVisible(False)
+        elif action == quat_action:
+            self._right_show_quat = True
+            self._right_rotation_label.setVisible(False)
+            self._right_quat_label.setVisible(True)
 
     def _format_config(self, config: dict) -> str:
         """将配置字典格式化为显示文本。"""
@@ -480,6 +554,9 @@ class ViveTrackerWidget(QWidget):
         # 启动 UI 更新定时器
         self._update_timer.start()
         
+        # 启动 LightHouse 更新定时器
+        self._lighthouse_update_timer.start()
+        
         # 更新按钮文本
         self._start_tracking_btn.setText("停止追踪")
 
@@ -529,6 +606,7 @@ class ViveTrackerWidget(QWidget):
         """停止追踪。"""
         self._tracking_enabled = False
         self._update_timer.stop()
+        self._lighthouse_update_timer.stop()
         
         if self._tracking_thread is not None:
             self._thread_stop_event.set()
@@ -546,6 +624,14 @@ class ViveTrackerWidget(QWidget):
         self._right_rotation_label.setText("旋转：Yaw= 0.00°  Pitch= 0.00°  Roll= 0.00°")
         self._right_quat_label.setText("四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000")
         
+        # 清除基站信息
+        self._last_lighthouse_content = None
+        # 移除 connectionStatusText 中的 LightHouse 部分
+        current_text = self._connection_status_text.toPlainText()
+        if "\n=== LightHouse" in current_text:
+            current_text = current_text[:current_text.index("\n=== LightHouse")]
+            self._connection_status_text.setText(current_text)
+        
         # 重置在线状态并更新 GroupBox 样式
         self._left_online_state = False
         self._right_online_state = False
@@ -554,6 +640,14 @@ class ViveTrackerWidget(QWidget):
         self._right_offline_counter = 0
         self._set_groupbox_online_status(self._left_group, False)
         self._set_groupbox_online_status(self._right_group, False)
+        
+        # 重置显示模式为欧拉角
+        self._left_show_quat = False
+        self._right_show_quat = False
+        self._left_rotation_label.setVisible(True)
+        self._left_quat_label.setVisible(False)
+        self._right_rotation_label.setVisible(True)
+        self._right_quat_label.setVisible(False)
         
         # 更新按钮文本
         self._start_tracking_btn.setText("开始追踪")
@@ -682,6 +776,71 @@ class ViveTrackerWidget(QWidget):
             except Exception as e:
                 print(f"Tracking loop exception: {e}")
                 pass
+
+    def _update_light_house_info(self):
+        """获取并更新 LightHouse 基站信息，显示在 connectionStatusText 中。
+        
+        只有当内容发生变化时，才会更新 UI。
+        """
+        if self._openvr_system is None:
+            new_lighthouse_content = ""
+        else:
+            try:
+                # 获取所有基站（Tracking Reference）
+                tracking_refs = self._openvr_system.object_names.get("Tracking Reference", [])
+                
+                if not tracking_refs:
+                    new_lighthouse_content = ""
+                else:
+                    # 获取基站信息
+                    info_lines = ["", "=== LightHouse Base Station ==="]
+                    for ref_name in tracking_refs:
+                        device = self._openvr_system.devices.get(ref_name)
+                        if device is None:
+                            continue
+                        
+                        try:
+                            serial = device.get_serial()
+                            if isinstance(serial, bytes):
+                                serial = serial.decode('utf-8')
+                            
+                            # 获取位置和旋转信息
+                            pose_euler = device.get_pose_euler()
+                            pose_quat = device.get_pose_quaternion()
+                            
+                            info_lines.append(f"【{ref_name}】 Serial: {serial}")
+                            
+                            if pose_euler:
+                                x, y, z, yaw, pitch, roll = pose_euler
+                                info_lines.append(f"  位置: X={x:8.4f}m Y={y:8.4f}m Z={z:8.4f}m")
+                                info_lines.append(f"  旋转: Yaw={yaw:7.2f}° Pitch={pitch:7.2f}° Roll={roll:7.2f}°")
+                            
+                            if pose_quat:
+                                x, y, z, qw, qx, qy, qz = pose_quat
+                                info_lines.append(f"  四元数: w={qw:8.4f} x={qx:8.4f} y={qy:8.4f} z={qz:8.4f}")
+                            
+                            info_lines.append("")
+                        except Exception as e:
+                            info_lines.append(f"【{ref_name}】 错误：{e}")
+                            info_lines.append("")
+                    
+                    new_lighthouse_content = "\n".join(info_lines) if info_lines else ""
+            except Exception as e:
+                new_lighthouse_content = f"\n=== LightHouse Error ===\n获取基站信息失败: {e}"
+        
+        # 检测是否有变化，只有发生变化才更新 UI
+        if self._last_lighthouse_content != new_lighthouse_content:
+            # 获取当前连接状态文本的前面部分（不含 LightHouse 部分）
+            current_text = self._connection_status_text.toPlainText()
+            
+            # 移除旧的 LightHouse 部分
+            if "\n=== LightHouse" in current_text:
+                current_text = current_text[:current_text.index("\n=== LightHouse")]
+            
+            # 添加新的 LightHouse 信息
+            updated_text = current_text + new_lighthouse_content
+            self._connection_status_text.setText(updated_text)
+            self._last_lighthouse_content = new_lighthouse_content
 
     def _on_update_timer(self):
         """UI 更新定时器回调，30Hz 刷新追踪数据显示。
