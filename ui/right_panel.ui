@@ -84,6 +84,25 @@
        </property>
       </layout>
      </widget>
+     <widget class="QWidget" name="tab_vive_tracker">
+      <attribute name="title">
+       <string>ViveTracker</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layout_tab_vive_tracker">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
     </widget>
    </item>
   </layout>

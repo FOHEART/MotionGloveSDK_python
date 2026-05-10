@@ -1,5 +1,5 @@
 """right_panel_widget.py
-右侧多功能面板：QTabWidget 容器，第一个 Tab 为绘图配置面板。
+右侧多功能面板：QTabWidget 容器，包含绘图配置、骨骼查看、ViveTracker 配置三个 Tab 页。
 
 布局由 right_panel.ui 定义，可用 Qt Designer 添加/修改 Tab 页。
 Python 代码只负责向 Tab 页中嵌入子控件以及信号连接。
@@ -7,8 +7,10 @@ Python 代码只负责向 Tab 页中嵌入子控件以及信号连接。
 公开接口
 --------
 RightPanelWidget(parent)
-    .draw_config -> DrawConfigWidget   — 取绘图配置子控件（转发 current_config / load_from_config）
-    .tab_widget  -> QTabWidget         — 直接访问底层 QTabWidget（用于动态增减 Tab）
+    .draw_config    -> DrawConfigWidget      — 绘图配置子控件（转发 current_config / load_from_config）
+    .bone_viewer    -> BoneViewerWidget      — 骨骼查看子控件（显示骨骼树和欧拉角）
+    .vive_tracker   -> ViveTrackerWidget     — Vive Tracker 配置显示子控件
+    .tab_widget     -> QTabWidget            — 直接访问底层 QTabWidget（用于动态增减 Tab）
 """
 
 import sys
@@ -20,6 +22,7 @@ from PySide6.QtCore import QFile, QIODevice
 
 from draw_config_widget import DrawConfigWidget
 from bone_viewer_widget import BoneViewerWidget
+from vive_tracker_widget import ViveTrackerWidget
 
 
 def _ui_path() -> Path:
@@ -106,6 +109,15 @@ class RightPanelWidget(QWidget):
         self._bone_viewer = BoneViewerWidget()
         tab1_layout.addWidget(self._bone_viewer)
 
+        # 获取第三个 Tab 页及其布局，嵌入 ViveTrackerWidget
+        tab2: QWidget = self._tab_widget.widget(2)
+        assert tab2 is not None, "right_panel.ui 中第三个 Tab 页缺失"
+        tab2_layout: QVBoxLayout = tab2.layout()
+        assert tab2_layout is not None, "right_panel.ui 中第三个 Tab 页布局缺失"
+
+        self._vive_tracker = ViveTrackerWidget()
+        tab2_layout.addWidget(self._vive_tracker)
+
         # 设置最小宽度，允许用户拖动调整
         self.setMinimumWidth(300)
         self.setMaximumWidth(400)
@@ -121,6 +133,11 @@ class RightPanelWidget(QWidget):
     def bone_viewer(self) -> BoneViewerWidget:
         """骨骼查看子控件（显示骨骼树和欧拉角）。"""
         return self._bone_viewer
+
+    @property
+    def vive_tracker(self) -> ViveTrackerWidget:
+        """Vive Tracker 配置显示子控件。"""
+        return self._vive_tracker
 
     @property
     def tab_widget(self) -> QTabWidget:
