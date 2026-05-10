@@ -225,7 +225,7 @@ def _build_qt_app():
         QMessageBox, QSizePolicy, QMenu,
     )
     from PySide6.QtCore import QTimer, QEvent, Qt, QTranslator
-    from PySide6.QtGui import QAction, QActionGroup
+    from PySide6.QtGui import QAction, QActionGroup, QCursor
     from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
     from left_panel_widget import LeftPanelWidget
     from draw_config_widget import DrawConfigWidget
@@ -676,6 +676,8 @@ def _build_qt_app():
                 t = event.type()
                 if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.RightButton:
                     self._rb_press_pos = event.pos()
+                elif t == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.RightButton:
+                    self._rb_press_pos = None
                 elif t == QEvent.Type.ContextMenu:
                     # 仅在右键短按（未发生拖拽）时弹出菜单
                     # 拖拽判定：按下到弹起的移动距离 > 5 px 则视为缩放操作
@@ -687,7 +689,8 @@ def _build_qt_app():
                         self._rb_press_pos = None
                     if show:
                         self._show_context_menu(event.globalPos())
-                    return True
+                        # 返回 True 阻止菜单事件传播给 VTK，避免 VTK 处理右键
+                        return True
             return super().eventFilter(obj, event)
 
         def _show_context_menu(self, global_pos):
@@ -706,6 +709,16 @@ def _build_qt_app():
             reset_camera_action = menu.addAction(self.tr("重置视角"))
 
             action = menu.exec(global_pos)
+
+            # 菜单关闭后，重置 VTK interactor style 的内部状态，防止残留右键拖拽模式
+            if self._interactor is not None:
+                try:
+                    style = self._interactor.GetInteractorStyle()
+                    if style is not None:
+                        style.OnRightButtonUp()
+                except Exception:
+                    pass
+
             rw = self._vtk_widget.GetRenderWindow()
 
             if action is axes_action:
