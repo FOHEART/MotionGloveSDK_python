@@ -128,6 +128,14 @@ class ViveTrackerWidget(QWidget):
         self._right_offline_counter = 0
         self._offline_threshold = 20  # 连续帧数阈值
         
+        # 模型加载/卸载回调（外部可以设置这些来响应模型状态变化）
+        self._model_load_callback = None  # 回调签名：(side: str, renderer) -> None
+        self._model_unload_callback = None  # 回调签名：(side: str, renderer) -> None
+        self._renderer = None  # VTK 渲染器引用
+        
+        # 模型对象引用（用于跟踪已加载的模型）
+        self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
+        
         self._init_ui()
         self._load_config()
         
@@ -298,7 +306,7 @@ class ViveTrackerWidget(QWidget):
             )
 
     def _update_groupbox_status(self, side: str, is_online: bool):
-        """更新 GroupBox 状态并打印状态改变信息。
+        """更新 GroupBox 状态并打印状态改变信息。同时处理模型加载/卸载。
         
         Args:
             side: "left" 或 "right"
@@ -310,12 +318,91 @@ class ViveTrackerWidget(QWidget):
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 左手 Tracker {status_str}")
                 self._set_groupbox_online_status(self._left_group, is_online)
+                
+                # 处理模型加载/卸载
+                if is_online and self._renderer is not None and self._model_load_callback is not None:
+                    try:
+                        self._model_load_callback("left", self._renderer)
+                    except Exception as e:
+                        print(f"[ModelCallback] 加载左手模型失败：{e}")
+                elif not is_online and self._renderer is not None and self._model_unload_callback is not None:
+                    try:
+                        self._model_unload_callback("left", self._renderer)
+                    except Exception as e:
+                        print(f"[ModelCallback] 卸载左手模型失败：{e}")
         elif side == "right":
             if self._right_online_state != is_online:
                 self._right_online_state = is_online
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 右手 Tracker {status_str}")
                 self._set_groupbox_online_status(self._right_group, is_online)
+                
+                # 处理模型加载/卸载
+                if is_online and self._renderer is not None and self._model_load_callback is not None:
+                    try:
+                        self._model_load_callback("right", self._renderer)
+                    except Exception as e:
+                        print(f"[ModelCallback] 加载右手模型失败：{e}")
+                elif not is_online and self._renderer is not None and self._model_unload_callback is not None:
+                    try:
+                        self._model_unload_callback("right", self._renderer)
+                    except Exception as e:
+                        print(f"[ModelCallback] 卸载右手模型失败：{e}")
+
+    def set_renderer_and_callbacks(self, renderer, model_load_callback=None, model_unload_callback=None):
+        """设置 VTK 渲染器和模型加载/卸载回调。
+        
+        Args:
+            renderer: VTK 渲染器对象（vtk.vtkRenderer）
+            model_load_callback: 模型加载回调函数 (side: str, renderer) -> None
+            model_unload_callback: 模型卸载回调函数 (side: str, renderer) -> None
+        """
+        self._renderer = renderer
+        self._model_load_callback = model_load_callback
+        self._model_unload_callback = model_unload_callback
+        print("[ViveTrackerWidget] VTK 渲染器和模型回调已设置")
+    
+    def update_model_pose(self, side: str, position_xyz: tuple, quat_wxyz: tuple):
+        """更新模型的位置和旋转。
+        
+        Args:
+            side: "left" 或 "right"
+            position_xyz: 位置 (x, y, z)，单位：米
+            quat_wxyz: 四元数 (w, x, y, z)
+        """
+        if side not in self._tracker_model_actors:
+            return
+        
+        actor = self._tracker_model_actors[side]
+        if actor is None:
+            return
+        
+        try:
+            # 转换四元数格式从 (w, x, y, z) 到 (x, y, z, w)
+            qx, qy, qz, qw = quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]
+            
+            # 添加调试日志（每 30 帧打印一次以减少日志量）
+            if hasattr(self, '_model_pose_log_counter'):
+                self._model_pose_log_counter = (self._model_pose_log_counter + 1) % 30
+            else:
+                self._model_pose_log_counter = 0
+            
+            if self._model_pose_log_counter == 0:
+                print(f"[ModelPose] {side}: pos=({position_xyz[0]:.4f}, {position_xyz[1]:.4f}, {position_xyz[2]:.4f}) "
+                      f"quat=(w={qw:.4f}, x={qx:.4f}, y={qy:.4f}, z={qz:.4f})")
+            
+            actor.set_position_and_rotation(position_xyz, (qx, qy, qz, qw))
+        except Exception as e:
+            print(f"[ModelPose] 更新 {side} 模型位置失败：{e}")
+    
+    def store_model_actor(self, side: str, actor):
+        """存储模型 Actor 引用。
+        
+        Args:
+            side: "left" 或 "right"
+            actor: VRTrackerModelActor 实例
+        """
+        self._tracker_model_actors[side] = actor
 
     def _on_start_tracking_clicked(self):
         """处理 "开启追踪" 按钮点击。"""
@@ -585,6 +672,7 @@ class ViveTrackerWidget(QWidget):
         """UI 更新定时器回调，30Hz 刷新追踪数据显示。
         
         使用离线计数器：连续20帧无数据才判定为离线，避免频繁切换。
+        同时更新模型的位置和旋转。
         """
         with self._data_lock:
             # 处理左手数据
@@ -598,6 +686,13 @@ class ViveTrackerWidget(QWidget):
                 self._left_rotation_label.setText(rot_text)
                 self._left_quat_label.setText(quat_text)
                 self._update_groupbox_status("left", True)
+                
+                # 更新模型位置和旋转
+                self.update_model_pose(
+                    "left",
+                    (self._left_data.x, self._left_data.y, self._left_data.z),
+                    (self._left_data.quat_w, self._left_data.quat_x, self._left_data.quat_y, self._left_data.quat_z)
+                )
             else:
                 # 无有效数据，增加离线计数器
                 self._left_offline_counter += 1
@@ -616,6 +711,13 @@ class ViveTrackerWidget(QWidget):
                 self._right_rotation_label.setText(rot_text)
                 self._right_quat_label.setText(quat_text)
                 self._update_groupbox_status("right", True)
+                
+                # 更新模型位置和旋转
+                self.update_model_pose(
+                    "right",
+                    (self._right_data.x, self._right_data.y, self._right_data.z),
+                    (self._right_data.quat_w, self._right_data.quat_x, self._right_data.quat_y, self._right_data.quat_z)
+                )
             else:
                 # 无有效数据，增加离线计数器
                 self._right_offline_counter += 1

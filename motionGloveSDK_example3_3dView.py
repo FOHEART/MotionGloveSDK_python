@@ -80,6 +80,13 @@ from src import motionGloveSDK
 from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
 from src.translator_helper import install_configured_translator
 
+# VR Tracker 模型加载器
+try:
+    from triad_openvr.vr_tracker_model_loader import VRTrackerModelActor, create_tracker_actor
+except ImportError:
+    VRTrackerModelActor = None
+    create_tracker_actor = None
+
 # ─────────────────────────────────────────────
 #  配置
 # ─────────────────────────────────────────────
@@ -298,6 +305,7 @@ def _build_qt_app():
             self._build_central()
             self._build_status_bar()
             self._build_vtk_scene()
+            self._setup_tracker_models()  # 设置 VR Tracker 模型加载器
             if APP_MODE == AppMode.UDP_STREAM:
                 self._start_sdk_poll()
             else:
@@ -513,6 +521,66 @@ def _build_qt_app():
                     f"viewup=({up[0]:.4f}, {up[1]:.4f}, {up[2]:.4f})"
                 )
             self._interactor.AddObserver("EndInteractionEvent", _print_camera)
+
+        # ── VR Tracker 模型加载器 ───────────────────────
+        def _setup_tracker_models(self):
+            """设置 VR Tracker 模型加载器和回调。"""
+            if create_tracker_actor is None:
+                print("[MainWindow] VR Tracker 模型加载器不可用（VTK 未安装或模型加载器导入失败）")
+                return
+            
+            vive_widget = self._right_panel.vive_tracker
+            vive_widget.set_renderer_and_callbacks(
+                self._renderer,
+                model_load_callback=self._on_tracker_model_load,
+                model_unload_callback=self._on_tracker_model_unload
+            )
+            print("[MainWindow] VR Tracker 模型加载器已初始化")
+        
+        def _on_tracker_model_load(self, side: str, renderer):
+            """加载 VR Tracker 模型的回调。
+            
+            Args:
+                side: "left" 或 "right"
+                renderer: VTK 渲染器对象
+            """
+            if create_tracker_actor is None:
+                return
+            
+            try:
+                actor = create_tracker_actor(f"{side.capitalize()}HandTracker")
+                if actor is not None:
+                    renderer.AddActor(actor.get_actor())
+                    # 存储到 ViveTrackerWidget 以便后续更新位置
+                    self._right_panel.vive_tracker.store_model_actor(side, actor)
+                    print(f"[MainWindow] ✓ {side} 手 Tracker 模型已加载到 VTK 场景")
+                else:
+                    print(f"[MainWindow] ✗ 无法为 {side} 手创建 Tracker 模型")
+            except Exception as e:
+                print(f"[MainWindow] ✗ 加载 {side} 手 Tracker 模型失败：{e}")
+                import traceback
+                traceback.print_exc()
+        
+        def _on_tracker_model_unload(self, side: str, renderer):
+            """卸载 VR Tracker 模型的回调。
+            
+            Args:
+                side: "left" 或 "right"
+                renderer: VTK 渲染器对象
+            """
+            try:
+                vive_widget = self._right_panel.vive_tracker
+                actor = vive_widget._tracker_model_actors.get(side)
+                if actor is not None:
+                    renderer.RemoveActor(actor.get_actor())
+                    vive_widget.store_model_actor(side, None)
+                    print(f"[MainWindow] ✓ {side} 手 Tracker 模型已从 VTK 场景移除")
+                else:
+                    print(f"[MainWindow] - {side} 手 Tracker 模型未被加载")
+            except Exception as e:
+                print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
+                import traceback
+                traceback.print_exc()
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
