@@ -120,6 +120,14 @@ class ViveTrackerWidget(QWidget):
         self._thread_stop_event = threading.Event()
         self._data_lock = threading.RLock()
         
+        # Tracker 在线状态追踪（用于检测状态变化）
+        self._left_online_state = False
+        self._right_online_state = False
+        # Tracker 离线计数器（连续20帧无数据才判定为离线）
+        self._left_offline_counter = 0
+        self._right_offline_counter = 0
+        self._offline_threshold = 20  # 连续帧数阈值
+        
         self._init_ui()
         self._load_config()
         
@@ -181,6 +189,10 @@ class ViveTrackerWidget(QWidget):
         assert self._refresh_btn is not None, "UI 控件未找到：refreshButton"
         assert self._connection_status_text is not None, "UI 控件未找到：connectionStatusText"
         assert self._steamvr_status_label is not None, "UI 控件未找到：steamvrStatusLabel"
+        
+        # 初始化 GroupBox 样式为离线（红色）
+        self._set_groupbox_online_status(self._left_group, False)
+        self._set_groupbox_online_status(self._right_group, False)
         
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
@@ -264,6 +276,46 @@ class ViveTrackerWidget(QWidget):
                 lines.append(f"<b>{key}:</b> {value}")
 
         return "<br>".join(lines) if lines else "无配置数据"
+
+    def _set_groupbox_online_status(self, groupbox: QGroupBox, is_online: bool):
+        """根据在线状态设置 GroupBox 标题背景色。
+        
+        Args:
+            groupbox: 目标 GroupBox
+            is_online: True 为在线（绿色），False 为离线（红色）
+        """
+        if is_online:
+            groupbox.setStyleSheet(
+                "QGroupBox { border: 1px solid #ccc; border-radius: 4px; margin-top: 10px; padding-top: 10px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0px 5px; "
+                "background-color: green; color: white; font-weight: bold; border-radius: 3px; }"
+            )
+        else:
+            groupbox.setStyleSheet(
+                "QGroupBox { border: 1px solid #ccc; border-radius: 4px; margin-top: 10px; padding-top: 10px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0px 5px; "
+                "background-color: red; color: white; font-weight: bold; border-radius: 3px; }"
+            )
+
+    def _update_groupbox_status(self, side: str, is_online: bool):
+        """更新 GroupBox 状态并打印状态改变信息。
+        
+        Args:
+            side: "left" 或 "right"
+            is_online: 是否在线
+        """
+        if side == "left":
+            if self._left_online_state != is_online:
+                self._left_online_state = is_online
+                status_str = "上线" if is_online else "离线"
+                print(f"[TrackerStatus] 左手 Tracker {status_str}")
+                self._set_groupbox_online_status(self._left_group, is_online)
+        elif side == "right":
+            if self._right_online_state != is_online:
+                self._right_online_state = is_online
+                status_str = "上线" if is_online else "离线"
+                print(f"[TrackerStatus] 右手 Tracker {status_str}")
+                self._set_groupbox_online_status(self._right_group, is_online)
 
     def _on_start_tracking_clicked(self):
         """处理 "开启追踪" 按钮点击。"""
@@ -398,8 +450,14 @@ class ViveTrackerWidget(QWidget):
         self._right_rotation_label.setText("旋转：Yaw= 0.00°  Pitch= 0.00°  Roll= 0.00°")
         self._right_quat_label.setText("四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000")
         
-        # 更新按钮文本
-        self._start_tracking_btn.setText("开启追踪")
+        # 重置在线状态并更新 GroupBox 样式
+        self._left_online_state = False
+        self._right_online_state = False
+        # 重置离线计数器
+        self._left_offline_counter = 0
+        self._right_offline_counter = 0
+        self._set_groupbox_online_status(self._left_group, False)
+        self._set_groupbox_online_status(self._right_group, False)
 
     def _tracking_loop(self):
         """后台追踪线程，60Hz 数据收集。"""
@@ -420,15 +478,17 @@ class ViveTrackerWidget(QWidget):
                 left_device = self._devices.get("left")
                 right_device = self._devices.get("right")
                 
+                # 每帧开始时重置 valid 标志为 False，只有成功读取数据时才设置为 True
+                with self._data_lock:
+                    self._left_data.valid = False
+                    self._right_data.valid = False
+                
                 # 读取左手数据
                 if left_device is not None:
                     try:
                         pose_euler = left_device.get_pose_euler()
                         
-                        if pose_euler is None:
-                            if first_run:
-                                print(f"[Left] get_pose_euler() returned None")
-                        else:
+                        if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
                             with self._data_lock:
                                 self._left_data.x = x
@@ -461,7 +521,10 @@ class ViveTrackerWidget(QWidget):
                                     self._left_data.quat_y = 0.0
                                     self._left_data.quat_z = 0.0
                                 
+                                # 标记数据有效
                                 self._left_data.valid = True
+                        elif first_run:
+                            print(f"[Left] get_pose_euler() returned None")
                     except Exception as e:
                         if first_run:
                             print(f"[Left] Error: {e}")
@@ -471,10 +534,7 @@ class ViveTrackerWidget(QWidget):
                     try:
                         pose_euler = right_device.get_pose_euler()
                         
-                        if pose_euler is None:
-                            if first_run:
-                                print(f"[Right] get_pose_euler() returned None")
-                        else:
+                        if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
                             with self._data_lock:
                                 self._right_data.x = x
@@ -507,7 +567,10 @@ class ViveTrackerWidget(QWidget):
                                     self._right_data.quat_y = 0.0
                                     self._right_data.quat_z = 0.0
                                 
+                                # 标记数据有效
                                 self._right_data.valid = True
+                        elif first_run:
+                            print(f"[Right] get_pose_euler() returned None")
                     except Exception as e:
                         if first_run:
                             print(f"[Right] Error: {e}")
@@ -519,25 +582,46 @@ class ViveTrackerWidget(QWidget):
                 pass
 
     def _on_update_timer(self):
-        """UI 更新定时器回调，30Hz 刷新追踪数据显示。"""
+        """UI 更新定时器回调，30Hz 刷新追踪数据显示。
+        
+        使用离线计数器：连续20帧无数据才判定为离线，避免频繁切换。
+        """
         with self._data_lock:
-            # 更新左手显示
+            # 处理左手数据
             if self._left_data.valid:
+                # 有有效数据，重置离线计数器
+                self._left_offline_counter = 0
                 pos_text = f"位置：X={self._left_data.x:8.4f}m  Y={self._left_data.y:8.4f}m  Z={self._left_data.z:8.4f}m"
                 rot_text = f"旋转：Yaw={self._left_data.yaw:7.2f}°  Pitch={self._left_data.pitch:7.2f}°  Roll={self._left_data.roll:7.2f}°"
                 quat_text = f"四元数：w={self._left_data.quat_w:8.4f}  x={self._left_data.quat_x:8.4f}  y={self._left_data.quat_y:8.4f}  z={self._left_data.quat_z:8.4f}"
                 self._left_position_label.setText(pos_text)
                 self._left_rotation_label.setText(rot_text)
                 self._left_quat_label.setText(quat_text)
+                self._update_groupbox_status("left", True)
+            else:
+                # 无有效数据，增加离线计数器
+                self._left_offline_counter += 1
+                if self._left_offline_counter >= self._offline_threshold:
+                    # 连续20帧无数据，标记为离线
+                    self._update_groupbox_status("left", False)
             
-            # 更新右手显示
+            # 处理右手数据
             if self._right_data.valid:
+                # 有有效数据，重置离线计数器
+                self._right_offline_counter = 0
                 pos_text = f"位置：X={self._right_data.x:8.4f}m  Y={self._right_data.y:8.4f}m  Z={self._right_data.z:8.4f}m"
                 rot_text = f"旋转：Yaw={self._right_data.yaw:7.2f}°  Pitch={self._right_data.pitch:7.2f}°  Roll={self._right_data.roll:7.2f}°"
                 quat_text = f"四元数：w={self._right_data.quat_w:8.4f}  x={self._right_data.quat_x:8.4f}  y={self._right_data.quat_y:8.4f}  z={self._right_data.quat_z:8.4f}"
                 self._right_position_label.setText(pos_text)
                 self._right_rotation_label.setText(rot_text)
                 self._right_quat_label.setText(quat_text)
+                self._update_groupbox_status("right", True)
+            else:
+                # 无有效数据，增加离线计数器
+                self._right_offline_counter += 1
+                if self._right_offline_counter >= self._offline_threshold:
+                    # 连续20帧无数据，标记为离线
+                    self._update_groupbox_status("right", False)
 
     def get_left_tracker_data(self):
         """获取左手追踪器数据快照（线程安全）。未追踪或数据无效时返回 None。"""

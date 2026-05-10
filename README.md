@@ -602,3 +602,32 @@ https://renkunzhao.github.io/motion_viewer/
 
 https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
+---
+
+## 已知问题和故障排查
+
+### SteamVR 虚拟机睡眠唤醒问题
+
+**问题描述：**
+在 Ubuntu 虚拟机中运行 SteamVR 时，如果虚拟机进入暂停/睡眠状态后被唤醒，SteamVR 将无法重新连接 ViveTracker 设备。症状表现为：
+- 手部追踪器显示已连接，但无法接收到位置和旋转数据
+- `hand_tracker_monitor.py` 或 3D 查看器中追踪器数据为零
+
+**解决方案：**
+重启 SteamVR 进程即可恢复连接：
+```bash
+# Linux / macOS：关闭 SteamVR
+killall vrserver
+
+# 或者进入 SteamVR 设置菜单（从 SteamVR 桌面应用）进行重启
+
+# 之后重新启动追踪应用即可正常使用
+```
+
+**根本原因：**
+虚拟机睡眠时，USB 设备和 SteamVR 守护进程的状态变得不同步，SteamVR 无法自动恢复与已连接设备的通信状态。
+
+**建议：**
+- 在虚拟机设置中禁用自动睡眠/暂停功能
+- 或者在使用前手动检查 SteamVR 和追踪器是否正常连接
+
