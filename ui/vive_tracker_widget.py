@@ -403,6 +403,15 @@ class ViveTrackerWidget(QWidget):
             actor: VRTrackerModelActor 实例
         """
         self._tracker_model_actors[side] = actor
+    
+    def _unload_all_tracker_models(self):
+        """卸载所有已加载的 VR 追踪器模型。"""
+        for side in ["left", "right"]:
+            if self._model_unload_callback is not None and self._renderer is not None:
+                try:
+                    self._model_unload_callback(side, self._renderer)
+                except Exception as e:
+                    print(f"[UnloadTrackers] 卸载 {side} 手模型失败：{e}")
 
     def _on_start_tracking_clicked(self):
         """处理 "开启追踪" 按钮点击。"""
@@ -545,6 +554,12 @@ class ViveTrackerWidget(QWidget):
         self._right_offline_counter = 0
         self._set_groupbox_online_status(self._left_group, False)
         self._set_groupbox_online_status(self._right_group, False)
+        
+        # 更新按钮文本
+        self._start_tracking_btn.setText("开始追踪")
+        
+        # 卸载所有 VR 追踪器模型
+        self._unload_all_tracker_models()
 
     def _tracking_loop(self):
         """后台追踪线程，60Hz 数据收集。"""
@@ -674,6 +689,7 @@ class ViveTrackerWidget(QWidget):
         使用离线计数器：连续20帧无数据才判定为离线，避免频繁切换。
         同时更新模型的位置和旋转。
         """
+        tracker_pose_updated = False
         with self._data_lock:
             # 处理左手数据
             if self._left_data.valid:
@@ -693,6 +709,7 @@ class ViveTrackerWidget(QWidget):
                     (self._left_data.x, self._left_data.y, self._left_data.z),
                     (self._left_data.quat_w, self._left_data.quat_x, self._left_data.quat_y, self._left_data.quat_z)
                 )
+                tracker_pose_updated = True
             else:
                 # 无有效数据，增加离线计数器
                 self._left_offline_counter += 1
@@ -718,12 +735,16 @@ class ViveTrackerWidget(QWidget):
                     (self._right_data.x, self._right_data.y, self._right_data.z),
                     (self._right_data.quat_w, self._right_data.quat_x, self._right_data.quat_y, self._right_data.quat_z)
                 )
+                tracker_pose_updated = True
             else:
                 # 无有效数据，增加离线计数器
                 self._right_offline_counter += 1
                 if self._right_offline_counter >= self._offline_threshold:
                     # 连续20帧无数据，标记为离线
                     self._update_groupbox_status("right", False)
+
+        if tracker_pose_updated and self._renderer is not None:
+            self._renderer.ResetCameraClippingRange()
 
     def get_left_tracker_data(self):
         """获取左手追踪器数据快照（线程安全）。未追踪或数据无效时返回 None。"""

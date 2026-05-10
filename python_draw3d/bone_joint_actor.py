@@ -34,20 +34,21 @@ _AXIS_COLORS = (
 )
 
 
-def _make_sphere_actor(radius, color):
-    sphere = vtk.vtkSphereSource()
-    sphere.SetCenter(0.0, 0.0, 0.0)
-    sphere.SetRadius(radius)
-    sphere.SetPhiResolution(16)
-    sphere.SetThetaResolution(16)
+def _make_cube_actor(radius, color):
+    side = radius * 2.0
+    cube = vtk.vtkCubeSource()
+    cube.SetCenter(0.0, 0.0, 0.0)
+    cube.SetXLength(side)
+    cube.SetYLength(side)
+    cube.SetZLength(side)
 
     mapper = vtk.vtkPolyDataMapper()
-    mapper.SetInputConnection(sphere.GetOutputPort())
+    mapper.SetInputConnection(cube.GetOutputPort())
 
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     actor.GetProperty().SetColor(*color)
-    return actor, sphere
+    return actor, cube
 
 
 def _make_line_actor(color, line_width):
@@ -106,8 +107,8 @@ class BoneJointActor:
         self._radius     = radius
         self._axis_len   = radius * 2.0
 
-        # 球体
-        self._s_actor, self._sphere_src = _make_sphere_actor(radius, sphere_color)
+        # 正方体节点
+        self._s_actor, self._cube_src = _make_cube_actor(radius, sphere_color)
         self._s_actor.VisibilityOff()
         renderer.AddActor(self._s_actor)
 
@@ -126,8 +127,7 @@ class BoneJointActor:
         ox, oy, oz = position
         qw, qx, qy, qz = quat_wxyz
 
-        self._sphere_src.SetCenter(ox, oy, oz)
-        self._sphere_src.Update()
+        self._s_actor.SetPosition(ox, oy, oz)
         self._s_actor.VisibilityOn()
 
         dirs = (
@@ -141,8 +141,7 @@ class BoneJointActor:
 
     def set_position_only(self, position):
         """仅设置位置，显示球体，隐藏三轴。"""
-        self._sphere_src.SetCenter(*position)
-        self._sphere_src.Update()
+        self._s_actor.SetPosition(*position)
         self._s_actor.VisibilityOn()
         for a, _, __ in self._axes:
             a.VisibilityOff()
@@ -163,11 +162,14 @@ class BoneJointActor:
             a.GetProperty().SetLineWidth(width)
 
     def set_radius(self, radius: float):
-        """运行时修改关节球半径。"""
+        """运行时修改关节节点尺寸。"""
         self._radius = radius
-        self._sphere_src.SetRadius(radius)
-        self._sphere_src.Update()
+        side = radius * 2.0
+        self._cube_src.SetXLength(side)
+        self._cube_src.SetYLength(side)
+        self._cube_src.SetZLength(side)
+        self._cube_src.Update()
 
     def set_sphere_color(self, r: float, g: float, b: float):
-        """运行时修改关节球颜色。"""
+        """运行时修改关节节点颜色。"""
         self._s_actor.GetProperty().SetColor(r, g, b)

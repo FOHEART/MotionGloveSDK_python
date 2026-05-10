@@ -429,6 +429,7 @@ def _build_qt_app():
             self._renderer.SetBackground(0.10, 0.10, 0.16)
 
             render_window = self._vtk_widget.GetRenderWindow()
+            #render_window.SetMultiSamples(0)  # 禁用 MSAA，提升渲染性能
             render_window.AddRenderer(self._renderer)
 
             self._interactor = render_window.GetInteractor()
@@ -473,12 +474,24 @@ def _build_qt_app():
                 justification="center",
             )
 
-            # 左下角渲染帧率叠加（默认不显示）
+            # 左下角渲染帧率叠加（默认显示）
             self._render_fps_overlay = VtkFpsOverlay(
                 self._renderer,
                 font_file=_font_file,
-                visible=False,
+                visible=True,  # ✓ 改为 True：默认显示
             )
+            
+            # 右下角模型面数统计（默认显示）
+            self._mesh_stats_actor = add_overlay_text(
+                self._renderer,
+                text="-- faces",
+                font_file=_font_file,
+                font_size=14,
+                color=(0.75, 0.9, 0.75),
+                position=(0.99, 0.01),  # 右下角
+                justification="right",
+            )
+            self._mesh_stats_visible = True
 
             # 右上角小坐标系（gizmo），使用 vtkOrientationMarkerWidget
             self._gizmo_axes_actor = vtk.vtkAxesActor()
@@ -581,6 +594,24 @@ def _build_qt_app():
                 print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
                 import traceback
                 traceback.print_exc()
+        
+        def _unload_all_tracker_models(self):
+            """卸载所有已加载的 VR 追踪器模型。"""
+            try:
+                if self._right_panel is not None and hasattr(self._right_panel, 'vive_tracker'):
+                    vive_widget = self._right_panel.vive_tracker
+                    # 卸载左手模型
+                    for side in ["left", "right"]:
+                        actor = vive_widget._tracker_model_actors.get(side)
+                        if actor is not None:
+                            try:
+                                self._renderer.RemoveActor(actor.get_actor())
+                                vive_widget.store_model_actor(side, None)
+                                print(f"[MainWindow] ✓ {side} 手 Tracker 模型已卸载")
+                            except Exception as e:
+                                print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
+            except Exception as e:
+                print(f"[MainWindow] ✗ 卸载所有追踪器模型失败：{e}")
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
@@ -620,17 +651,23 @@ def _build_qt_app():
         def _start_render_timer(self):
             self._timer = QTimer(self)
             self._timer.timeout.connect(self._on_timer)
-            self._timer.start(33)   # ~30 fps
+            self._timer.start(16)   # ~60 fps
 
             self._fps_timer = QTimer(self)
             self._fps_timer.timeout.connect(self._on_fps_timer)
             self._fps_timer.start(1000)  # 1 秒刷新一次帧率
+            
+            # 立即更新一次面数统计（不必等待 1 秒）
+            self._update_mesh_stats()
 
         def _on_fps_timer(self):
             self._fps_counter.snapshot()
             self._render_fps_overlay.snapshot()
             if self._left_panel is not None:
                 self._left_panel.lbl_fps.setText(f"{self._fps_counter.fps()} fps")
+            
+            # 更新模型面数统计
+            self._update_mesh_stats()
 
         def _on_timer(self):
             # ── CSV 帧推进（时间戳驱动，避免双定时器相互干扰）──
@@ -756,11 +793,13 @@ def _build_qt_app():
                     else:
                         la.hide()
 
-                self._vtk_widget.GetRenderWindow().Render()
                 self._render_fps_overlay.tick()
 
                 # 更新骨骼查看面板的欧拉角显示
                 self._right_panel.bone_viewer.update_euler_angles(frame)
+
+            # 每帧都渲染（不只在有手套数据时渲染，以便 Tracker 模型等能立即显示）
+            self._vtk_widget.GetRenderWindow().Render()
 
             # 更新左侧网络信息面板（UDP 模式）
             if self._left_panel is not None:
@@ -811,6 +850,10 @@ def _build_qt_app():
 
             fps_label = self.tr("隐藏渲染帧率") if self._render_fps_overlay.is_visible() else self.tr("显示渲染帧率")
             fps_action = menu.addAction(fps_label)
+            
+            # 新增：模型面数统计
+            mesh_label = self.tr("隐藏模型面数") if self._mesh_stats_visible else self.tr("显示模型面数")
+            mesh_action = menu.addAction(mesh_label)
 
             menu.addSeparator()
             reset_camera_action = menu.addAction(self.tr("重置视角"))
@@ -839,8 +882,71 @@ def _build_qt_app():
             elif action is fps_action:
                 self._render_fps_overlay.set_visible(not self._render_fps_overlay.is_visible())
                 rw.Render()
-            elif action is reset_camera_action:
-                self._reset_camera_cb.reset()
+            elif action is mesh_action:
+                # 新增：处理面数统计显示/隐藏
+                self._mesh_stats_visible = not self._mesh_stats_visible
+                self._mesh_stats_actor.SetVisibility(self._mesh_stats_visible)
+                rw.Render()
+
+        def _update_mesh_stats(self):
+            """计算并更新所有模型的总面数统计。"""
+            total_faces = 0
+            
+            # 计算骨骼关节球体的面数
+            try:
+                for joint_actor in self._joint_actors:
+                    # BoneJointActor 的 _s_actor 是一个立方体
+                    if hasattr(joint_actor, '_s_actor'):
+                        s_actor = joint_actor._s_actor
+                        if s_actor.GetVisibility():
+                            mapper = s_actor.GetMapper()
+                            if mapper is not None:
+                                try:
+                                    poly_data = mapper.GetInput()
+                                    if poly_data is not None:
+                                        total_faces += poly_data.GetNumberOfCells()
+                                except Exception:
+                                    # 如果无法获取面数，估计立方体有 6 个四边形面
+                                    total_faces += 6
+            except Exception:
+                pass
+            
+            # 计算骨骼连线的面数（线段通常不算面，仅计数显示）
+            try:
+                visible_lines = 0
+                for link_actor in self._link_actors:
+                    if hasattr(link_actor, '_actor'):
+                        actor = link_actor._actor
+                        if actor.GetVisibility():
+                            visible_lines += 1
+                # 线段不计入面数，但可以记录数量
+                # total_faces += visible_lines  # 可选：如果要计算线段
+            except Exception:
+                pass
+            
+            # 计算VR追踪器模型的面数
+            try:
+                if hasattr(self, '_right_panel') and self._right_panel is not None:
+                    if hasattr(self._right_panel, 'vive_tracker'):
+                        vive_widget = self._right_panel.vive_tracker
+                        # 从 _tracker_model_actors 字典中获取加载的追踪器模型面数
+                        for side in ['left', 'right']:
+                            actor = vive_widget._tracker_model_actors.get(side)
+                            if actor is not None and hasattr(actor, 'get_face_count_info'):
+                                try:
+                                    info = actor.get_face_count_info()
+                                    total_faces += info['final']
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+            
+            # 更新显示
+            try:
+                if hasattr(self, '_mesh_stats_actor') and self._mesh_stats_actor is not None:
+                    self._mesh_stats_actor.SetInput(f"{total_faces} faces")
+            except Exception:
+                pass
 
         def _on_language_selected(self, lang_code: str) -> None:
             from PySide6.QtWidgets import QMessageBox, QApplication
@@ -890,6 +996,10 @@ def _build_qt_app():
             self._fps_timer.stop()
             self._csv_playing = False
             self._quit_event.set()
+            
+            # 关闭时卸载所有 VR 追踪器模型
+            self._unload_all_tracker_models()
+            
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._vtk_widget.GetRenderWindow().Finalize()
             self._interactor.TerminateApp()
@@ -1008,6 +1118,9 @@ def _build_qt_app():
             self._left_panel.lbl_actor_name.setText("—")
             self._left_panel.lbl_frame_id.setText("—")
             self._left_panel.lbl_fps.setText("0 fps")
+            
+            # 停止接收时卸载所有 VR 追踪器模型
+            self._unload_all_tracker_models()
 
         def _on_start_clicked(self):
             if self._left_panel is None:

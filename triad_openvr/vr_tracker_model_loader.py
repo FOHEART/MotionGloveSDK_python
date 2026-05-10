@@ -21,13 +21,18 @@ class VRTrackerModelActor:
     """VR Tracker 3D 模型 Actor 包装类。
     
     负责加载、变换和管理 OBJ 模型在 VTK 中的显示。
+    支持网格简化以优化性能。
     """
     
-    def __init__(self, model_path: str = None):
+    def __init__(self, model_path: str = None, enable_decimation: bool = True, 
+                 reduction_ratio: float = 0.5):
         """初始化模型 Actor。
         
         Args:
             model_path: OBJ 模型文件路径。如果为 None，会自动查找默认路径。
+            enable_decimation: 是否启用网格简化（默认 True）
+            reduction_ratio: 网格简化比率（0.0-1.0）。0.5 表示减少至原来的 50%，
+                           即减少 50% 的面数。数值越小，简化越激进。
         """
         if vtk is None:
             raise RuntimeError("VTK 未安装，无法加载 3D 模型")
@@ -36,6 +41,10 @@ class VRTrackerModelActor:
         self._mapper = None
         self._transform = None
         self._model_path = model_path or self._find_default_model_path()
+        self._enable_decimation = enable_decimation
+        self._reduction_ratio = max(0.01, min(1.0, reduction_ratio))  # 限制在 0.01-1.0 之间
+        self._original_face_count = 0
+        self._final_face_count = 0
         
         if self._model_path is None or not Path(self._model_path).exists():
             raise FileNotFoundError(f"无法找到 VR Tracker OBJ 模型：{model_path}")
@@ -61,16 +70,63 @@ class VRTrackerModelActor:
         return None
     
     def _load_model(self):
-        """从 OBJ 文件加载模型。"""
+        """从 OBJ 文件加载模型，可选进行网格简化。"""
         try:
             # 读取 OBJ 文件
             reader = vtk.vtkOBJReader()
             reader.SetFileName(self._model_path)
             reader.Update()
             
+            polydata = reader.GetOutput()
+            self._original_face_count = polydata.GetNumberOfCells()
+            
+            # 如果启用了网格简化，使用 vtkDecimatePro 进行网格缩减
+            if self._enable_decimation and self._reduction_ratio < 1.0:
+                # 首先将多边形转换为三角形（vtkDecimatePro 只接受三角形）
+                triangulator = vtk.vtkTriangleFilter()
+                triangulator.SetInputData(polydata)
+                triangulator.Update()
+                polydata = triangulator.GetOutput()
+                
+                # 进行网格简化
+                decimator = vtk.vtkDecimatePro()
+                decimator.SetInputData(polydata)
+                decimator.SetTargetReduction(1.0 - self._reduction_ratio)  # 简化比率
+                
+                # 关键参数设置：平衡拐角保护和简化效果
+                # MaximumError：决定简化激进程度（单位：米）
+                # 较小值 = 保留更多细节，但简化效果减弱
+                decimator.SetMaximumError(0.001)  # 1毫米，比原来更严格
+                
+                # FeatureAngle：保护棱角处的细节
+                # 当两个面之间的角度 > FeatureAngle 时，会标记为棱角并保护
+                # 建议值：15-30°，此处用 18° 平衡保护和简化
+                decimator.SetFeatureAngle(18.0)
+                
+                # 拓扑保护：保持模型拓扑结构（不产生孔洞或分离）
+                decimator.PreserveTopologyOn()
+                
+                # 分割：处理高曲率变化区域
+                decimator.SplittingOn()
+                
+                decimator.Update()
+                
+                polydata = decimator.GetOutput()
+                self._final_face_count = polydata.GetNumberOfCells()
+                reduction_percent = ((self._original_face_count - self._final_face_count) 
+                                   / self._original_face_count * 100) if self._original_face_count > 0 else 0
+                print(f"[ModelLoader] ✓ 网格简化完成：{self._original_face_count} → {self._final_face_count} 个面 "
+                      f"(-{reduction_percent:.1f}%)")
+            else:
+                self._final_face_count = self._original_face_count
+                if not self._enable_decimation:
+                    print(f"[ModelLoader] ℹ 网格简化已禁用，加载 {self._original_face_count} 个面")
+                elif self._reduction_ratio >= 1.0:
+                    print(f"[ModelLoader] ℹ 简化比率 >= 1.0，跳过简化，加载原始模型 ({self._original_face_count} 个面)")
+            
             # 创建 mapper
             self._mapper = vtk.vtkPolyDataMapper()
-            self._mapper.SetInputConnection(reader.GetOutputPort())
+            self._mapper.SetInputData(polydata)
             
             # 创建 actor
             self._actor = vtk.vtkActor()
@@ -92,6 +148,26 @@ class VRTrackerModelActor:
     def get_actor(self) -> vtk.vtkActor:
         """获取 VTK Actor 对象。"""
         return self._actor
+    
+    def get_face_count_info(self) -> dict:
+        """获取模型面数统计信息。
+        
+        Returns:
+            包含以下键的字典：
+            - 'original': 原始模型面数
+            - 'final': 最终加载的面数
+            - 'reduced': 减少的面数
+            - 'reduction_percent': 减少百分比
+        """
+        reduced = self._original_face_count - self._final_face_count
+        reduction_percent = (reduced / self._original_face_count * 100) if self._original_face_count > 0 else 0
+        
+        return {
+            'original': self._original_face_count,
+            'final': self._final_face_count,
+            'reduced': reduced,
+            'reduction_percent': reduction_percent
+        }
     
     def set_position_and_rotation(self, position: Tuple[float, float, float], 
                                    quat: Tuple[float, float, float, float]):
@@ -159,6 +235,9 @@ class VRTrackerModelActor:
             
             # 应用矩阵到变换
             self._transform.SetMatrix(matrix)
+            self._transform.Modified()
+            if self._actor is not None:
+                self._actor.Modified()
             
         except Exception as e:
             print(f"[ModelLoader] ✗ 更新位置/旋转失败：{e}")
@@ -166,18 +245,22 @@ class VRTrackerModelActor:
             traceback.print_exc()
 
 
-def create_tracker_actor(tracker_name: str, model_path: str = None) -> Optional[VRTrackerModelActor]:
+def create_tracker_actor(tracker_name: str, model_path: str = None, 
+                         enable_decimation: bool = True, 
+                         reduction_ratio: float = 0.5) -> Optional[VRTrackerModelActor]:
     """创建 VR Tracker 模型 Actor。
     
     Args:
         tracker_name: 追踪器名称（用于日志）
         model_path: OBJ 模型文件路径
+        enable_decimation: 是否启用网格简化（默认 True）
+        reduction_ratio: 网格简化比率（0.0-1.0，默认 0.5 表示减少 50%）
         
     Returns:
         VRTrackerModelActor 实例，或创建失败时返回 None
     """
     try:
-        actor = VRTrackerModelActor(model_path)
+        actor = VRTrackerModelActor(model_path, enable_decimation, reduction_ratio)
         print(f"[ModelLoader] ✓ 为 '{tracker_name}' 创建了模型 Actor")
         return actor
     except Exception as e:
