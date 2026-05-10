@@ -639,6 +639,151 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ---
 
+## ViveTracker 3D 可视化集成
+
+3D 查看器集成了 Vive Tracker 追踪支持，可实时显示左右手追踪器的位置和旋转信息。通过 **UI 左侧面板（ViveTrackerWidget）** 进行配置和控制。
+
+### UI 左侧面板功能说明
+
+ViveTracker 面板包含以下主要区域：
+
+#### 按钮
+
+| 按钮 | 初始状态 | 功能 | 点击后状态 |
+|---|---|---|---|
+| **开始追踪** | 开始追踪 | 初始化 OpenVR 系统，启动后台追踪线程（60Hz），启动 UI 更新计时器（30Hz），建立与 SteamVR 的连接 | 变为 **停止追踪** |
+| **停止追踪** | 停止追踪 | 停止后台追踪线程，关闭 UI 更新计时器，断开 OpenVR 连接，清除所有追踪数据 | 变为 **开始追踪** |
+
+#### 左手 GroupBox（左侧上方）
+
+**功能：** 显示左手追踪器的配置、位置和旋转信息
+
+**内容详解：**
+
+| 字段 | 显示内容 | 更新频率 |
+|---|---|---|
+| **配置信息** | 从 `hand_tracker_config.json` 加载的序列号等配置数据，格式为 `SerialNumber: LHR-XXXXX` | 启动时加载一次；如果配置文件不存在，显示红色错误提示 |
+| **位置信息** | `X=xxxx.xxxx m  Y=xxxx.xxxx m  Z=xxxx.xxxx m`（单位：米，精度4位小数） | 30Hz（追踪时） |
+| **旋转信息** | 根据右键菜单选择显示以下之一：<br>• **欧拉角（默认）：** `Yaw=xxx.xx° Pitch=xxx.xx° Roll=xxx.xx°`<br>• **四元数：** `w=x.xxxx x=x.xxxx y=x.xxxx z=x.xxxx` | 30Hz（追踪时） |
+
+**GroupBox 样式：**
+
+- **在线状态（追踪器已连接）：** 深灰色背景，标题文字正常显示
+- **离线状态（无数据或连接丢失）：** 浅红色背景（`#ffcccc`），标题文字显示为 ❌ 标记
+- 连续 20 帧无数据后自动判定为离线
+
+**右键菜单：** 右键点击 GroupBox 弹出上下文菜单
+
+| 菜单项 | 功能 |
+|---|---|
+| ✓ 显示欧拉角 | 显示旋转信息为欧拉角格式（Yaw/Pitch/Roll）；当前选中时显示 ✓ 标记 |
+| ✓ 显示四元数 | 显示旋转信息为四元数格式（w/x/y/z）；当前选中时显示 ✓ 标记 |
+
+#### 右手 GroupBox（左侧中方）
+
+**功能：** 显示右手追踪器的配置、位置和旋转信息（布局与左手 GroupBox 完全相同）
+
+**内容详解：** 同左手 GroupBox
+
+**GroupBox 样式：** 同左手 GroupBox
+
+**右键菜单：** 同左手 GroupBox
+
+#### 连接状态显示区
+
+**功能：** 显示 SteamVR 运行状态和 LightHouse 基站信息
+
+**内容详解：**
+
+| 部分 | 说明 | 更新频率 |
+|---|---|---|
+| **SteamVR 状态标签** | 绿色标签显示 `SteamVR: 已启动`，红色标签显示 `SteamVR: 未启动` | 1Hz（后台状态检查器） |
+| **连接状态文本框** | 显示详细的连接调试信息（端口绑定状态、配置文件路径等）和 LightHouse 基站信息 | 根据内容变化更新 |
+
+**LightHouse 基站信息格式：**
+
+```
+[旧的连接状态信息...]
+=== LightHouse Base Station ===
+【tracking_reference_1】 Serial: LHB-XXXXX
+  位置: X=   x.xxxx m  Y=   y.xxxx m  Z=   z.xxxx m
+  旋转: Yaw= xxx.xx° Pitch= xxx.xx° Roll= xxx.xx°
+  四元数: w=x.xxxx x=x.xxxx y=x.xxxx z=x.xxxx
+
+【tracking_reference_2】 Serial: LHB-YYYYY
+  位置: X=   x.xxxx m  Y=   y.xxxx m  Z=   z.xxxx m
+  旋转: Yaw= xxx.xx° Pitch= xxx.xx° Roll= xxx.xx°
+  四元数: w=x.xxxx x=x.xxxx y=x.xxxx z=x.xxxx
+```
+
+- LightHouse 信息以 `=== LightHouse Base Station ===` 分隔符标记
+- 仅当基站数据发生变化时才更新显示，避免频繁刷新
+- 更新频率：1Hz（与 SteamVR 状态检查同步）
+
+### 追踪数据来源与配置
+
+#### 1. 配置文件：`triad_openvr/hand_tracker_config.json`
+
+定义左右手追踪器的 SteamVR 设备序列号映射：
+
+```json
+{
+  "LeftHandTracker": {
+    "SerialNumber": "LHR-XXXXX"
+  },
+  "RightHandTracker": {
+    "SerialNumber": "LHR-YYYYY"
+  }
+}
+```
+
+如配置文件不存在或格式错误，两个 GroupBox 将显示红色错误提示。
+
+#### 2. 后台追踪线程
+
+- **采样频率：** 60Hz
+- **功能：** 从 OpenVR 系统周期性读取左右手追踪器的位置（世界坐标系）和旋转（欧拉角 + 四元数）
+- **数据存储：** 采用 `threading.RLock()` 保护的 `TrackerData` 对象
+
+#### 3. UI 更新计时器
+
+- **刷新频率：** 30Hz（仅在追踪时运行）
+- **功能：** 从后台线程读取追踪数据，更新 UI 标签显示
+
+#### 4. LightHouse 更新计时器
+
+- **更新频率：** 1Hz（独立于 UI 更新计时器）
+- **功能：** 查询 OpenVR 中所有 Tracking Reference（LightHouse 基站），格式化基站位置和旋转信息，追加到 `connectionStatusText`
+
+### 实时追踪工作流程
+
+1. **初始化阶段**
+   - 启动时从 `hand_tracker_config.json` 读取配置
+   - 显示配置中已定义的左右手追踪器序列号
+
+2. **启动追踪**
+   - 用户点击 **开始追踪** 按钮
+   - 初始化 OpenVR 系统并连接 SteamVR
+   - 启动 60Hz 后台追踪线程和 30Hz UI 更新计时器
+
+3. **实时数据采集和显示**
+   - 后台线程持续读取追踪器位置和旋转
+   - UI 每 33ms 更新一次标签显示（约 30Hz）
+   - 每 1s 更新一次 LightHouse 基站信息
+
+4. **在线/离线状态判定**
+   - 如果连续 20 帧（约 666ms @ 30Hz）无数据，判定追踪器为离线
+   - GroupBox 背景色切换为浅红色，标题显示 ❌ 标记
+   - 数据恢复后自动恢复在线状态
+
+5. **停止追踪**
+   - 用户点击 **停止追踪** 按钮
+   - 关闭后台追踪线程和所有 UI 更新计时器
+   - 清除所有追踪数据和 LightHouse 信息
+   - 按钮文字恢复为 **开始追踪**
+
+---
+
 ## 已知问题和故障排查
 
 ### SteamVR 虚拟机睡眠唤醒问题
