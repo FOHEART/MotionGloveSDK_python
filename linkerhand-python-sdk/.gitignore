@@ -1,0 +1,96 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*~
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.vcxproj.user
+*.vcxproj.filters
+
+# Visual Studio Code
+*.code-workspace
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CMakeLists.txt.user
+install_manifest.txt
+Testing/
+CMakeFiles-*
+CMakeTmp/
+
+# Preset/build output used by project
+/out/build/
+/dist/
+${PROJECT_BINARY_DIR}/
+build/
+cmake-build-*/
+
+# Ninja
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Compiler output
+*.obj
+*.o
+*.lo
+*.la
+*.al
+*.a
+#*.so
+*.dylib
+*.exe
+*.pdb
+
+# Static analysis / generated files
+compile_commands.json
+*.dir
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# IDEs
+.idea/
+*.iml
+
+# Python
+venv/
+__pycache__/
+libs/
+*.pyc
+
+# Config files
+imulinksdkconfig.json
+python/config/
+
+# Misc
+*.bak
+*.tmp
+*.swp
+
+*.csv
+
+
+# for temp
+# git rm -r --cached .claude/ .github/ openspec/
+#/.claude/
+#/.github/
+#/openspec/
+#CLAUDE.md
+
+
+# If you keep generated headers or other generated source files in repo, remove them from this file accordingly.
