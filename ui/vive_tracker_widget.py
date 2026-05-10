@@ -18,9 +18,12 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
+
+# 导入 SteamVR 状态检查器
+from triad_openvr.steamvr_status_checker import SteamVRStatusChecker
 
 
 @dataclass
@@ -120,7 +123,12 @@ class ViveTrackerWidget(QWidget):
         self._init_ui()
         self._load_config()
         
-        # UI 更新定时器（30Hz）
+        # SteamVR 状态检查器（独立运行，1秒检查一次）
+        self._steamvr_checker = SteamVRStatusChecker(check_interval=1000)
+        self._steamvr_checker.set_status_changed_callback(self._on_steamvr_status_changed)
+        self._steamvr_checker.start()
+        
+        # UI 更新定时器（30Hz，仅在追踪时运行）
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._on_update_timer)
         self._update_timer.setInterval(33)  # ~30Hz
@@ -157,6 +165,8 @@ class ViveTrackerWidget(QWidget):
         self._refresh_btn: QPushButton = self._ui.findChild(QPushButton, "refreshButton")
         self._left_group: QGroupBox = self._ui.findChild(QGroupBox, "leftHandGroup")
         self._right_group: QGroupBox = self._ui.findChild(QGroupBox, "rightHandGroup")
+        self._connection_status_text: QTextEdit = self._ui.findChild(QTextEdit, "connectionStatusText")
+        self._steamvr_status_label: QLabel = self._ui.findChild(QLabel, "steamvrStatusLabel")
         
         # 验证所有必要的控件存在
         assert self._left_config_label is not None, "UI 控件未找到：leftHandConfigInfo"
@@ -169,10 +179,37 @@ class ViveTrackerWidget(QWidget):
         assert self._right_quat_label is not None, "UI 控件未找到：rightHandQuatLabel"
         assert self._start_tracking_btn is not None, "UI 控件未找到：startTrackingButton"
         assert self._refresh_btn is not None, "UI 控件未找到：refreshButton"
+        assert self._connection_status_text is not None, "UI 控件未找到：connectionStatusText"
+        assert self._steamvr_status_label is not None, "UI 控件未找到：steamvrStatusLabel"
         
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
         self._refresh_btn.clicked.connect(self._load_config)
+
+    def _set_steamvr_status(self, running: bool):
+        """更新 SteamVR 状态标签。
+        
+        Args:
+            running: True 表示 SteamVR 已启动，False 表示未启动
+        """
+        if running:
+            self._steamvr_status_label.setText("SteamVR: 已启动")
+            self._steamvr_status_label.setStyleSheet(
+                "background-color: green; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
+            )
+        else:
+            self._steamvr_status_label.setText("SteamVR: 未启动")
+            self._steamvr_status_label.setStyleSheet(
+                "background-color: red; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
+            )
+
+    def _on_steamvr_status_changed(self, running: bool):
+        """SteamVR 状态改变回调。
+        
+        Args:
+            running: True 表示 SteamVR 已启动，False 表示未启动
+        """
+        self._set_steamvr_status(running)
 
     def _load_config(self):
         """从 JSON 文件加载配置。"""
@@ -252,29 +289,37 @@ class ViveTrackerWidget(QWidget):
         right_serial = self._config.get("RightHandTracker", {}).get("SerialNumber")
         
         # 调试：打印所有发现的设备
-        debug_info = "<font color='blue'>发现设备：<br>"
+        debug_lines = ["配置序列号："]
+        debug_lines.append(f"  左手: {left_serial if left_serial else '未配置'}")
+        debug_lines.append(f"  右手: {right_serial if right_serial else '未配置'}")
+        debug_lines.append("")
+        debug_lines.append("系统设备：")
+        
         for device_name, device in self._openvr_system.devices.items():
             try:
                 serial = device.get_serial()
                 if isinstance(serial, bytes):
                     serial = serial.decode('utf-8')
-                debug_info += f"  {device_name}: {serial}<br>"
+                debug_lines.append(f"  {device_name}: {serial}")
                 
                 if serial == left_serial:
                     self._devices["left"] = device
-                    debug_info += f"  ✓ 左手匹配<br>"
+                    debug_lines.append(f"    ✓ 左手匹配")
+                    print(f"[StartTracking] 左手设备已匹配: {serial}")
                 elif serial == right_serial:
                     self._devices["right"] = device
-                    debug_info += f"  ✓ 右手匹配<br>"
+                    debug_lines.append(f"    ✓ 右手匹配")
+                    print(f"[StartTracking] 右手设备已匹配: {serial}")
             except Exception as e:
-                debug_info += f"  {device_name}: 读取失败 - {e}<br>"
+                debug_lines.append(f"  {device_name}: 读取失败 - {e}")
+                print(f"[StartTracking] 读取设备失败: {e}")
         
-        debug_info += "</font>"
-        self._left_config_label.setText(debug_info)
+        debug_text = "\n".join(debug_lines)
+        self._connection_status_text.setText(debug_text)
         
         if not self._devices:
-            error_text = "<font color='red'><b>未找到匹配的追踪器</b></font><br>已配置序列号：<br>" + f"Left: {left_serial}<br>Right: {right_serial}"
-            self._right_config_label.setText(error_text)
+            error_text = f"未找到匹配的追踪器\n已配置序列号：\nLeft: {left_serial}\nRight: {right_serial}"
+            self._connection_status_text.setText(debug_text + "\n\n" + error_text)
             self._openvr_system = None
             return
 
@@ -289,6 +334,48 @@ class ViveTrackerWidget(QWidget):
         
         # 更新按钮文本
         self._start_tracking_btn.setText("停止追踪")
+
+    def _rescan_devices(self):
+        """重新扫描系统中的设备，查找新连接的传感器。"""
+        if self._openvr_system is None:
+            return
+        
+        try:
+            # 先轮询 VR 事件，触发新设备加入 devices 字典
+            self._openvr_system.poll_vr_events()
+            
+            left_serial = self._config.get("LeftHandTracker", {}).get("SerialNumber")
+            right_serial = self._config.get("RightHandTracker", {}).get("SerialNumber")
+            
+            need_left = "left" not in self._devices or self._devices["left"] is None
+            need_right = "right" not in self._devices or self._devices["right"] is None
+            
+            if not need_left and not need_right:
+                return  # 两个设备都已找到，无需扫描
+            
+            for device_name, device in self._openvr_system.devices.items():
+                try:
+                    serial = device.get_serial()
+                    if isinstance(serial, bytes):
+                        serial = serial.decode('utf-8')
+                    
+                    if need_left and serial == left_serial:
+                        self._devices["left"] = device
+                        print(f"[RescanDevices] ✓ 左手设备已匹配: {serial}")
+                        need_left = False
+                    elif need_right and serial == right_serial:
+                        self._devices["right"] = device
+                        print(f"[RescanDevices] ✓ 右手设备已匹配: {serial}")
+                        need_right = False
+                    
+                    if not need_left and not need_right:
+                        break
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[RescanDevices] 异常: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _stop_tracking(self):
         """停止追踪。"""
@@ -320,9 +407,16 @@ class ViveTrackerWidget(QWidget):
         interval = 1.0 / 60.0  # 60Hz
         
         first_run = True
+        rescan_counter = 0  # 每秒重新扫描一次设备（60Hz，所以计数到60）
         
         while not self._thread_stop_event.is_set():
             try:
+                # 每秒重新检查一次是否有新设备连接
+                rescan_counter += 1
+                if rescan_counter >= 60:
+                    rescan_counter = 0
+                    self._rescan_devices()
+                
                 left_device = self._devices.get("left")
                 right_device = self._devices.get("right")
                 
@@ -334,41 +428,40 @@ class ViveTrackerWidget(QWidget):
                         if pose_euler is None:
                             if first_run:
                                 print(f"[Left] get_pose_euler() returned None")
-                            continue
-                        
-                        x, y, z, yaw, pitch, roll = pose_euler
-                        with self._data_lock:
-                            self._left_data.x = x
-                            self._left_data.y = y
-                            self._left_data.z = z
-                            self._left_data.yaw = yaw
-                            self._left_data.pitch = pitch
-                            self._left_data.roll = roll
-                            
-                            # 尝试读取四元数
-                            try:
-                                pose_quat = left_device.get_pose_quaternion()
-                                if pose_quat is not None and len(pose_quat) == 7:
-                                    # pose_quat = [x, y, z, qw, qx, qy, qz]
-                                    x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                    self._left_data.quat_w = qw
-                                    self._left_data.quat_x = qx
-                                    self._left_data.quat_y = qy
-                                    self._left_data.quat_z = qz
-                                else:
+                        else:
+                            x, y, z, yaw, pitch, roll = pose_euler
+                            with self._data_lock:
+                                self._left_data.x = x
+                                self._left_data.y = y
+                                self._left_data.z = z
+                                self._left_data.yaw = yaw
+                                self._left_data.pitch = pitch
+                                self._left_data.roll = roll
+                                
+                                # 尝试读取四元数
+                                try:
+                                    pose_quat = left_device.get_pose_quaternion()
+                                    if pose_quat is not None and len(pose_quat) == 7:
+                                        # pose_quat = [x, y, z, qw, qx, qy, qz]
+                                        x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
+                                        self._left_data.quat_w = qw
+                                        self._left_data.quat_x = qx
+                                        self._left_data.quat_y = qy
+                                        self._left_data.quat_z = qz
+                                    else:
+                                        self._left_data.quat_w = 1.0
+                                        self._left_data.quat_x = 0.0
+                                        self._left_data.quat_y = 0.0
+                                        self._left_data.quat_z = 0.0
+                                except Exception as e:
+                                    if first_run:
+                                        print(f"[Left] get_pose_quaternion() error: {e}")
                                     self._left_data.quat_w = 1.0
                                     self._left_data.quat_x = 0.0
                                     self._left_data.quat_y = 0.0
                                     self._left_data.quat_z = 0.0
-                            except Exception as e:
-                                if first_run:
-                                    print(f"[Left] get_pose_quaternion() error: {e}")
-                                self._left_data.quat_w = 1.0
-                                self._left_data.quat_x = 0.0
-                                self._left_data.quat_y = 0.0
-                                self._left_data.quat_z = 0.0
-                            
-                            self._left_data.valid = True
+                                
+                                self._left_data.valid = True
                     except Exception as e:
                         if first_run:
                             print(f"[Left] Error: {e}")
@@ -381,41 +474,40 @@ class ViveTrackerWidget(QWidget):
                         if pose_euler is None:
                             if first_run:
                                 print(f"[Right] get_pose_euler() returned None")
-                            continue
-                        
-                        x, y, z, yaw, pitch, roll = pose_euler
-                        with self._data_lock:
-                            self._right_data.x = x
-                            self._right_data.y = y
-                            self._right_data.z = z
-                            self._right_data.yaw = yaw
-                            self._right_data.pitch = pitch
-                            self._right_data.roll = roll
-                            
-                            # 尝试读取四元数
-                            try:
-                                pose_quat = right_device.get_pose_quaternion()
-                                if pose_quat is not None and len(pose_quat) == 7:
-                                    # pose_quat = [x, y, z, qw, qx, qy, qz]
-                                    x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                    self._right_data.quat_w = qw
-                                    self._right_data.quat_x = qx
-                                    self._right_data.quat_y = qy
-                                    self._right_data.quat_z = qz
-                                else:
+                        else:
+                            x, y, z, yaw, pitch, roll = pose_euler
+                            with self._data_lock:
+                                self._right_data.x = x
+                                self._right_data.y = y
+                                self._right_data.z = z
+                                self._right_data.yaw = yaw
+                                self._right_data.pitch = pitch
+                                self._right_data.roll = roll
+                                
+                                # 尝试读取四元数
+                                try:
+                                    pose_quat = right_device.get_pose_quaternion()
+                                    if pose_quat is not None and len(pose_quat) == 7:
+                                        # pose_quat = [x, y, z, qw, qx, qy, qz]
+                                        x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
+                                        self._right_data.quat_w = qw
+                                        self._right_data.quat_x = qx
+                                        self._right_data.quat_y = qy
+                                        self._right_data.quat_z = qz
+                                    else:
+                                        self._right_data.quat_w = 1.0
+                                        self._right_data.quat_x = 0.0
+                                        self._right_data.quat_y = 0.0
+                                        self._right_data.quat_z = 0.0
+                                except Exception as e:
+                                    if first_run:
+                                        print(f"[Right] get_pose_quaternion() error: {e}")
                                     self._right_data.quat_w = 1.0
                                     self._right_data.quat_x = 0.0
                                     self._right_data.quat_y = 0.0
                                     self._right_data.quat_z = 0.0
-                            except Exception as e:
-                                if first_run:
-                                    print(f"[Right] get_pose_quaternion() error: {e}")
-                                self._right_data.quat_w = 1.0
-                                self._right_data.quat_x = 0.0
-                                self._right_data.quat_y = 0.0
-                                self._right_data.quat_z = 0.0
-                            
-                            self._right_data.valid = True
+                                
+                                self._right_data.valid = True
                     except Exception as e:
                         if first_run:
                             print(f"[Right] Error: {e}")
@@ -427,7 +519,7 @@ class ViveTrackerWidget(QWidget):
                 pass
 
     def _on_update_timer(self):
-        """UI 更新定时器回调，30Hz 刷新。"""
+        """UI 更新定时器回调，30Hz 刷新追踪数据显示。"""
         with self._data_lock:
             # 更新左手显示
             if self._left_data.valid:

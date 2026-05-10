@@ -277,6 +277,65 @@
      </item>
     </layout>
    </item>
+   <item>
+    <layout class="QHBoxLayout" name="statusHeaderLayout">
+     <item>
+      <widget class="QLabel" name="connectionStatusLabel">
+       <property name="text">
+        <string>连接状态：</string>
+       </property>
+       <property name="styleSheet">
+        <string>font-weight: bold;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="statusHeaderSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="steamvrStatusLabel">
+       <property name="text">
+        <string>SteamVR: 未启动</string>
+       </property>
+       <property name="styleSheet">
+        <string>background-color: red; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+       <property name="minimumWidth">
+        <number>120</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTextEdit" name="connectionStatusText">
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+     <property name="maximumHeight">
+      <number>120</number>
+     </property>
+     <property name="font">
+      <font>
+       <family>Courier New</family>
+       <pointsize>9</pointsize>
+      </font>
+     </property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <resources/>
