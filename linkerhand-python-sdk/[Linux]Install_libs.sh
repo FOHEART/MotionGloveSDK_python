@@ -21,8 +21,19 @@ fi
 
 if command -v apt-get >/dev/null 2>&1; then
     echo "[1/3] 安装系统依赖 python3-pip 和 python-is-python3 ..."
-    sudo apt-get update
-    sudo apt-get install -y python3-pip python-is-python3
+    if [ "$(id -u)" -eq 0 ]; then
+        apt-get update
+        apt-get install -y python3-pip python-is-python3
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+        sudo -n apt-get update
+        sudo -n apt-get install -y python3-pip python-is-python3
+    elif [ -t 0 ]; then
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python-is-python3
+    else
+        echo "跳过系统依赖安装：当前环境无法交互输入 sudo 密码。" >&2
+        echo "如需安装，请手动执行：sudo apt-get update && sudo apt-get install -y python3-pip python-is-python3" >&2
+    fi
     echo
 fi
 
