@@ -1,3 +1,33 @@
+## @file motionGloveSDK_example3_3dView.py
+## @brief MotionGlove 3D Skeletal Viewer with VTK Real-time Visualization
+##
+## @details
+##   Real-time 3D hand skeleton visualization application using VTK and PySide6 Qt.
+##   Receives skeletal bone data from MotionGlove hardware via UDP or replays from CSV files.
+##   Supports two operation modes: UDP real-time stream and CSV file playback.
+##
+##   Features:
+##   - Live 32-joint hand skeleton rendering
+##   - Configurable bone visualization (spheres + connection lines)
+##   - FPS counter and performance monitoring
+##   - ViveTracker integration for hand position override
+##   - Bilingual UI (English/Chinese)
+##   - CI-compatible smoke testing mode
+##
+##   MotionGlove 3D 骨骼查看器应用。接收MotionGlove硬件的UDP数据或CSV文件回放。
+##   支持两种运行模式：实时UDP数据流和CSV文件回放。
+##
+##   功能特性：
+##   - 32关节手部骨骼实时渲染
+##   - 可配置骨骼可视化（球体+连接线）
+##   - FPS计数器和性能监控
+##   - ViveTracker集成支持
+##   - 双语UI支持（英文/中文）
+##   - CI烟雾测试模式
+##
+## @author MotionGloveSDK Team
+## @version 1.0
+
 import sys
 import os
 import enum
@@ -7,6 +37,15 @@ import time
 import argparse
 import subprocess
 
+
+## @fn _force_utf8_stdio()
+## @brief Force UTF-8 encoding for stdout and stderr
+##
+## @details
+##   Attempts to reconfigure standard output/error streams to use UTF-8 encoding.
+##   Ensures Chinese and non-ASCII characters display correctly on all platforms.
+##   强制标准输出/错误流使用UTF-8编码，确保中文等字符正确显示。
+##
 
 def _force_utf8_stdio():
     for s in (sys.stdout, sys.stderr):

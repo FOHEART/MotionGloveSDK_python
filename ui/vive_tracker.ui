@@ -144,6 +144,22 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QLabel" name="leftHandQuatLabel">
+            <property name="text">
+             <string>四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="font">
+             <font>
+              <family>Courier New</family>
+              <pointsize>9</pointsize>
+             </font>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -186,6 +202,22 @@
            <widget class="QLabel" name="rightHandRotationLabel">
             <property name="text">
              <string>旋转：Yaw= 0.00°  Pitch= 0.00°  Roll= 0.00°</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="font">
+             <font>
+              <family>Courier New</family>
+              <pointsize>9</pointsize>
+             </font>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="rightHandQuatLabel">
+            <property name="text">
+             <string>四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
