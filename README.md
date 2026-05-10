@@ -44,6 +44,16 @@ MotionGloveSDK_python/
 │   ├── pyparsing/                     # pyparsing 解析库
 │   └── six.py                         # six 兼容库
 │
+├── triad_openvr/                      # OpenVR 追踪器集成模块（SteamVR 手部追踪支持）
+│   ├── triad_openvr.py                # OpenVR 设备发现与控制主类
+│   ├── hand_tracker_monitor.py        # 手部追踪器实时监控工具（显示位置/姿态）
+│   ├── hand_tracker_config.json       # 手部追踪器序列号配置文件
+│   ├── config.json                    # OpenVR 设备全局配置文件（HMD/控制器/追踪器）
+│   ├── controller_test.py             # 控制器功能测试脚本
+│   ├── tracker_test.py                # 追踪器功能测试脚本
+│   ├── udp_emitter.py                 # UDP 数据广播工具
+│   └── udp_receiver.cs                # C# 示例：UDP 数据接收程序
+│
 ├── fonts/
 │   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
 │
@@ -329,6 +339,164 @@ python motionGloveSDK_rawReceiver.py --print-raw
 
 # 组合使用
 python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
+```
+
+---
+
+## Triad OpenVR 模块 — SteamVR 手部追踪支持
+
+`triad_openvr/` 目录包含 OpenVR（SteamVR）集成工具，用于与 HTC Vive 等 OpenVR 设备（如手部追踪器）交互。
+
+### 模块文件说明
+
+| 文件 | 功能说明 |
+|---|---|
+| `triad_openvr.py` | OpenVR 核心类：设备发现、序列号映射、姿态读取 |
+| `hand_tracker_monitor.py` | 手部追踪器实时监控工具 |
+| `hand_tracker_config.json` | 手部追踪器配置（序列号 → 设备映射） |
+| `config.json` | OpenVR 全局设备配置（HMD/控制器/追踪器） |
+| `controller_test.py` | 控制器测试脚本 |
+| `tracker_test.py` | 追踪器测试脚本 |
+| `udp_emitter.py` | UDP 广播工具 |
+| `udp_receiver.cs` | C# 示例：UDP 接收程序 |
+
+### 快速开始
+
+#### 1. 配置文件：`hand_tracker_config.json`
+
+用于将追踪器序列号映射到逻辑名称。格式如下：
+
+```json
+{
+  "LeftHandTracker": {
+    "SerialNumber": "LHR-29E6074C"
+  },
+  "RightHandTracker": {
+    "SerialNumber": "LHR-D5301C8B"
+  }
+}
+```
+
+**获取序列号的方法：**
+
+1. 启动 SteamVR 并连接手部追踪器
+2. 运行 `hand_tracker_monitor.py`，程序会自动列出所有发现的设备及其序列号：
+
+   ```
+   Serial to Device Mapping:
+     LHR-29E6074C -> tracker_1
+     LHR-D5301C8B -> tracker_2
+   ```
+
+3. 将这些序列号复制到 `hand_tracker_config.json` 中对应的字段
+
+#### 2. 手部追踪器监控工具：`hand_tracker_monitor.py`
+
+实时显示配置文件中的所有手部追踪器的位置和旋转数据。
+
+**使用方法：**
+
+```bash
+# 默认 60 Hz 采样率
+python triad_openvr/hand_tracker_monitor.py
+
+# 指定采样频率（例如 30 Hz）
+python triad_openvr/hand_tracker_monitor.py 30
+```
+
+**功能：**
+
+- 自动初始化 OpenVR 系统并发现设备
+- 根据 `hand_tracker_config.json` 匹配追踪器
+- 实时打印每个追踪器的位置（X/Y/Z，单位：米）和旋转欧拉角（Yaw/Pitch/Roll，单位：度）
+- **支持三种退出方式：**
+  - **Ctrl+C** — 中断信号
+  - **ESC** — 按下 ESC 键
+  - **Q** — 按下 Q 或 q 键
+
+**输出示例：**
+
+```
+===============================================================================
+Hand Tracker Position and Rotation Data
+Press Ctrl+C, ESC, or Q to exit
+===============================================================================
+
+[14:32:45.123]
+
+LeftHandTracker:
+  Position:  X=   0.1234m  Y=   1.5678m  Z=  -0.8901m
+  Rotation:  Yaw= 45.23°  Pitch=-10.56°  Roll= 123.45°
+
+RightHandTracker:
+  Position:  X=  -0.0543m  Y=   1.6234m  Z=  -0.7654m
+  Rotation:  Yaw=-30.12°  Pitch=  5.34°  Roll= -98.76°
+```
+
+### 核心类：`triad_openvr` 类
+
+```python
+import triad_openvr
+
+# 初始化 OpenVR 系统
+v = triad_openvr.triad_openvr()
+
+# 列出所有发现的设备
+print("Available devices:")
+v.print_discovered_objects()
+
+# 获取指定设备的姿态数据
+device = v.devices["tracker_1"]
+
+# 欧拉角 (x, y, z, yaw, pitch, roll)
+pose_euler = device.get_pose_euler()
+if pose_euler:
+    x, y, z, yaw, pitch, roll = pose_euler
+    print(f"Position: {x}, {y}, {z}")
+    print(f"Rotation (Euler): {yaw}, {pitch}, {roll}")
+
+# 四元数 (x, y, z, w) + 位置
+pose_quat = device.get_pose_quaternion()
+if pose_quat:
+    x_pos, y_pos, z_pos, x_quat, y_quat, z_quat, w_quat = pose_quat
+    print(f"Position: {x_pos}, {y_pos}, {z_pos}")
+    print(f"Quaternion: {x_quat}, {y_quat}, {z_quat}, {w_quat}")
+
+# 获取设备序列号
+serial = device.get_serial()
+if isinstance(serial, bytes):
+    serial = serial.decode('utf-8')
+print(f"Serial Number: {serial}")
+```
+
+### 集成 MotionGlove 和 OpenVR 数据
+
+可以同时使用 MotionGlove SDK 接收手套骨骼数据，并通过 Triad OpenVR 获取外部追踪器位置：
+
+```python
+from src import motionGloveSDK
+import triad_openvr
+
+# 初始化 MotionGlove SDK
+motionGloveSDK.MotionGloveSDK_ListenUDPPort(5001)
+
+# 初始化 OpenVR
+v = triad_openvr.triad_openvr()
+
+while True:
+    # 获取 MotionGlove 数据
+    if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending("Glove1"):
+        frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame("Glove1")
+        motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending("Glove1")
+        # 处理手套骨骼数据...
+    
+    # 获取 OpenVR 追踪器数据
+    tracker = v.devices.get("tracker_1")
+    if tracker:
+        pose = tracker.get_pose_euler()
+        if pose:
+            x, y, z, yaw, pitch, roll = pose
+            # 处理追踪器位置和旋转...
 ```
 
 ---
