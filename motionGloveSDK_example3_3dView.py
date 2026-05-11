@@ -114,6 +114,14 @@ BONE_LINK_COLOR_RIGHT = (0.3, 0.8, 1.0)
 BONE_LINK_COLOR_LEFT  = (1.0, 0.5, 0.2)
 BONE_LINK_WIDTH       = 3.0
 
+LIGHTHOUSE_MODEL_PATH = os.path.join(
+    _SCRIPT_DIR,
+    "triad_openvr",
+    "lh_basestation_vive",
+    "lh_basestation_vive.obj",
+)
+LIGHTHOUSE_MESH_DECIMATION_RATIO = 0.5
+
 _BONE_LINKS: list[tuple[int, int]] = [
     # 右手
     (BoneIndex.RightHandThumb1,    BoneIndex.RightHand),
@@ -295,6 +303,9 @@ def _build_qt_app():
             self._last_frame_fn = None   # 上一次消费的帧序号（在 _poll 线程中更新）
             self._drop_event: tuple[int, int, int] | None = None  # (first_lost_fn, last_lost_fn, cumulative)
             self._fps_counter = FpsCounter()
+            self._lighthouse_polydata = None
+            self._lighthouse_face_count = 0
+            self._lighthouse_actors: dict[str, dict] = {}
 
             # CSV 回放模式专用
             self._csv_reader = None      # CsvFrameReader 实例
@@ -305,6 +316,7 @@ def _build_qt_app():
             self._build_central()
             self._build_status_bar()
             self._build_vtk_scene()
+            self._prepare_lighthouse_model_polydata()
             self._setup_tracker_models()  # 设置 VR Tracker 模型加载器
             if APP_MODE == AppMode.UDP_STREAM:
                 self._start_sdk_poll()
@@ -538,17 +550,17 @@ def _build_qt_app():
         # ── VR Tracker 模型加载器 ───────────────────────
         def _setup_tracker_models(self):
             """设置 VR Tracker 模型加载器和回调。"""
-            if create_tracker_actor is None:
-                print("[MainWindow] VR Tracker 模型加载器不可用（VTK 未安装或模型加载器导入失败）")
-                return
-            
             vive_widget = self._right_panel.vive_tracker
             vive_widget.set_renderer_and_callbacks(
                 self._renderer,
                 model_load_callback=self._on_tracker_model_load,
-                model_unload_callback=self._on_tracker_model_unload
+                model_unload_callback=self._on_tracker_model_unload,
+                lighthouse_update_callback=self._on_lighthouse_pose_update,
+                tracking_state_changed_callback=self._on_vive_tracking_state_changed,
             )
-            print("[MainWindow] VR Tracker 模型加载器已初始化")
+            if create_tracker_actor is None:
+                print("[MainWindow] VR Tracker 模型加载器不可用（VTK 未安装或模型加载器导入失败）")
+            print("[MainWindow] VR Tracker / LightHouse 回调已初始化")
         
         def _on_tracker_model_load(self, side: str, renderer):
             """加载 VR Tracker 模型的回调。
@@ -566,6 +578,7 @@ def _build_qt_app():
                     renderer.AddActor(actor.get_actor())
                     # 存储到 ViveTrackerWidget 以便后续更新位置
                     self._right_panel.vive_tracker.store_model_actor(side, actor)
+                    self._update_mesh_stats()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已加载到 VTK 场景")
                 else:
                     print(f"[MainWindow] ✗ 无法为 {side} 手创建 Tracker 模型")
@@ -587,6 +600,7 @@ def _build_qt_app():
                 if actor is not None:
                     renderer.RemoveActor(actor.get_actor())
                     vive_widget.store_model_actor(side, None)
+                    self._update_mesh_stats()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已从 VTK 场景移除")
                 else:
                     print(f"[MainWindow] - {side} 手 Tracker 模型未被加载")
@@ -607,11 +621,180 @@ def _build_qt_app():
                             try:
                                 self._renderer.RemoveActor(actor.get_actor())
                                 vive_widget.store_model_actor(side, None)
+                                self._update_mesh_stats()
                                 print(f"[MainWindow] ✓ {side} 手 Tracker 模型已卸载")
                             except Exception as e:
                                 print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
             except Exception as e:
                 print(f"[MainWindow] ✗ 卸载所有追踪器模型失败：{e}")
+
+        def _prepare_lighthouse_model_polydata(self):
+            """加载并缓存 LightHouse 模型网格，简化仅执行一次。"""
+            if self._lighthouse_polydata is not None:
+                return
+            if not os.path.isfile(LIGHTHOUSE_MODEL_PATH):
+                print(f"[MainWindow] ✗ 无法找到 LightHouse 模型：{LIGHTHOUSE_MODEL_PATH}")
+                return
+
+            try:
+                reader = vtk.vtkOBJReader()
+                reader.SetFileName(LIGHTHOUSE_MODEL_PATH)
+                reader.Update()
+                polydata = reader.GetOutput()
+                original_faces = polydata.GetNumberOfCells()
+
+                ratio = max(0.01, min(1.0, float(LIGHTHOUSE_MESH_DECIMATION_RATIO)))
+                if ratio < 1.0:
+                    tri = vtk.vtkTriangleFilter()
+                    tri.SetInputData(polydata)
+                    tri.Update()
+
+                    decimator = vtk.vtkDecimatePro()
+                    decimator.SetInputData(tri.GetOutput())
+                    decimator.SetTargetReduction(1.0 - ratio)
+                    decimator.SetMaximumError(0.001)
+                    decimator.SetFeatureAngle(18.0)
+                    decimator.PreserveTopologyOn()
+                    decimator.SplittingOn()
+                    decimator.Update()
+                    polydata = decimator.GetOutput()
+
+                cached = vtk.vtkPolyData()
+                cached.DeepCopy(polydata)
+                self._lighthouse_polydata = cached
+                self._lighthouse_face_count = cached.GetNumberOfCells()
+                print(
+                    "[MainWindow] ✓ LightHouse 模型已缓存："
+                    f"{original_faces} -> {self._lighthouse_face_count} faces "
+                    f"(ratio={ratio:.2f})"
+                )
+            except Exception as e:
+                self._lighthouse_polydata = None
+                self._lighthouse_face_count = 0
+                print(f"[MainWindow] ✗ LightHouse 模型加载失败：{e}")
+
+        def _create_lighthouse_actor_bundle(self):
+            """创建单个 LightHouse actor/transform 包。"""
+            if self._lighthouse_polydata is None:
+                self._prepare_lighthouse_model_polydata()
+            if self._lighthouse_polydata is None:
+                return None
+
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(self._lighthouse_polydata)
+
+            actor = vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor(0.5, 0.7, 1.0)
+            actor.GetProperty().EdgeVisibilityOff()
+
+            transform = vtk.vtkTransform()
+            actor.SetUserTransform(transform)
+            return {"actor": actor, "transform": transform}
+
+        def _set_transform_from_pose(self, transform, position_xyz, quat_wxyz):
+            """将 (w,x,y,z) 四元数和位置写入 vtkTransform。"""
+            try:
+                px, py, pz = position_xyz
+                qw, qx, qy, qz = quat_wxyz
+                norm = (qw * qw + qx * qx + qy * qy + qz * qz) ** 0.5
+                if norm > 1e-6:
+                    qw /= norm
+                    qx /= norm
+                    qy /= norm
+                    qz /= norm
+
+                r11 = 1 - 2 * (qy * qy + qz * qz)
+                r12 = 2 * (qx * qy - qz * qw)
+                r13 = 2 * (qx * qz + qy * qw)
+                r21 = 2 * (qx * qy + qz * qw)
+                r22 = 1 - 2 * (qx * qx + qz * qz)
+                r23 = 2 * (qy * qz - qx * qw)
+                r31 = 2 * (qx * qz - qy * qw)
+                r32 = 2 * (qy * qz + qx * qw)
+                r33 = 1 - 2 * (qx * qx + qy * qy)
+
+                matrix = vtk.vtkMatrix4x4()
+                matrix.SetElement(0, 0, r11)
+                matrix.SetElement(0, 1, r12)
+                matrix.SetElement(0, 2, r13)
+                matrix.SetElement(1, 0, r21)
+                matrix.SetElement(1, 1, r22)
+                matrix.SetElement(1, 2, r23)
+                matrix.SetElement(2, 0, r31)
+                matrix.SetElement(2, 1, r32)
+                matrix.SetElement(2, 2, r33)
+                matrix.SetElement(0, 3, px)
+                matrix.SetElement(1, 3, py)
+                matrix.SetElement(2, 3, pz)
+                matrix.SetElement(3, 0, 0.0)
+                matrix.SetElement(3, 1, 0.0)
+                matrix.SetElement(3, 2, 0.0)
+                matrix.SetElement(3, 3, 1.0)
+
+                transform.SetMatrix(matrix)
+                transform.Modified()
+            except Exception as e:
+                print(f"[MainWindow] ✗ LightHouse 姿态应用失败：{e}")
+
+        def _on_vive_tracking_state_changed(self, enabled: bool):
+            """ViveTracker 追踪状态变更回调。"""
+            if not enabled:
+                self._clear_lighthouse_actors()
+
+        def _clear_lighthouse_actors(self):
+            """移除所有 LightHouse actor。"""
+            if not self._lighthouse_actors:
+                return
+
+            for bundle in self._lighthouse_actors.values():
+                try:
+                    self._renderer.RemoveActor(bundle["actor"])
+                except Exception:
+                    pass
+            self._lighthouse_actors.clear()
+            self._update_mesh_stats()
+
+        def _on_lighthouse_pose_update(self, lighthouse_states):
+            """由 ViveTracker 1Hz 定时器触发的 LightHouse 同步回调。"""
+            if self._right_panel is None or not hasattr(self._right_panel, 'vive_tracker'):
+                return
+            vive_widget = self._right_panel.vive_tracker
+            if not vive_widget.is_tracking_enabled():
+                return
+
+            desired_ids = set()
+            for state in lighthouse_states or []:
+                lighthouse_id = str(state.get("id") or "")
+                if not lighthouse_id:
+                    continue
+                desired_ids.add(lighthouse_id)
+
+                bundle = self._lighthouse_actors.get(lighthouse_id)
+                if bundle is None:
+                    bundle = self._create_lighthouse_actor_bundle()
+                    if bundle is None:
+                        continue
+                    self._renderer.AddActor(bundle["actor"])
+                    self._lighthouse_actors[lighthouse_id] = bundle
+
+                pos = state.get("position")
+                quat = state.get("quat_wxyz")
+                if pos is not None and quat is not None:
+                    self._set_transform_from_pose(bundle["transform"], pos, quat)
+
+            removed_any = False
+            for lighthouse_id in list(self._lighthouse_actors.keys()):
+                if lighthouse_id not in desired_ids:
+                    try:
+                        self._renderer.RemoveActor(self._lighthouse_actors[lighthouse_id]["actor"])
+                    except Exception:
+                        pass
+                    del self._lighthouse_actors[lighthouse_id]
+                    removed_any = True
+
+            if removed_any or len(desired_ids) != 0:
+                self._update_mesh_stats()
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
@@ -887,6 +1070,14 @@ def _build_qt_app():
                 self._mesh_stats_visible = not self._mesh_stats_visible
                 self._mesh_stats_actor.SetVisibility(self._mesh_stats_visible)
                 rw.Render()
+            elif action is reset_camera_action:
+                try:
+                    if hasattr(self, '_reset_camera_cb') and self._reset_camera_cb is not None:
+                        self._reset_camera_cb.reset()
+                    else:
+                        setup_camera(self._renderer, rw)
+                except Exception as e:
+                    print(f"[MainWindow] ✗ 重置视角失败：{e}")
 
         def _update_mesh_stats(self):
             """计算并更新所有模型的总面数统计。"""
@@ -938,6 +1129,13 @@ def _build_qt_app():
                                     total_faces += info['final']
                                 except Exception:
                                     pass
+            except Exception:
+                pass
+
+            # 计算 LightHouse 模型面数
+            try:
+                if self._lighthouse_face_count > 0 and self._lighthouse_actors:
+                    total_faces += self._lighthouse_face_count * len(self._lighthouse_actors)
             except Exception:
                 pass
             
@@ -999,6 +1197,7 @@ def _build_qt_app():
             
             # 关闭时卸载所有 VR 追踪器模型
             self._unload_all_tracker_models()
+            self._clear_lighthouse_actors()
             
             motionGloveSDK.MotionGloveSDK_CloseUDPPort()
             self._vtk_widget.GetRenderWindow().Finalize()

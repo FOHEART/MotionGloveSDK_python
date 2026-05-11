@@ -137,6 +137,8 @@ class ViveTrackerWidget(QWidget):
         # 模型加载/卸载回调（外部可以设置这些来响应模型状态变化）
         self._model_load_callback = None  # 回调签名：(side: str, renderer) -> None
         self._model_unload_callback = None  # 回调签名：(side: str, renderer) -> None
+        self._lighthouse_update_callback = None  # 回调签名：(list[dict]) -> None
+        self._tracking_state_changed_callback = None  # 回调签名：(enabled: bool) -> None
         self._renderer = None  # VTK 渲染器引用
         
         # 模型对象引用（用于跟踪已加载的模型）
@@ -423,17 +425,28 @@ class ViveTrackerWidget(QWidget):
                     except Exception as e:
                         print(f"[ModelCallback] 卸载右手模型失败：{e}")
 
-    def set_renderer_and_callbacks(self, renderer, model_load_callback=None, model_unload_callback=None):
+    def set_renderer_and_callbacks(
+        self,
+        renderer,
+        model_load_callback=None,
+        model_unload_callback=None,
+        lighthouse_update_callback=None,
+        tracking_state_changed_callback=None,
+    ):
         """设置 VTK 渲染器和模型加载/卸载回调。
         
         Args:
             renderer: VTK 渲染器对象（vtk.vtkRenderer）
             model_load_callback: 模型加载回调函数 (side: str, renderer) -> None
             model_unload_callback: 模型卸载回调函数 (side: str, renderer) -> None
+            lighthouse_update_callback: LightHouse 更新回调 (lighthouse_states: list[dict]) -> None
+            tracking_state_changed_callback: 追踪状态改变回调 (enabled: bool) -> None
         """
         self._renderer = renderer
         self._model_load_callback = model_load_callback
         self._model_unload_callback = model_unload_callback
+        self._lighthouse_update_callback = lighthouse_update_callback
+        self._tracking_state_changed_callback = tracking_state_changed_callback
         print("[ViveTrackerWidget] VTK 渲染器和模型回调已设置")
     
     def update_model_pose(self, side: str, position_xyz: tuple, quat_wxyz: tuple):
@@ -556,6 +569,12 @@ class ViveTrackerWidget(QWidget):
         
         # 启动 LightHouse 更新定时器
         self._lighthouse_update_timer.start()
+
+        if self._tracking_state_changed_callback is not None:
+            try:
+                self._tracking_state_changed_callback(True)
+            except Exception as e:
+                print(f"[ViveTrackerWidget] 追踪状态回调失败（start）：{e}")
         
         # 更新按钮文本
         self._start_tracking_btn.setText("停止追踪")
@@ -615,6 +634,12 @@ class ViveTrackerWidget(QWidget):
         
         self._openvr_system = None
         self._devices = {}
+
+        if self._tracking_state_changed_callback is not None:
+            try:
+                self._tracking_state_changed_callback(False)
+            except Exception as e:
+                print(f"[ViveTrackerWidget] 追踪状态回调失败（stop）：{e}")
         
         # 重置显示
         self._left_position_label.setText("位置：X= 0.0000m  Y= 0.0000m  Z= 0.0000m")
@@ -777,6 +802,44 @@ class ViveTrackerWidget(QWidget):
                 print(f"Tracking loop exception: {e}")
                 pass
 
+    def _collect_lighthouse_states(self):
+        """采集基站位姿列表。
+
+        Returns:
+            list[dict]: 每个元素包含 id/name/serial/position/quat_wxyz。
+        """
+        lighthouse_states = []
+        if self._openvr_system is None:
+            return lighthouse_states
+
+        tracking_refs = self._openvr_system.object_names.get("Tracking Reference", [])
+        for ref_name in tracking_refs:
+            device = self._openvr_system.devices.get(ref_name)
+            if device is None:
+                continue
+
+            try:
+                serial = device.get_serial()
+                if isinstance(serial, bytes):
+                    serial = serial.decode('utf-8')
+
+                pose_quat = device.get_pose_quaternion()
+                if not pose_quat or len(pose_quat) != 7:
+                    continue
+
+                x, y, z, qw, qx, qy, qz = pose_quat
+                lighthouse_states.append({
+                    "id": serial or ref_name,
+                    "name": ref_name,
+                    "serial": serial,
+                    "position": (x, y, z),
+                    "quat_wxyz": (qw, qx, qy, qz),
+                })
+            except Exception:
+                continue
+
+        return lighthouse_states
+
     def _update_light_house_info(self):
         """获取并更新 LightHouse 基站信息，显示在 connectionStatusText 中。
         
@@ -784,8 +847,10 @@ class ViveTrackerWidget(QWidget):
         """
         if self._openvr_system is None:
             new_lighthouse_content = ""
+            lighthouse_states = []
         else:
             try:
+                lighthouse_states = self._collect_lighthouse_states()
                 # 获取所有基站（Tracking Reference）
                 tracking_refs = self._openvr_system.object_names.get("Tracking Reference", [])
                 
@@ -826,7 +891,14 @@ class ViveTrackerWidget(QWidget):
                     
                     new_lighthouse_content = "\n".join(info_lines) if info_lines else ""
             except Exception as e:
+                lighthouse_states = []
                 new_lighthouse_content = f"\n=== LightHouse Error ===\n获取基站信息失败: {e}"
+
+        if self._lighthouse_update_callback is not None:
+            try:
+                self._lighthouse_update_callback(lighthouse_states)
+            except Exception as e:
+                print(f"[ViveTrackerWidget] LightHouse 回调失败：{e}")
         
         # 检测是否有变化，只有发生变化才更新 UI
         if self._last_lighthouse_content != new_lighthouse_content:
@@ -934,6 +1006,10 @@ class ViveTrackerWidget(QWidget):
                 quat_y=self._right_data.quat_y, quat_z=self._right_data.quat_z,
                 valid=True,
             )
+
+    def is_tracking_enabled(self) -> bool:
+        """是否处于追踪开启状态。"""
+        return self._tracking_enabled
 
     def closeEvent(self, event):
         """窗口关闭时清理资源。"""
