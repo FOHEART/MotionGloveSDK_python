@@ -67,7 +67,7 @@ sys.path.insert(0, _LIBS_DIR)
 sys.path.insert(0, _UI_DIR)
 
 import vtk
-from vtk_axes import add_axes_to_renderer
+from vtk_axes import add_axes_to_renderer, build_local_axes_actor
 from camera_control import bind_space_reset_camera, setup_camera
 from bone_joint_actor import BoneJointActor
 from bone_link_actor import BoneLinkActor
@@ -580,6 +580,17 @@ def _build_qt_app():
                     renderer.AddActor(actor.get_actor())
                     # 存储到 ViveTrackerWidget 以便后续更新位置
                     self._right_panel.vive_tracker.store_model_actor(side, actor)
+                    
+                    # 创建并添加本地坐标轴（X轴红色，Y轴绿色，Z轴蓝色）
+                    # 轴长度：75mm，轴粗细：3mm（对应显示粗细约为6 pixel）
+                    try:
+                        axes_actor = build_local_axes_actor(length_mm=75, shaft_radius_mm=3)
+                        renderer.AddActor(axes_actor)
+                        self._right_panel.vive_tracker.store_axes_actor(side, axes_actor)
+                        print(f"[MainWindow] ✓ {side} 手 Tracker 本地坐标轴已加载（75mm 长度，3mm 粗细）")
+                    except Exception as e:
+                        print(f"[MainWindow] ⚠ {side} 手 Tracker 坐标轴加载失败：{e}")
+                    
                     self._update_mesh_stats()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已加载到 VTK 场景")
                 else:
@@ -598,14 +609,25 @@ def _build_qt_app():
             """
             try:
                 vive_widget = self._right_panel.vive_tracker
+                
+                # 卸载模型
                 actor = vive_widget._tracker_model_actors.get(side)
                 if actor is not None:
                     renderer.RemoveActor(actor.get_actor())
                     vive_widget.store_model_actor(side, None)
-                    self._update_mesh_stats()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已从 VTK 场景移除")
-                else:
+                
+                # 卸载坐标轴
+                axes_actor = vive_widget._tracker_axes_actors.get(side)
+                if axes_actor is not None:
+                    renderer.RemoveActor(axes_actor)
+                    vive_widget.store_axes_actor(side, None)
+                    print(f"[MainWindow] ✓ {side} 手 Tracker 坐标轴已从 VTK 场景移除")
+                
+                if actor is None and axes_actor is None:
                     print(f"[MainWindow] - {side} 手 Tracker 模型未被加载")
+                
+                self._update_mesh_stats()
             except Exception as e:
                 print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
                 import traceback
@@ -623,10 +645,21 @@ def _build_qt_app():
                             try:
                                 self._renderer.RemoveActor(actor.get_actor())
                                 vive_widget.store_model_actor(side, None)
-                                self._update_mesh_stats()
                                 print(f"[MainWindow] ✓ {side} 手 Tracker 模型已卸载")
                             except Exception as e:
                                 print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 模型失败：{e}")
+                        
+                        # 卸载坐标轴
+                        axes_actor = vive_widget._tracker_axes_actors.get(side)
+                        if axes_actor is not None:
+                            try:
+                                self._renderer.RemoveActor(axes_actor)
+                                vive_widget.store_axes_actor(side, None)
+                                print(f"[MainWindow] ✓ {side} 手 Tracker 坐标轴已卸载")
+                            except Exception as e:
+                                print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 坐标轴失败：{e}")
+                        
+                        self._update_mesh_stats()
             except Exception as e:
                 print(f"[MainWindow] ✗ 卸载所有追踪器模型失败：{e}")
 
@@ -636,7 +669,31 @@ def _build_qt_app():
 
         def _create_lighthouse_actor_bundle(self):
             """Create Lighthouse actor bundle using the new loader."""
-            return lighthouse_loader.create_actor_bundle()
+            bundle = lighthouse_loader.create_actor_bundle()
+            if bundle is None:
+                return None
+            
+            # 添加本地坐标轴
+            try:
+                axes_actor = build_local_axes_actor(length_mm=75, shaft_radius_mm=3)  # 灯塔用较小的坐标轴
+                axes_transform = vtk.vtkTransform()
+                
+                # 为坐标轴assembly中的每个actor设置相同的transform
+                parts = axes_actor.GetParts()
+                for i in range(parts.GetNumberOfItems()):
+                    part = parts.GetItemAsObject(i)
+                    if part is not None:
+                        part.SetUserTransform(axes_transform)
+                
+                # 将坐标轴和transform添加到bundle
+                bundle["axes_actor"] = axes_actor
+                bundle["axes_transform"] = axes_transform
+                
+                print(f"[MainWindow] ✓ Lighthouse 本地坐标轴已创建（50mm 长度，3px 粗细）")
+            except Exception as e:
+                print(f"[MainWindow] ⚠ Lighthouse 坐标轴创建失败：{e}")
+            
+            return bundle
 
         def _set_transform_from_pose(self, transform, position_xyz, quat_wxyz):
             """将 (w,x,y,z) 四元数和位置写入 vtkTransform。"""
@@ -696,6 +753,10 @@ def _build_qt_app():
             for bundle in self._lighthouse_actors.values():
                 try:
                     self._renderer.RemoveActor(bundle["actor"])
+                    
+                    # 同时移除坐标轴
+                    if "axes_actor" in bundle:
+                        self._renderer.RemoveActor(bundle["axes_actor"])
                 except Exception:
                     pass
             self._lighthouse_actors.clear()
@@ -722,18 +783,31 @@ def _build_qt_app():
                     if bundle is None:
                         continue
                     self._renderer.AddActor(bundle["actor"])
+                    
+                    # 同时添加坐标轴到renderer
+                    if "axes_actor" in bundle:
+                        self._renderer.AddActor(bundle["axes_actor"])
+                    
                     self._lighthouse_actors[lighthouse_id] = bundle
 
                 pos = state.get("position")
                 quat = state.get("quat_wxyz")
                 if pos is not None and quat is not None:
                     self._set_transform_from_pose(bundle["transform"], pos, quat)
+                    
+                    # 同时更新坐标轴的transform
+                    if "axes_transform" in bundle:
+                        self._set_transform_from_pose(bundle["axes_transform"], pos, quat)
 
             removed_any = False
             for lighthouse_id in list(self._lighthouse_actors.keys()):
                 if lighthouse_id not in desired_ids:
                     try:
                         self._renderer.RemoveActor(self._lighthouse_actors[lighthouse_id]["actor"])
+                        
+                        # 同时移除坐标轴
+                        if "axes_actor" in self._lighthouse_actors[lighthouse_id]:
+                            self._renderer.RemoveActor(self._lighthouse_actors[lighthouse_id]["axes_actor"])
                     except Exception:
                         pass
                     del self._lighthouse_actors[lighthouse_id]

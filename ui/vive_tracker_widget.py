@@ -143,6 +143,7 @@ class ViveTrackerWidget(QWidget):
         
         # 模型对象引用（用于跟踪已加载的模型）
         self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
+        self._tracker_axes_actors = {}   # {"left": vtkPropAssembly, "right": vtkPropAssembly}
         
         # LightHouse 信息缓存（用于检测内容变化）
         self._last_lighthouse_content = None  # 存储上一次的基站信息内容
@@ -450,7 +451,7 @@ class ViveTrackerWidget(QWidget):
         print("[ViveTrackerWidget] VTK 渲染器和模型回调已设置")
     
     def update_model_pose(self, side: str, position_xyz: tuple, quat_wxyz: tuple):
-        """更新模型的位置和旋转。
+        """更新模型的位置和旋转（包括坐标轴）。坐标轴会完全跟随模型的位置和旋转。
         
         Args:
             side: "left" 或 "right"
@@ -478,7 +479,85 @@ class ViveTrackerWidget(QWidget):
                 print(f"[ModelPose] {side}: pos=({position_xyz[0]:.4f}, {position_xyz[1]:.4f}, {position_xyz[2]:.4f}) "
                       f"quat=(w={qw:.4f}, x={qx:.4f}, y={qy:.4f}, z={qz:.4f})")
             
+            # 更新追踪器 3D 模型的位置和旋转
             actor.set_position_and_rotation(position_xyz, (qx, qy, qz, qw))
+            
+            # 同时更新坐标轴的位置和旋转
+            axes_actor = self._tracker_axes_actors.get(side)
+            if axes_actor is not None:
+                try:
+                    import vtk
+                    
+                    # 标准化四元数
+                    quat_norm = (qx*qx + qy*qy + qz*qz + qw*qw) ** 0.5
+                    if quat_norm > 1e-6:
+                        qx_norm = qx / quat_norm
+                        qy_norm = qy / quat_norm
+                        qz_norm = qz / quat_norm
+                        qw_norm = qw / quat_norm
+                    else:
+                        qx_norm, qy_norm, qz_norm, qw_norm = 0, 0, 0, 1
+                    
+                    # 将四元数转换为旋转矩阵
+                    # 公式源于标准的四元数到旋转矩阵转换
+                    r11 = 1 - 2*(qy_norm*qy_norm + qz_norm*qz_norm)
+                    r12 = 2*(qx_norm*qy_norm - qz_norm*qw_norm)
+                    r13 = 2*(qx_norm*qz_norm + qy_norm*qw_norm)
+                    
+                    r21 = 2*(qx_norm*qy_norm + qz_norm*qw_norm)
+                    r22 = 1 - 2*(qx_norm*qx_norm + qz_norm*qz_norm)
+                    r23 = 2*(qy_norm*qz_norm - qx_norm*qw_norm)
+                    
+                    r31 = 2*(qx_norm*qz_norm - qy_norm*qw_norm)
+                    r32 = 2*(qy_norm*qz_norm + qx_norm*qw_norm)
+                    r33 = 1 - 2*(qx_norm*qx_norm + qy_norm*qy_norm)
+                    
+                    # 创建 4x4 变换矩阵（旋转 + 平移）
+                    matrix = vtk.vtkMatrix4x4()
+                    
+                    # 设置旋转部分 (3x3)
+                    matrix.SetElement(0, 0, r11)
+                    matrix.SetElement(0, 1, r12)
+                    matrix.SetElement(0, 2, r13)
+                    matrix.SetElement(0, 3, position_xyz[0])
+                    
+                    matrix.SetElement(1, 0, r21)
+                    matrix.SetElement(1, 1, r22)
+                    matrix.SetElement(1, 2, r23)
+                    matrix.SetElement(1, 3, position_xyz[1])
+                    
+                    matrix.SetElement(2, 0, r31)
+                    matrix.SetElement(2, 1, r32)
+                    matrix.SetElement(2, 2, r33)
+                    matrix.SetElement(2, 3, position_xyz[2])
+                    
+                    # 齐次坐标
+                    matrix.SetElement(3, 0, 0.0)
+                    matrix.SetElement(3, 1, 0.0)
+                    matrix.SetElement(3, 2, 0.0)
+                    matrix.SetElement(3, 3, 1.0)
+                    
+                    # 为 assembly 中的每个 actor 应用相同的变换
+                    transform = vtk.vtkTransform()
+                    transform.SetMatrix(matrix)
+                    
+                    parts = axes_actor.GetParts()
+                    for i in range(parts.GetNumberOfItems()):
+                        part = parts.GetItemAsObject(i)
+                        if part is not None:
+                            # 直接应用变换矩阵，不清除位置和方向
+                            # SetUserTransform 会完全控制actor的变换
+                            part.SetUserTransform(transform)
+                            part.Modified()
+                    
+                    # 标记 assembly 为已更新
+                    axes_actor.Modified()
+                    
+                except Exception as e:
+                    # 如果更新坐标轴失败，不要中断模型更新
+                    if self._model_pose_log_counter == 0:
+                        print(f"[ModelPose] ⚠ {side} 手坐标轴更新警告：{e}")
+                        
         except Exception as e:
             print(f"[ModelPose] 更新 {side} 模型位置失败：{e}")
     
@@ -490,6 +569,15 @@ class ViveTrackerWidget(QWidget):
             actor: VRTrackerModelActor 实例
         """
         self._tracker_model_actors[side] = actor
+    
+    def store_axes_actor(self, side: str, axes_actor):
+        """存储坐标轴 Actor 引用。
+        
+        Args:
+            side: "left" 或 "right"
+            axes_actor: vtkPropAssembly 实例
+        """
+        self._tracker_axes_actors[side] = axes_actor
     
     def _unload_all_tracker_models(self):
         """卸载所有已加载的 VR 追踪器模型。"""
