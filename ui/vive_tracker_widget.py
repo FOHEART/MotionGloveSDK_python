@@ -475,9 +475,9 @@ class ViveTrackerWidget(QWidget):
             else:
                 self._model_pose_log_counter = 0
             
-            if self._model_pose_log_counter == 0:
-                print(f"[ModelPose] {side}: pos=({position_xyz[0]:.4f}, {position_xyz[1]:.4f}, {position_xyz[2]:.4f}) "
-                      f"quat=(w={qw:.4f}, x={qx:.4f}, y={qy:.4f}, z={qz:.4f})")
+            #if self._model_pose_log_counter == 0:
+                #print(f"[ModelPose] {side}: pos=({position_xyz[0]:.4f}, {position_xyz[1]:.4f}, {position_xyz[2]:.4f}) "
+                      #f"quat=(w={qw:.4f}, x={qx:.4f}, y={qy:.4f}, z={qz:.4f})")
             
             # 更新追踪器 3D 模型的位置和旋转
             actor.set_position_and_rotation(position_xyz, (qx, qy, qz, qw))
