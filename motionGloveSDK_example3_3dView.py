@@ -87,6 +87,19 @@ except ImportError:
     VRTrackerModelActor = None
     create_tracker_actor = None
 
+# Lighthouse 模型加载器
+from triad_openvr.lighthouse_model_loader import (
+    LIGHTHOUSE_MODEL_PATH,
+    LIGHTHOUSE_MESH_DECIMATION_RATIO,
+    LighthouseModelLoader,
+)
+
+# Initialize Lighthouse model loader
+lighthouse_loader = LighthouseModelLoader(
+    model_path=LIGHTHOUSE_MODEL_PATH,
+    decimation_ratio=LIGHTHOUSE_MESH_DECIMATION_RATIO,
+)
+
 # ─────────────────────────────────────────────
 #  配置
 # ─────────────────────────────────────────────
@@ -114,14 +127,6 @@ BONE_LINK_COLOR_RIGHT = (0.3, 0.8, 1.0)
 BONE_LINK_COLOR_LEFT  = (1.0, 0.5, 0.2)
 BONE_LINK_WIDTH       = 3.0
 
-LIGHTHOUSE_MODEL_PATH = os.path.join(
-    _SCRIPT_DIR,
-    "triad_openvr",
-    "lh_basestation_vive",
-    "lh_basestation_vive.obj",
-)
-LIGHTHOUSE_MESH_DECIMATION_RATIO = 0.5
-
 _BONE_LINKS: list[tuple[int, int]] = [
     # 右手
     (BoneIndex.RightHandThumb1,    BoneIndex.RightHand),
@@ -135,7 +140,7 @@ _BONE_LINKS: list[tuple[int, int]] = [
     (BoneIndex.RightHandMiddle1,   BoneIndex.RightHand),
     (BoneIndex.RightHandMiddle2,   BoneIndex.RightHandMiddle1),
     (BoneIndex.RightHandMiddle3,   BoneIndex.RightHandMiddle2),
-    (BoneIndex.RightHandMiddle3End,BoneIndex.RightHandMiddle3),
+    (BoneIndex.RightHandMiddle3End, BoneIndex.RightHandMiddle3),
     (BoneIndex.RightHandRing1,     BoneIndex.RightHand),
     (BoneIndex.RightHandRing2,     BoneIndex.RightHandRing1),
     (BoneIndex.RightHandRing3,     BoneIndex.RightHandRing2),
@@ -168,11 +173,9 @@ _BONE_LINKS: list[tuple[int, int]] = [
 ]
 
 # 每根骨骼的父骨骼索引（-1 表示根骨骼，无父）
-# 拓扑顺序：根在前，子骨骼在后，保证全局四元数计算时父节点已先算完
 _BONE_PARENT: list[int] = [-1] * KHHS42_SKELETON_COUNT
 for _child, _par in _BONE_LINKS:
     _BONE_PARENT[_child] = _par
-# RightHand(0) 和 LeftHand(21) 保持 -1（根骨骼）
 
 # End-node bone indices — position-only rendering (no axis tripods)
 _END_BONE_INDICES: set[int] = {b for b in BoneIndex if b.name.endswith("End")}
@@ -180,7 +183,6 @@ _END_BONE_INDICES: set[int] = {b for b in BoneIndex if b.name.endswith("End")}
 # 32 节点流（无 End）时，为每根手指第三节补一个固定 20mm 虚拟末梢点
 _VIRTUAL_TIP_LENGTH_M = 0.02
 _VIRTUAL_TIP_RULES: list[tuple[int, int, int]] = [
-    # (virtual_end_idx, third_idx, second_idx)
     (BoneIndex.RightHandThumb3End, BoneIndex.RightHandThumb3, BoneIndex.RightHandThumb2),
     (BoneIndex.RightHandIndex3End, BoneIndex.RightHandIndex3, BoneIndex.RightHandIndex2),
     (BoneIndex.RightHandMiddle3End, BoneIndex.RightHandMiddle3, BoneIndex.RightHandMiddle2),
@@ -629,68 +631,12 @@ def _build_qt_app():
                 print(f"[MainWindow] ✗ 卸载所有追踪器模型失败：{e}")
 
         def _prepare_lighthouse_model_polydata(self):
-            """加载并缓存 LightHouse 模型网格，简化仅执行一次。"""
-            if self._lighthouse_polydata is not None:
-                return
-            if not os.path.isfile(LIGHTHOUSE_MODEL_PATH):
-                print(f"[MainWindow] ✗ 无法找到 LightHouse 模型：{LIGHTHOUSE_MODEL_PATH}")
-                return
-
-            try:
-                reader = vtk.vtkOBJReader()
-                reader.SetFileName(LIGHTHOUSE_MODEL_PATH)
-                reader.Update()
-                polydata = reader.GetOutput()
-                original_faces = polydata.GetNumberOfCells()
-
-                ratio = max(0.01, min(1.0, float(LIGHTHOUSE_MESH_DECIMATION_RATIO)))
-                if ratio < 1.0:
-                    tri = vtk.vtkTriangleFilter()
-                    tri.SetInputData(polydata)
-                    tri.Update()
-
-                    decimator = vtk.vtkDecimatePro()
-                    decimator.SetInputData(tri.GetOutput())
-                    decimator.SetTargetReduction(1.0 - ratio)
-                    decimator.SetMaximumError(0.001)
-                    decimator.SetFeatureAngle(18.0)
-                    decimator.PreserveTopologyOn()
-                    decimator.SplittingOn()
-                    decimator.Update()
-                    polydata = decimator.GetOutput()
-
-                cached = vtk.vtkPolyData()
-                cached.DeepCopy(polydata)
-                self._lighthouse_polydata = cached
-                self._lighthouse_face_count = cached.GetNumberOfCells()
-                print(
-                    "[MainWindow] ✓ LightHouse 模型已缓存："
-                    f"{original_faces} -> {self._lighthouse_face_count} faces "
-                    f"(ratio={ratio:.2f})"
-                )
-            except Exception as e:
-                self._lighthouse_polydata = None
-                self._lighthouse_face_count = 0
-                print(f"[MainWindow] ✗ LightHouse 模型加载失败：{e}")
+            """Load and cache Lighthouse model using the new loader."""
+            self._lighthouse_polydata, self._lighthouse_face_count = lighthouse_loader.prepare_model_polydata()
 
         def _create_lighthouse_actor_bundle(self):
-            """创建单个 LightHouse actor/transform 包。"""
-            if self._lighthouse_polydata is None:
-                self._prepare_lighthouse_model_polydata()
-            if self._lighthouse_polydata is None:
-                return None
-
-            mapper = vtk.vtkPolyDataMapper()
-            mapper.SetInputData(self._lighthouse_polydata)
-
-            actor = vtk.vtkActor()
-            actor.SetMapper(mapper)
-            actor.GetProperty().SetColor(0.5, 0.7, 1.0)
-            actor.GetProperty().EdgeVisibilityOff()
-
-            transform = vtk.vtkTransform()
-            actor.SetUserTransform(transform)
-            return {"actor": actor, "transform": transform}
+            """Create Lighthouse actor bundle using the new loader."""
+            return lighthouse_loader.create_actor_bundle()
 
         def _set_transform_from_pose(self, transform, position_xyz, quat_wxyz):
             """将 (w,x,y,z) 四元数和位置写入 vtkTransform。"""
