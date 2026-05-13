@@ -133,6 +133,138 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QFrame" name="leftBiasSeparator">
+        <property name="frameShape">
+         <enum>QFrame::HLine</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Sunken</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="leftBiasTitle">
+        <property name="text">
+         <string>位置偏差 (米):</string>
+        </property>
+        <property name="styleSheet">
+         <string>font-size: 10px;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="leftBiasAllLayout">
+        <item>
+         <widget class="QLabel" name="leftBiasXLabel">
+          <property name="text">
+           <string>X:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="leftBiasXEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="leftBiasYLabel">
+          <property name="text">
+           <string>Y:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="leftBiasYEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="leftBiasZLabel">
+          <property name="text">
+           <string>Z:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="leftBiasZEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="leftBiasSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="leftBiasSetBtn">
+          <property name="text">
+           <string>设置</string>
+          </property>
+          <property name="maximumWidth">
+           <number>50</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="leftFinalPositionLabel">
+        <property name="text">
+         <string>最终位置：X= 0.0000m  Y= 0.0000m  Z= 0.0000m</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="font">
+         <font>
+          <family>Courier New</family>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -191,6 +323,138 @@
        <widget class="QLabel" name="rightHandQuatLabel">
         <property name="text">
          <string>四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="font">
+         <font>
+          <family>Courier New</family>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="rightBiasSeparator">
+        <property name="frameShape">
+         <enum>QFrame::HLine</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Sunken</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="rightBiasTitle">
+        <property name="text">
+         <string>位置偏差 (米):</string>
+        </property>
+        <property name="styleSheet">
+         <string>font-size: 10px;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="rightBiasAllLayout">
+        <item>
+         <widget class="QLabel" name="rightBiasXLabel">
+          <property name="text">
+           <string>X:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="rightBiasXEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="rightBiasYLabel">
+          <property name="text">
+           <string>Y:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="rightBiasYEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="rightBiasZLabel">
+          <property name="text">
+           <string>Z:</string>
+          </property>
+          <property name="maximumWidth">
+           <number>15</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="rightBiasZEdit">
+          <property name="text">
+           <string>0.0</string>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+          <property name="maximumWidth">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="rightBiasSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="rightBiasSetBtn">
+          <property name="text">
+           <string>设置</string>
+          </property>
+          <property name="maximumWidth">
+           <number>50</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="rightFinalPositionLabel">
+        <property name="text">
+         <string>最终位置：X= 0.0000m  Y= 0.0000m  Z= 0.0000m</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

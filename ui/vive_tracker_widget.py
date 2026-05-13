@@ -18,7 +18,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit, QFrame
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
 from PySide6.QtGui import QCursor
@@ -34,16 +34,19 @@ from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, get_glo
 @dataclass
 class TrackerData:
     """追踪器数据结构。"""
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
+    pos_origin_x_m: float = 0.0
+    pos_origin_y_m: float = 0.0
+    pos_origin_z_m: float = 0.0
     yaw: float = 0.0
     pitch: float = 0.0
     roll: float = 0.0
-    quat_w: float = 0.0
-    quat_x: float = 0.0
-    quat_y: float = 0.0
-    quat_z: float = 0.0
+    quat_origin_w: float = 0.0
+    quat_origin_x: float = 0.0
+    quat_origin_y: float = 0.0
+    quat_origin_z: float = 0.0
+    pos_bias_x_m: float = 0.0  # 位置偏差 X 坐标（米）
+    pos_bias_y_m: float = 0.0  # 位置偏差 Y 坐标（米）
+    pos_bias_z_m: float = 0.0  # 位置偏差 Z 坐标（米）
     valid: bool = False
 
 
@@ -244,6 +247,77 @@ class ViveTrackerWidget(QWidget):
         
         self._right_group.setContextMenuPolicy(Qt.CustomContextMenu)
         self._right_group.customContextMenuRequested.connect(self._on_right_group_context_menu)
+        
+        # 初始化位置偏差控件
+        self._init_bias_controls()
+
+    def _init_bias_controls(self):
+        """初始化位置偏差控件（从 UI 文件加载）。"""
+        # 从 UI 中查找左手偏差控件
+        self._left_bias_x_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasXEdit")
+        self._left_bias_y_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasYEdit")
+        self._left_bias_z_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasZEdit")
+        left_bias_set_btn: QPushButton = self._ui.findChild(QPushButton, "leftBiasSetBtn")
+        
+        # 从 UI 中查找右手偏差控件
+        self._right_bias_x_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasXEdit")
+        self._right_bias_y_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasYEdit")
+        self._right_bias_z_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasZEdit")
+        right_bias_set_btn: QPushButton = self._ui.findChild(QPushButton, "rightBiasSetBtn")
+        
+        # 验证所有偏差控件已找到
+        assert self._left_bias_x_edit is not None, "UI 控件未找到：leftBiasXEdit"
+        assert self._left_bias_y_edit is not None, "UI 控件未找到：leftBiasYEdit"
+        assert self._left_bias_z_edit is not None, "UI 控件未找到：leftBiasZEdit"
+        assert left_bias_set_btn is not None, "UI 控件未找到：leftBiasSetBtn"
+        assert self._right_bias_x_edit is not None, "UI 控件未找到：rightBiasXEdit"
+        assert self._right_bias_y_edit is not None, "UI 控件未找到：rightBiasYEdit"
+        assert self._right_bias_z_edit is not None, "UI 控件未找到：rightBiasZEdit"
+        assert right_bias_set_btn is not None, "UI 控件未找到：rightBiasSetBtn"
+        
+        # 连接信号
+        left_bias_set_btn.clicked.connect(self._on_set_left_bias)
+        right_bias_set_btn.clicked.connect(self._on_set_right_bias)
+
+    def _on_set_left_bias(self):
+        """处理设置左手偏差按钮点击事件。"""
+        try:
+            x = float(self._left_bias_x_edit.text())
+            y = float(self._left_bias_y_edit.text())
+            z = float(self._left_bias_z_edit.text())
+            
+            with self._data_lock:
+                self._left_data.pos_bias_x_m = x
+                self._left_data.pos_bias_y_m = y
+                self._left_data.pos_bias_z_m = z
+            
+            print(f"[PosBias] 左手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
+            
+            # 触发场景更新
+            if self._renderer is not None and self._mark_scene_dirty is not None:
+                self._mark_scene_dirty()
+        except ValueError as e:
+            print(f"[PosBias] 左手偏差设置失败：无效的数值 - {e}")
+
+    def _on_set_right_bias(self):
+        """处理设置右手偏差按钮点击事件。"""
+        try:
+            x = float(self._right_bias_x_edit.text())
+            y = float(self._right_bias_y_edit.text())
+            z = float(self._right_bias_z_edit.text())
+            
+            with self._data_lock:
+                self._right_data.pos_bias_x_m = x
+                self._right_data.pos_bias_y_m = y
+                self._right_data.pos_bias_z_m = z
+            
+            print(f"[PosBias] 右手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
+            
+            # 触发场景更新
+            if self._renderer is not None and self._mark_scene_dirty is not None:
+                self._mark_scene_dirty()
+        except ValueError as e:
+            print(f"[PosBias] 右手偏差设置失败：无效的数值 - {e}")
 
     def _set_steamvr_status(self, running: bool):
         """更新 SteamVR 状态标签。
@@ -472,6 +546,7 @@ class ViveTrackerWidget(QWidget):
         已优化：
         - VTK 对象复用：缓存 vtkMatrix4x4 和 vtkTransform，避免每帧新建
         - 变化检测：仅当位置/旋转改变时才更新坐标轴
+        - 位置偏差：应用位置偏差到最终位置
         
         Args:
             side: "left" 或 "right"
@@ -486,11 +561,29 @@ class ViveTrackerWidget(QWidget):
             return
         
         try:
+            # ── 应用位置偏差 ────────────────
+            # 获取对应的 TrackerData 以读取偏差
+            tracker_data = None
+            with self._data_lock:
+                if side == "left":
+                    tracker_data = self._left_data
+                elif side == "right":
+                    tracker_data = self._right_data
+                
+                # 计算最终位置（原始位置 + 偏差）
+                if tracker_data is not None:
+                    final_x = position_xyz[0] + tracker_data.pos_bias_x_m
+                    final_y = position_xyz[1] + tracker_data.pos_bias_y_m
+                    final_z = position_xyz[2] + tracker_data.pos_bias_z_m
+                    final_position = (final_x, final_y, final_z)
+                else:
+                    final_position = position_xyz
+            
             # 转换四元数格式从 (w, x, y, z) 到 (x, y, z, w)
             qx, qy, qz, qw = quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]
             
-            # 更新追踪器 3D 模型的位置和旋转
-            actor.set_position_and_rotation(position_xyz, (qx, qy, qz, qw))
+            # 更新追踪器 3D 模型的位置和旋转（使用带偏差的最终位置）
+            actor.set_position_and_rotation(final_position, (qx, qy, qz, qw))
             
             # 同时更新坐标轴的位置和旋转
             axes_actor = self._tracker_axes_actors.get(side)
@@ -552,21 +645,21 @@ class ViveTrackerWidget(QWidget):
                     transform = self._axes_transform_cache[side]
                     
                     # 更新矩阵元素（复用对象）
-                    # 设置旋转部分 (3x3) + 平移
+                    # 设置旋转部分 (3x3) + 平移（使用带偏差的最终位置）
                     matrix.SetElement(0, 0, r11)
                     matrix.SetElement(0, 1, r12)
                     matrix.SetElement(0, 2, r13)
-                    matrix.SetElement(0, 3, position_xyz[0])
+                    matrix.SetElement(0, 3, final_position[0])
                     
                     matrix.SetElement(1, 0, r21)
                     matrix.SetElement(1, 1, r22)
                     matrix.SetElement(1, 2, r23)
-                    matrix.SetElement(1, 3, position_xyz[1])
+                    matrix.SetElement(1, 3, final_position[1])
                     
                     matrix.SetElement(2, 0, r31)
                     matrix.SetElement(2, 1, r32)
                     matrix.SetElement(2, 2, r33)
-                    matrix.SetElement(2, 3, position_xyz[2])
+                    matrix.SetElement(2, 3, final_position[2])
                     
                     # 齐次坐标
                     matrix.SetElement(3, 0, 0.0)
@@ -837,9 +930,9 @@ class ViveTrackerWidget(QWidget):
                         if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
                             with self._data_lock:
-                                self._left_data.x = x
-                                self._left_data.y = y
-                                self._left_data.z = z
+                                self._left_data.pos_origin_x_m = x
+                                self._left_data.pos_origin_y_m = y
+                                self._left_data.pos_origin_z_m = z
                                 self._left_data.yaw = yaw
                                 self._left_data.pitch = pitch
                                 self._left_data.roll = roll
@@ -850,22 +943,22 @@ class ViveTrackerWidget(QWidget):
                                     if pose_quat is not None and len(pose_quat) == 7:
                                         # pose_quat = [x, y, z, qw, qx, qy, qz]
                                         x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                        self._left_data.quat_w = qw
-                                        self._left_data.quat_x = qx
-                                        self._left_data.quat_y = qy
-                                        self._left_data.quat_z = qz
+                                        self._left_data.quat_origin_w = qw
+                                        self._left_data.quat_origin_x = qx
+                                        self._left_data.quat_origin_y = qy
+                                        self._left_data.quat_origin_z = qz
                                     else:
-                                        self._left_data.quat_w = 1.0
-                                        self._left_data.quat_x = 0.0
-                                        self._left_data.quat_y = 0.0
-                                        self._left_data.quat_z = 0.0
+                                        self._left_data.quat_origin_w = 1.0
+                                        self._left_data.quat_origin_x = 0.0
+                                        self._left_data.quat_origin_y = 0.0
+                                        self._left_data.quat_origin_z = 0.0
                                 except Exception as e:
                                     if first_run:
                                         print(f"[Left] get_pose_quaternion() error: {e}")
-                                    self._left_data.quat_w = 1.0
-                                    self._left_data.quat_x = 0.0
-                                    self._left_data.quat_y = 0.0
-                                    self._left_data.quat_z = 0.0
+                                    self._left_data.quat_origin_w = 1.0
+                                    self._left_data.quat_origin_x = 0.0
+                                    self._left_data.quat_origin_y = 0.0
+                                    self._left_data.quat_origin_z = 0.0
                                 
                                 # 标记数据有效
                                 self._left_data.valid = True
@@ -883,9 +976,9 @@ class ViveTrackerWidget(QWidget):
                         if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
                             with self._data_lock:
-                                self._right_data.x = x
-                                self._right_data.y = y
-                                self._right_data.z = z
+                                self._right_data.pos_origin_x_m = x
+                                self._right_data.pos_origin_y_m = y
+                                self._right_data.pos_origin_z_m = z
                                 self._right_data.yaw = yaw
                                 self._right_data.pitch = pitch
                                 self._right_data.roll = roll
@@ -896,22 +989,22 @@ class ViveTrackerWidget(QWidget):
                                     if pose_quat is not None and len(pose_quat) == 7:
                                         # pose_quat = [x, y, z, qw, qx, qy, qz]
                                         x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                        self._right_data.quat_w = qw
-                                        self._right_data.quat_x = qx
-                                        self._right_data.quat_y = qy
-                                        self._right_data.quat_z = qz
+                                        self._right_data.quat_origin_w = qw
+                                        self._right_data.quat_origin_x = qx
+                                        self._right_data.quat_origin_y = qy
+                                        self._right_data.quat_origin_z = qz
                                     else:
-                                        self._right_data.quat_w = 1.0
-                                        self._right_data.quat_x = 0.0
-                                        self._right_data.quat_y = 0.0
-                                        self._right_data.quat_z = 0.0
+                                        self._right_data.quat_origin_w = 1.0
+                                        self._right_data.quat_origin_x = 0.0
+                                        self._right_data.quat_origin_y = 0.0
+                                        self._right_data.quat_origin_z = 0.0
                                 except Exception as e:
                                     if first_run:
                                         print(f"[Right] get_pose_quaternion() error: {e}")
-                                    self._right_data.quat_w = 1.0
-                                    self._right_data.quat_x = 0.0
-                                    self._right_data.quat_y = 0.0
-                                    self._right_data.quat_z = 0.0
+                                    self._right_data.quat_origin_w = 1.0
+                                    self._right_data.quat_origin_x = 0.0
+                                    self._right_data.quat_origin_y = 0.0
+                                    self._right_data.quat_origin_z = 0.0
                                 
                                 # 标记数据有效
                                 self._right_data.valid = True
@@ -1051,9 +1144,9 @@ class ViveTrackerWidget(QWidget):
             if self._left_data.valid:
                 # 有有效数据，重置离线计数器
                 self._left_offline_counter = 0
-                pos_text = f"位置：X={self._left_data.x:8.4f}m  Y={self._left_data.y:8.4f}m  Z={self._left_data.z:8.4f}m"
+                pos_text = f"位置：X={self._left_data.pos_origin_x_m:8.4f}m  Y={self._left_data.pos_origin_y_m:8.4f}m  Z={self._left_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._left_data.yaw:7.2f}°  Pitch={self._left_data.pitch:7.2f}°  Roll={self._left_data.roll:7.2f}°"
-                quat_text = f"四元数：w={self._left_data.quat_w:8.4f}  x={self._left_data.quat_x:8.4f}  y={self._left_data.quat_y:8.4f}  z={self._left_data.quat_z:8.4f}"
+                quat_text = f"四元数：w={self._left_data.quat_origin_w:8.4f}  x={self._left_data.quat_origin_x:8.4f}  y={self._left_data.quat_origin_y:8.4f}  z={self._left_data.quat_origin_z:8.4f}"
                 self._left_position_label.setText(pos_text)
                 self._left_rotation_label.setText(rot_text)
                 self._left_quat_label.setText(quat_text)
@@ -1066,16 +1159,16 @@ class ViveTrackerWidget(QWidget):
                 
                 left_tracker.is_online = True
                 left_tracker.valid = True
-                left_tracker.update_position(self._left_data.x, self._left_data.y, self._left_data.z)
+                left_tracker.update_position(self._left_data.pos_origin_x_m, self._left_data.pos_origin_y_m, self._left_data.pos_origin_z_m)
                 left_tracker.update_euler(self._left_data.yaw, self._left_data.pitch, self._left_data.roll)
-                left_tracker.update_quat(self._left_data.quat_w, self._left_data.quat_x, self._left_data.quat_y, self._left_data.quat_z)
+                left_tracker.update_quat(self._left_data.quat_origin_w, self._left_data.quat_origin_x, self._left_data.quat_origin_y, self._left_data.quat_origin_z)
                 left_tracker.timestamp = time.time()
                 
                 # 更新模型位置和旋转
                 self.update_model_pose(
                     "left",
-                    (self._left_data.x, self._left_data.y, self._left_data.z),
-                    (self._left_data.quat_w, self._left_data.quat_x, self._left_data.quat_y, self._left_data.quat_z)
+                    (self._left_data.pos_origin_x_m, self._left_data.pos_origin_y_m, self._left_data.pos_origin_z_m),
+                    (self._left_data.quat_origin_w, self._left_data.quat_origin_x, self._left_data.quat_origin_y, self._left_data.quat_origin_z)
                 )
                 tracker_pose_updated = True
             else:
@@ -1093,9 +1186,9 @@ class ViveTrackerWidget(QWidget):
             if self._right_data.valid:
                 # 有有效数据，重置离线计数器
                 self._right_offline_counter = 0
-                pos_text = f"位置：X={self._right_data.x:8.4f}m  Y={self._right_data.y:8.4f}m  Z={self._right_data.z:8.4f}m"
+                pos_text = f"位置：X={self._right_data.pos_origin_x_m:8.4f}m  Y={self._right_data.pos_origin_y_m:8.4f}m  Z={self._right_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._right_data.yaw:7.2f}°  Pitch={self._right_data.pitch:7.2f}°  Roll={self._right_data.roll:7.2f}°"
-                quat_text = f"四元数：w={self._right_data.quat_w:8.4f}  x={self._right_data.quat_x:8.4f}  y={self._right_data.quat_y:8.4f}  z={self._right_data.quat_z:8.4f}"
+                quat_text = f"四元数：w={self._right_data.quat_origin_w:8.4f}  x={self._right_data.quat_origin_x:8.4f}  y={self._right_data.quat_origin_y:8.4f}  z={self._right_data.quat_origin_z:8.4f}"
                 self._right_position_label.setText(pos_text)
                 self._right_rotation_label.setText(rot_text)
                 self._right_quat_label.setText(quat_text)
@@ -1108,16 +1201,16 @@ class ViveTrackerWidget(QWidget):
                 
                 right_tracker.is_online = True
                 right_tracker.valid = True
-                right_tracker.update_position(self._right_data.x, self._right_data.y, self._right_data.z)
+                right_tracker.update_position(self._right_data.pos_origin_x_m, self._right_data.pos_origin_y_m, self._right_data.pos_origin_z_m)
                 right_tracker.update_euler(self._right_data.yaw, self._right_data.pitch, self._right_data.roll)
-                right_tracker.update_quat(self._right_data.quat_w, self._right_data.quat_x, self._right_data.quat_y, self._right_data.quat_z)
+                right_tracker.update_quat(self._right_data.quat_origin_w, self._right_data.quat_origin_x, self._right_data.quat_origin_y, self._right_data.quat_origin_z)
                 right_tracker.timestamp = time.time()
                 
                 # 更新模型位置和旋转
                 self.update_model_pose(
                     "right",
-                    (self._right_data.x, self._right_data.y, self._right_data.z),
-                    (self._right_data.quat_w, self._right_data.quat_x, self._right_data.quat_y, self._right_data.quat_z)
+                    (self._right_data.pos_origin_x_m, self._right_data.pos_origin_y_m, self._right_data.pos_origin_z_m),
+                    (self._right_data.quat_origin_w, self._right_data.quat_origin_x, self._right_data.quat_origin_y, self._right_data.quat_origin_z)
                 )
                 tracker_pose_updated = True
             else:
@@ -1142,10 +1235,11 @@ class ViveTrackerWidget(QWidget):
             if not self._left_data.valid:
                 return None
             return TrackerData(
-                x=self._left_data.x, y=self._left_data.y, z=self._left_data.z,
+                pos_origin_x_m=self._left_data.pos_origin_x_m, pos_origin_y_m=self._left_data.pos_origin_y_m, pos_origin_z_m=self._left_data.pos_origin_z_m,
                 yaw=self._left_data.yaw, pitch=self._left_data.pitch, roll=self._left_data.roll,
-                quat_w=self._left_data.quat_w, quat_x=self._left_data.quat_x,
-                quat_y=self._left_data.quat_y, quat_z=self._left_data.quat_z,
+                quat_origin_w=self._left_data.quat_origin_w, quat_origin_x=self._left_data.quat_origin_x,
+                quat_origin_y=self._left_data.quat_origin_y, quat_origin_z=self._left_data.quat_origin_z,
+                pos_bias_x_m=self._left_data.pos_bias_x_m, pos_bias_y_m=self._left_data.pos_bias_y_m, pos_bias_z_m=self._left_data.pos_bias_z_m,
                 valid=True,
             )
 
@@ -1157,10 +1251,11 @@ class ViveTrackerWidget(QWidget):
             if not self._right_data.valid:
                 return None
             return TrackerData(
-                x=self._right_data.x, y=self._right_data.y, z=self._right_data.z,
+                pos_origin_x_m=self._right_data.pos_origin_x_m, pos_origin_y_m=self._right_data.pos_origin_y_m, pos_origin_z_m=self._right_data.pos_origin_z_m,
                 yaw=self._right_data.yaw, pitch=self._right_data.pitch, roll=self._right_data.roll,
-                quat_w=self._right_data.quat_w, quat_x=self._right_data.quat_x,
-                quat_y=self._right_data.quat_y, quat_z=self._right_data.quat_z,
+                quat_origin_w=self._right_data.quat_origin_w, quat_origin_x=self._right_data.quat_origin_x,
+                quat_origin_y=self._right_data.quat_origin_y, quat_origin_z=self._right_data.quat_origin_z,
+                pos_bias_x_m=self._right_data.pos_bias_x_m, pos_bias_y_m=self._right_data.pos_bias_y_m, pos_bias_z_m=self._right_data.pos_bias_z_m,
                 valid=True,
             )
 
