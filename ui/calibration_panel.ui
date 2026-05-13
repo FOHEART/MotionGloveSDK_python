@@ -52,6 +52,13 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="cancelCalibrationButton">
+       <property name="text">
+        <string>取消标定</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="buttonSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>

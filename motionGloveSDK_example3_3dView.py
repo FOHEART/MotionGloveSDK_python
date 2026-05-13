@@ -981,12 +981,30 @@ def _build_qt_app():
                 # 32 节点数据流：为每根手指第三节追加虚拟末梢点
                 if len(frame.skeletons) == 32:
                     for end_idx, third_idx, second_idx in _VIRTUAL_TIP_RULES:
+                        p2 = positions[second_idx]
                         p3 = positions[third_idx]
                         q3 = global_quats[third_idx]
                         if p3 is None or q3 is None:
                             continue
-                        # 虚拟末端球沿第三段骨骼的本地 X 轴前向延伸。
+                        # 虚拟末端方向由第三段骨骼的原始姿态给出；若左右手镜像导致
+                        # 轴向符号相反，则用第二节到第三节的实际骨段方向只做符号判定。
                         direction = _normalize_vec3(_quat_rotate_vec3(q3, (1.0, 0.0, 0.0)))
+                        if direction is None:
+                            continue
+                        if p2 is not None:
+                            segment_direction = _normalize_vec3((
+                                p3[0] - p2[0],
+                                p3[1] - p2[1],
+                                p3[2] - p2[2],
+                            ))
+                            if segment_direction is not None:
+                                dot = (
+                                    direction[0] * segment_direction[0]
+                                    + direction[1] * segment_direction[1]
+                                    + direction[2] * segment_direction[2]
+                                )
+                                if dot < 0.0:
+                                    direction = (-direction[0], -direction[1], -direction[2])
                         if direction is None:
                             continue
                         positions[end_idx] = [

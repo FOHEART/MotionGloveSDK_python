@@ -200,7 +200,7 @@ class ViveTrackerWidget(QWidget):
         self._tab_widget.addTab(tracker_tab, "追踪信息")
         
         # 第二个 tab：定位标定
-        self._calibration_widget = CalibrationWidget()
+        self._calibration_widget = CalibrationWidget(vive_tracker_widget=self)
         self._calibration_tab_index = self._tab_widget.addTab(self._calibration_widget, "定位标定")
         
         # 默认禁用定位标定 tab（只有追踪成功开启后才启用）
