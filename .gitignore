@@ -64,6 +64,7 @@
 
 # Keil 默认输出目录
 libs/
+.venv/
 out/
 Objects/
 Listings/
