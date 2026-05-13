@@ -18,7 +18,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit, QFrame
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit, QFrame, QTabWidget
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
 from PySide6.QtGui import QCursor
@@ -32,6 +32,9 @@ from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, Tracker
 
 # 导入 LightHouse 管理器
 from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighthouse_manager
+
+# 导入标定 widget
+from calibration_widget import CalibrationWidget
 
 
 def _find_ui_file() -> Path:
@@ -168,7 +171,7 @@ class ViveTrackerWidget(QWidget):
         self._lighthouse_update_timer.setInterval(1000)  # 1Hz
 
     def _init_ui(self):
-        """从 UI 文件加载界面。"""
+        """从 UI 文件加载界面，并添加标定 tab。"""
         loader = QUiLoader()
         ui_file = QFile(str(_find_ui_file()))
         
@@ -181,10 +184,27 @@ class ViveTrackerWidget(QWidget):
         if self._ui is None:
             raise RuntimeError(f"QUiLoader 加载失败：{_find_ui_file()}")
         
-        # 将加载的 UI 添加到当前 widget
+        # 创建主布局和 TabWidget
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._ui)
+        
+        # 创建 TabWidget
+        self._tab_widget = QTabWidget()
+        layout.addWidget(self._tab_widget)
+        
+        # 第一个 tab：追踪信息（原有的 UI）
+        tracker_tab = QWidget()
+        tracker_layout = QVBoxLayout(tracker_tab)
+        tracker_layout.setContentsMargins(0, 0, 0, 0)
+        tracker_layout.addWidget(self._ui)
+        self._tab_widget.addTab(tracker_tab, "追踪信息")
+        
+        # 第二个 tab：定位标定
+        self._calibration_widget = CalibrationWidget()
+        self._calibration_tab_index = self._tab_widget.addTab(self._calibration_widget, "定位标定")
+        
+        # 默认禁用定位标定 tab（只有追踪成功开启后才启用）
+        self._tab_widget.setTabEnabled(self._calibration_tab_index, False)
         
         # 获取 UI 中的控件
         self._left_config_label: QLabel = self._ui.findChild(QLabel, "leftHandConfigInfo")
@@ -859,6 +879,10 @@ class ViveTrackerWidget(QWidget):
 
         # 启动后台数据收集线程
         self._tracking_enabled = True
+        
+        # 启用定位标定 tab（追踪成功开启）
+        self._tab_widget.setTabEnabled(self._calibration_tab_index, True)
+        
         self._thread_stop_event.clear()
         self._tracking_thread = threading.Thread(target=self._tracking_loop, daemon=True)
         self._tracking_thread.start()
@@ -923,6 +947,10 @@ class ViveTrackerWidget(QWidget):
     def _stop_tracking(self):
         """停止追踪。"""
         self._tracking_enabled = False
+        
+        # 禁用定位标定 tab（追踪已关闭）
+        self._tab_widget.setTabEnabled(self._calibration_tab_index, False)
+        
         self._update_timer.stop()
         self._lighthouse_update_timer.stop()
         
