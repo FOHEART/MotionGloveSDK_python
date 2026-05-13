@@ -18,6 +18,25 @@ import numpy as np
 
 
 @dataclass
+class TrackerData:
+    """追踪器数据结构（用于实时追踪线程）。"""
+    pos_origin_x_m: float = 0.0
+    pos_origin_y_m: float = 0.0
+    pos_origin_z_m: float = 0.0
+    yaw: float = 0.0
+    pitch: float = 0.0
+    roll: float = 0.0
+    quat_origin_w: float = 0.0
+    quat_origin_x: float = 0.0
+    quat_origin_y: float = 0.0
+    quat_origin_z: float = 0.0
+    pos_bias_x_m: float = 0.0  # 位置偏差 X 坐标（米）
+    pos_bias_y_m: float = 0.0  # 位置偏差 Y 坐标（米）
+    pos_bias_z_m: float = 0.0  # 位置偏差 Z 坐标（米）
+    valid: bool = False
+
+
+@dataclass
 class ViveTrackerMgr:
     """Vive Tracker 统一管理结构体。
     

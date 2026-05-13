@@ -34,21 +34,35 @@ _AXIS_COLORS = (
 )
 
 
-def _make_cube_actor(radius, color):
-    side = radius * 2.0
-    cube = vtk.vtkCubeSource()
-    cube.SetCenter(0.0, 0.0, 0.0)
-    cube.SetXLength(side)
-    cube.SetYLength(side)
-    cube.SetZLength(side)
-
+def _make_sphere_actor(radius, color):
+    """创建低面数球体以优化渲染性能。
+    
+    Args:
+        radius: 球体半径
+        color: RGB 颜色元组
+    
+    Returns:
+        (actor, sphere_source) 元组
+    
+    说明：
+        使用 ThetaResolution=12 和 PhiResolution=8 以减少面数。
+        这样产生约 192 个三角形，远少于高精度球体（通常 10000+），
+        但仍保持球体外观。
+    """
+    sphere = vtk.vtkSphereSource()
+    sphere.SetCenter(0.0, 0.0, 0.0)
+    sphere.SetRadius(radius)
+    # 优化分辨率：减少面数以改善渲染性能
+    sphere.SetThetaResolution(8)  # 圆周方向分割数（默认 16）
+    sphere.SetPhiResolution(4)      # 极向分割数（默认 8）
+    
     mapper = vtk.vtkPolyDataMapper()
-    mapper.SetInputConnection(cube.GetOutputPort())
-
+    mapper.SetInputConnection(sphere.GetOutputPort())
+    
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     actor.GetProperty().SetColor(*color)
-    return actor, cube
+    return actor, sphere
 
 
 def _make_line_actor(color, line_width):
@@ -107,8 +121,8 @@ class BoneJointActor:
         self._radius     = radius
         self._axis_len   = radius * 2.0
 
-        # 正方体节点
-        self._s_actor, self._cube_src = _make_cube_actor(radius, sphere_color)
+        # 球体节点
+        self._s_actor, self._sphere_src = _make_sphere_actor(radius, sphere_color)
         self._s_actor.VisibilityOff()
         renderer.AddActor(self._s_actor)
 
@@ -164,11 +178,8 @@ class BoneJointActor:
     def set_radius(self, radius: float):
         """运行时修改关节节点尺寸。"""
         self._radius = radius
-        side = radius * 2.0
-        self._cube_src.SetXLength(side)
-        self._cube_src.SetYLength(side)
-        self._cube_src.SetZLength(side)
-        self._cube_src.Update()
+        self._sphere_src.SetRadius(radius)
+        self._sphere_src.Update()
 
     def set_sphere_color(self, r: float, g: float, b: float):
         """运行时修改关节节点颜色。"""

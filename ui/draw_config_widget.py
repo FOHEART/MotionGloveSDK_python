@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QPushButton,
     QFileDialog,
+    QLabel,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtUiTools import QUiLoader
@@ -118,10 +119,13 @@ class DrawConfigWidget(QWidget):
             return w
 
         self._sld_joint_radius: QSlider = _find(QSlider, "sld_joint_radius")
+        self._lbl_joint_radius_value: QLabel = _find(QLabel, "lbl_joint_radius_value")
         self._btn_joint_color: QPushButton = _find(QPushButton, "btn_joint_color")
         self._sld_link_width: QSlider = _find(QSlider, "sld_link_width")
+        self._lbl_link_width_value: QLabel = _find(QLabel, "lbl_link_width_value")
         self._btn_link_color: QPushButton = _find(QPushButton, "btn_link_color")
         self._sld_axis_length: QSlider = _find(QSlider, "sld_axis_length")
+        self._lbl_axis_length_value: QLabel = _find(QLabel, "lbl_axis_length_value")
         btn_save: QPushButton = _find(QPushButton, "btn_save_config")
         btn_load: QPushButton = _find(QPushButton, "btn_load_config")
 
@@ -135,19 +139,27 @@ class DrawConfigWidget(QWidget):
         self._sld_joint_radius.setMaximum(10)
         self._sld_joint_radius.setTickInterval(1)
         self._sld_joint_radius.setValue(int(defaults.joint_radius * 1000))
+        self._update_joint_radius_value(int(defaults.joint_radius * 1000))
 
         self._sld_link_width.setMinimum(1)
         self._sld_link_width.setMaximum(30)
         self._sld_link_width.setTickInterval(1)
         self._sld_link_width.setValue(int(defaults.link_width))
+        self._update_link_width_value(int(defaults.link_width))
 
         self._sld_axis_length.setMinimum(1)
         self._sld_axis_length.setMaximum(30)
         self._sld_axis_length.setTickInterval(1)
         self._sld_axis_length.setValue(int(defaults.axis_length * 1000))
+        self._update_axis_length_value(int(defaults.axis_length * 1000))
 
         _apply_btn_color(self._btn_joint_color, defaults.joint_color)
         _apply_btn_color(self._btn_link_color, defaults.link_color)
+
+        # 连接滑块信号到槽函数，实时更新值显示
+        self._sld_joint_radius.valueChanged.connect(self._update_joint_radius_value)
+        self._sld_link_width.valueChanged.connect(self._update_link_width_value)
+        self._sld_axis_length.valueChanged.connect(self._update_axis_length_value)
 
         self._btn_joint_color.clicked.connect(self._pick_joint_color)
         self._btn_link_color.clicked.connect(self._pick_link_color)
@@ -156,18 +168,46 @@ class DrawConfigWidget(QWidget):
 
     # ── 内部工具 ──────────────────────────────────────
 
+    def _update_joint_radius_value(self, value: int) -> None:
+        """更新关节球半径值显示标签。"""
+        radius = value * 0.001
+        self._lbl_joint_radius_value.setText(f"{radius:.3f}")
+
+    def _update_link_width_value(self, value: int) -> None:
+        """更新骨骼连线粗细值显示标签。"""
+        self._lbl_link_width_value.setText(f"{value}")
+
+    def _update_axis_length_value(self, value: int) -> None:
+        """更新坐标轴长度值显示标签。"""
+        length = value * 0.001
+        self._lbl_axis_length_value.setText(f"{length:.3f}")
+
     def _pick_joint_color(self) -> None:
+        """选择关节球颜色（使用非原生对话框避免阻塞）。"""
         qc = QColor(*[int(c * 255) for c in self._joint_color])
         from PySide6.QtWidgets import QColorDialog
-        chosen = QColorDialog.getColor(qc, self, self.tr("选择关节球颜色"))
+        # 使用 DontUseNativeDialog 选项避免主线程阻塞
+        chosen = QColorDialog.getColor(
+            qc, 
+            self, 
+            self.tr("选择关节球颜色"),
+            options=QColorDialog.ColorDialogOption.DontUseNativeDialog
+        )
         if chosen.isValid():
             self._joint_color = _qcolor_to_color(chosen)
             _apply_btn_color(self._btn_joint_color, self._joint_color)
 
     def _pick_link_color(self) -> None:
+        """选择连线颜色（使用非原生对话框避免阻塞）。"""
         qc = QColor(*[int(c * 255) for c in self._link_color])
         from PySide6.QtWidgets import QColorDialog
-        chosen = QColorDialog.getColor(qc, self, self.tr("选择连线颜色"))
+        # 使用 DontUseNativeDialog 选项避免主线程阻塞
+        chosen = QColorDialog.getColor(
+            qc, 
+            self, 
+            self.tr("选择连线颜色"),
+            options=QColorDialog.ColorDialogOption.DontUseNativeDialog
+        )
         if chosen.isValid():
             self._link_color = _qcolor_to_color(chosen)
             _apply_btn_color(self._btn_link_color, self._link_color)
@@ -206,11 +246,14 @@ class DrawConfigWidget(QWidget):
     def load_from_config(self, config: DrawConfig) -> None:
         """将外部配置同步回控件状态。"""
         self._sld_joint_radius.setValue(int(config.joint_radius * 1000))
+        self._update_joint_radius_value(int(config.joint_radius * 1000))
         self._joint_color = config.joint_color
         _apply_btn_color(self._btn_joint_color, self._joint_color)
 
         self._sld_link_width.setValue(int(config.link_width))
+        self._update_link_width_value(int(config.link_width))
         self._link_color = config.link_color
         _apply_btn_color(self._btn_link_color, self._link_color)
 
         self._sld_axis_length.setValue(int(config.axis_length * 1000))
+        self._update_axis_length_value(int(config.axis_length * 1000))

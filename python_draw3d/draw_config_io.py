@@ -19,7 +19,7 @@ class DrawConfig:
     """VTK 绘制属性配置。颜色为 (r, g, b) float 元组，范围 0.0–1.0。"""
 
     joint_radius: float = 0.005
-    joint_color: tuple[float, float, float] = field(default_factory=lambda: (1.0, 1.0, 1.0))
+    joint_color: tuple[float, float, float] = field(default_factory=lambda: (1.0, 208/255, 38/255))
     link_width: float = 10.0
     link_color: tuple[float, float, float] = field(default_factory=lambda: (0.7, 0.7, 0.7))
     axis_length: float = 0.010

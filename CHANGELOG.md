@@ -10,8 +10,15 @@
   - **全局管理器**：提供 `get_global_tracker_manager()` 获取全局单例，便于应用级别的数据共享。
   - **ViveTrackerWidget 集成**：在 `ui/vive_tracker_widget.py` 中集成 `TrackerManager`，自动在 `_on_update_timer()` 中维护所有 Tracker 信息；新增 `get_tracker_manager()`、`get_tracker(name)`、`get_all_trackers()`、`get_online_trackers()` 等方法供外部访问。
   - **数据同步**：Tracker 数据实时同步，60Hz 更新频率与 UI 刷新一致；支持位置、旋转、四元数、在线状态实时更新。
-  - **测试和文档**：新增 `test_tracker_manager.py` 测试脚本，包含 4 个测试场景；提供 `VIVE_TRACKER_MGR_GUIDE.md` 详细使用文档。
+  - **测试和文档**：新增 `test_tracker_manager.py` 测试脚本，包含 4 个测试场景；使用指南已合并到本 CHANGELOG。
   - **使用示例**：支持多 Tracker 场景；支持数据导出；支持状态检查；线程安全的数据访问。
+  - **使用指南**：
+    - **基本获取**：通过 `widget.get_tracker_manager()` 或 `get_global_tracker_manager()` 获取全局单例
+    - **访问 Tracker**：`tracker = mgr.get_tracker("left")` 或 `all_trackers = mgr.get_all_trackers()`
+    - **访问数据**：`tracker.get_position()` → (x, y, z)；`tracker.get_euler()` → (yaw, pitch, roll)；`tracker.get_quat()` → (w, x, y, z)；`tracker.get_rotation_matrix()` → 3×3 numpy 数组
+    - **状态检查**：`tracker.is_online`、`tracker.valid`、`tracker.timestamp`
+    - **实时更新**：60Hz UI 刷新频率，数据在 `ViveTrackerWidget._on_update_timer()` 中自动维护
+    - **示例代码**：获取所有在线 Tracker；访问特定 Tracker 位置；导出数据为 JSON；见 `test_tracker_manager.py`
 - **VR 追踪器与灯塔本地坐标轴可视化**（2026-05-11）：为加载的 Vive Tracker 和 Lighthouse 3D 模型添加了本地 XYZ 坐标轴可视化。
   - `python_draw3d/vtk_axes.py`：新增 `build_local_axes_actor(length_mm=100, shaft_radius_mm=5)` 函数，创建包含 X、Y、Z 三条坐标轴的 `vtkPropAssembly`。X 轴红色、Y 轴绿色、Z 轴蓝色，所有轴原点位于 (0,0,0) 按正方向延伸。使用立方体几何（相比圆柱体降低 81% 面数），支持任意长度和粗细参数。
   - `motionGloveSDK_example3_3dView.py`：集成 Tracker 和 Lighthouse 坐标轴加载/卸载逻辑。Tracker 坐标轴参数：100mm 长度、5mm 半径；Lighthouse 坐标轴参数：50mm 长度、3mm 半径（减小尺寸避免遮挡）。
@@ -29,6 +36,12 @@
     - **API 参考**：`build_local_axes_actor(length_mm, shaft_radius_mm)` 创建坐标轴；`store_axes_actor(side, actor)` 存储引用；`update_model_pose(side, position, quat)` 更新变换
     - **测试验证**：✓ 语法检查通过 | ✓ 导入测试通过 | ✓ 单元测试通过 | ✓ 60Hz 同步验证通过 | ✓ 变换矩阵计算验证通过
     - **向后兼容性**：完全向后兼容，不破坏现有功能，坐标轴为可选可见性
+  - **Lighthouse 位置偏差系统**（联动功能）：与 LighthouseManager 协同，支持为基站位置添加偏差（用于校准、安装位置调整等）
+    - **设置偏差**：`widget.set_lighthouse_position_bias("Tracking Reference 1", x_bias=0.0, y_bias=1.0, z_bias=0.0)` 为单个基站设置；`widget.set_all_lighthouses_position_bias(0.0, 1.0, 0.0)` 为所有基站设置
+    - **自动计算**：`position_final = position_original + position_bias`，由 LighthouseData 自动维护
+    - **实时更新**：设置偏差后立即更新 VTK 显示，自动触发渲染
+    - **验证方法**：通过 `lh_data.get_position_final()` 获取最终位置；查看 VTK 中基站模型的实时位置
+    - **数据流**：OpenVR 获取原始位置 → 存储到 LighthouseData → 通过偏差设置更新 → VTK 渲染最终位置
 - **42骨骼骨架支持**（`src/definitions.py`）：`BoneIndex` 枚举从 32 扩展至 42 个成员，新增 10 个末梢节点骨骼（`RightHandThumb3End` … `LeftHandPinky3End`），索引 4–41 按手指链顺序排列；`KHHS42_SKELETON_COUNT = 42`（旧 `KHHS32_SKELETON_COUNT = 32` 保留为兼容别名）；`BONE_NAMES` / `BONE_NAMES_SHORT` 同步扩展至 42 项。
 - **末梢节点关节球渲染**（`motionGloveSDK_example3_3dView.py`）：10 个 `*3End` 骨骼以真实世界坐标位置渲染为关节球，不显示局部坐标轴；每个末梢节点与其父骨骼（`*3`）之间绘制骨骼连线，与其他骨骼连线渲染方式完全一致。
 - `_END_BONE_INDICES`：模块级集合，由名称以 `End` 结尾的 `BoneIndex` 成员自动构建，驱动渲染循环中末梢节点的仅位置渲染分支。

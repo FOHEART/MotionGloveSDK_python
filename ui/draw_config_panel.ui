@@ -43,11 +43,28 @@
        </widget>
       </item>
       <item>
-       <widget class="QSlider" name="sld_joint_radius">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="layout_joint_radius_h">
+        <item>
+         <widget class="QSlider" name="sld_joint_radius">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lbl_joint_radius_value">
+          <property name="text">
+           <string>0.001</string>
+          </property>
+          <property name="minimumWidth">
+           <number>40</number>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QLabel" name="lbl_joint_color">
@@ -83,11 +100,28 @@
        </widget>
       </item>
       <item>
-       <widget class="QSlider" name="sld_link_width">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="layout_link_width_h">
+        <item>
+         <widget class="QSlider" name="sld_link_width">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lbl_link_width_value">
+          <property name="text">
+           <string>1</string>
+          </property>
+          <property name="minimumWidth">
+           <number>40</number>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QLabel" name="lbl_link_color">
@@ -123,11 +157,28 @@
        </widget>
       </item>
       <item>
-       <widget class="QSlider" name="sld_axis_length">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="layout_axis_length_h">
+        <item>
+         <widget class="QSlider" name="sld_axis_length">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lbl_axis_length_value">
+          <property name="text">
+           <string>0.010</string>
+          </property>
+          <property name="minimumWidth">
+           <number>40</number>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
