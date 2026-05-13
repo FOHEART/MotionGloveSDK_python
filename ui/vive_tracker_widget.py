@@ -5,7 +5,7 @@ Vive Tracker 配置显示和追踪面板
 - 从 triad_openvr/hand_tracker_config.json 读取配置
 - 初始化 OpenVR 系统
 - 后台线程以 60Hz 读取追踪数据
-- UI 以 30Hz 刷新显示位置和旋转信息
+- UI 以 60Hz 刷新显示位置和旋转信息
 
 UI 布局定义在 vive_tracker.ui 文件中，可用 Qt Designer 编辑。
 """
@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit
 from PySide6.QtUiTools import QUiLoader
@@ -26,6 +26,9 @@ from PySide6.QtWidgets import QMenu
 
 # 导入 SteamVR 状态检查器
 from triad_openvr.steamvr_status_checker import SteamVRStatusChecker
+
+# 导入 Tracker 管理器
+from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, get_global_tracker_manager
 
 
 @dataclass
@@ -111,6 +114,9 @@ class ViveTrackerWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
+        # 追踪器管理器（存储所有 Tracker 的统一信息）
+        self._tracker_manager: TrackerManager = get_global_tracker_manager()
+        
         # 追踪状态
         self._tracking_enabled = False
         self._config = {}
@@ -156,10 +162,10 @@ class ViveTrackerWidget(QWidget):
         self._steamvr_checker.set_status_changed_callback(self._on_steamvr_status_changed)
         self._steamvr_checker.start()
         
-        # UI 更新定时器（30Hz，仅在追踪时运行）
+        # UI 更新定时器（60Hz，仅在追踪时运行）
         self._update_timer = QTimer()
         self._update_timer.timeout.connect(self._on_update_timer)
-        self._update_timer.setInterval(33)  # ~30Hz
+        self._update_timer.setInterval(17)  # ~60Hz
         
         # LightHouse 信息更新定时器（1Hz，与 SteamVR 检测频率相同）
         self._lighthouse_update_timer = QTimer()
@@ -469,9 +475,9 @@ class ViveTrackerWidget(QWidget):
             # 转换四元数格式从 (w, x, y, z) 到 (x, y, z, w)
             qx, qy, qz, qw = quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]
             
-            # 添加调试日志（每 30 帧打印一次以减少日志量）
+            # 添加调试日志（每 60 帧打印一次以减少日志量）
             if hasattr(self, '_model_pose_log_counter'):
-                self._model_pose_log_counter = (self._model_pose_log_counter + 1) % 30
+                self._model_pose_log_counter = (self._model_pose_log_counter + 1) % 60
             else:
                 self._model_pose_log_counter = 0
             
@@ -1003,10 +1009,10 @@ class ViveTrackerWidget(QWidget):
             self._last_lighthouse_content = new_lighthouse_content
 
     def _on_update_timer(self):
-        """UI 更新定时器回调，30Hz 刷新追踪数据显示。
+        """UI 更新定时器回调，60Hz 刷新追踪数据显示。
         
         使用离线计数器：连续20帧无数据才判定为离线，避免频繁切换。
-        同时更新模型的位置和旋转。
+        同时更新模型的位置和旋转，以及 TrackerManager 中的数据。
         """
         tracker_pose_updated = False
         with self._data_lock:
@@ -1022,6 +1028,18 @@ class ViveTrackerWidget(QWidget):
                 self._left_quat_label.setText(quat_text)
                 self._update_groupbox_status("left", True)
                 
+                # 更新 TrackerManager 中左手 Tracker 的数据
+                left_tracker = self._tracker_manager.get_tracker("left")
+                if left_tracker is None:
+                    left_tracker = self._tracker_manager.register_tracker("left")
+                
+                left_tracker.is_online = True
+                left_tracker.valid = True
+                left_tracker.update_position(self._left_data.x, self._left_data.y, self._left_data.z)
+                left_tracker.update_euler(self._left_data.yaw, self._left_data.pitch, self._left_data.roll)
+                left_tracker.update_quat(self._left_data.quat_w, self._left_data.quat_x, self._left_data.quat_y, self._left_data.quat_z)
+                left_tracker.timestamp = time.time()
+                
                 # 更新模型位置和旋转
                 self.update_model_pose(
                     "left",
@@ -1035,6 +1053,10 @@ class ViveTrackerWidget(QWidget):
                 if self._left_offline_counter >= self._offline_threshold:
                     # 连续20帧无数据，标记为离线
                     self._update_groupbox_status("left", False)
+                    # 更新 TrackerManager 中左手 Tracker 的在线状态
+                    left_tracker = self._tracker_manager.get_tracker("left")
+                    if left_tracker is not None:
+                        left_tracker.is_online = False
             
             # 处理右手数据
             if self._right_data.valid:
@@ -1047,6 +1069,18 @@ class ViveTrackerWidget(QWidget):
                 self._right_rotation_label.setText(rot_text)
                 self._right_quat_label.setText(quat_text)
                 self._update_groupbox_status("right", True)
+                
+                # 更新 TrackerManager 中右手 Tracker 的数据
+                right_tracker = self._tracker_manager.get_tracker("right")
+                if right_tracker is None:
+                    right_tracker = self._tracker_manager.register_tracker("right")
+                
+                right_tracker.is_online = True
+                right_tracker.valid = True
+                right_tracker.update_position(self._right_data.x, self._right_data.y, self._right_data.z)
+                right_tracker.update_euler(self._right_data.yaw, self._right_data.pitch, self._right_data.roll)
+                right_tracker.update_quat(self._right_data.quat_w, self._right_data.quat_x, self._right_data.quat_y, self._right_data.quat_z)
+                right_tracker.timestamp = time.time()
                 
                 # 更新模型位置和旋转
                 self.update_model_pose(
@@ -1061,6 +1095,10 @@ class ViveTrackerWidget(QWidget):
                 if self._right_offline_counter >= self._offline_threshold:
                     # 连续20帧无数据，标记为离线
                     self._update_groupbox_status("right", False)
+                    # 更新 TrackerManager 中右手 Tracker 的在线状态
+                    right_tracker = self._tracker_manager.get_tracker("right")
+                    if right_tracker is not None:
+                        right_tracker.is_online = False
 
         if tracker_pose_updated and self._renderer is not None:
             self._renderer.ResetCameraClippingRange()
@@ -1098,6 +1136,45 @@ class ViveTrackerWidget(QWidget):
     def is_tracking_enabled(self) -> bool:
         """是否处于追踪开启状态。"""
         return self._tracking_enabled
+    
+    def get_tracker_manager(self) -> TrackerManager:
+        """获取 Tracker 管理器。
+        
+        Returns:
+            TrackerManager 实例，包含所有已注册的 Tracker
+        """
+        return self._tracker_manager
+    
+    def get_tracker(self, name: str) -> Optional[ViveTrackerMgr]:
+        """获取指定名称的 Tracker 信息。
+        
+        Args:
+            name: Tracker 名称（"left", "right" 等）
+        
+        Returns:
+            ViveTrackerMgr 实例或 None
+        """
+        return self._tracker_manager.get_tracker(name)
+    
+    def get_all_trackers(self) -> Dict[str, ViveTrackerMgr]:
+        """获取所有 Tracker 信息。
+        
+        Returns:
+            {name: ViveTrackerMgr} 字典
+        """
+        return self._tracker_manager.get_all_trackers()
+    
+    def get_online_trackers(self) -> Dict[str, ViveTrackerMgr]:
+        """获取所有在线的 Tracker 信息。
+        
+        Returns:
+            {name: ViveTrackerMgr} 字典，仅包含在线的 Tracker
+        """
+        return self._tracker_manager.get_online_trackers()
+    
+    def print_tracker_summary(self):
+        """打印所有 Tracker 的摘要信息。"""
+        self._tracker_manager.print_summary()
 
     def closeEvent(self, event):
         """窗口关闭时清理资源。"""

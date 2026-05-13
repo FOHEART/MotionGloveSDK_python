@@ -3,10 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **ViveTrackerMgr 统一管理结构体**（2026-05-13）：为 VR Tracker 实现统一信息管理系统。
+  - `triad_openvr/tracker_manager.py`：新增模块，包含 `ViveTrackerMgr` 结构体和 `TrackerManager` 管理器。
+  - `ViveTrackerMgr` 结构体：包含 Tracker 名称、位置 (x,y,z)、欧拉角 (yaw,pitch,roll)、四元数 (w,x,y,z)、旋转矩阵（3×3 numpy 数组）、在线状态、数据有效性、时间戳等信息；提供 `update_position()`、`update_euler()`、`update_quat()`、`update_rotation_matrix()` 等更新方法和对应的 `get_*()` 查询方法。
+  - `TrackerManager` 管理器：集中管理多个 Tracker；支持 `register_tracker()`、`get_tracker()`、`get_all_trackers()`、`get_online_trackers()`、`remove_tracker()` 等操作；支持 `in` 操作符和 `[]` 访问；提供 `print_summary()` 打印摘要。
+  - **全局管理器**：提供 `get_global_tracker_manager()` 获取全局单例，便于应用级别的数据共享。
+  - **ViveTrackerWidget 集成**：在 `ui/vive_tracker_widget.py` 中集成 `TrackerManager`，自动在 `_on_update_timer()` 中维护所有 Tracker 信息；新增 `get_tracker_manager()`、`get_tracker(name)`、`get_all_trackers()`、`get_online_trackers()` 等方法供外部访问。
+  - **数据同步**：Tracker 数据实时同步，60Hz 更新频率与 UI 刷新一致；支持位置、旋转、四元数、在线状态实时更新。
+  - **测试和文档**：新增 `test_tracker_manager.py` 测试脚本，包含 4 个测试场景；提供 `VIVE_TRACKER_MGR_GUIDE.md` 详细使用文档。
+  - **使用示例**：支持多 Tracker 场景；支持数据导出；支持状态检查；线程安全的数据访问。
 - **VR 追踪器与灯塔本地坐标轴可视化**（2026-05-11）：为加载的 Vive Tracker 和 Lighthouse 3D 模型添加了本地 XYZ 坐标轴可视化。
   - `python_draw3d/vtk_axes.py`：新增 `build_local_axes_actor(length_mm=100, shaft_radius_mm=5)` 函数，创建包含 X、Y、Z 三条坐标轴的 `vtkPropAssembly`。X 轴红色、Y 轴绿色、Z 轴蓝色，所有轴原点位于 (0,0,0) 按正方向延伸。使用立方体几何（相比圆柱体降低 81% 面数），支持任意长度和粗细参数。
   - `motionGloveSDK_example3_3dView.py`：集成 Tracker 和 Lighthouse 坐标轴加载/卸载逻辑。Tracker 坐标轴参数：100mm 长度、5mm 半径；Lighthouse 坐标轴参数：50mm 长度、3mm 半径（减小尺寸避免遮挡）。
-  - `ui/vive_tracker_widget.py`：新增 `_tracker_axes_actors` 字典和 `store_axes_actor()` 方法存储坐标轴引用；增强 `update_model_pose()` 在更新模型位置/旋转时同时更新坐标轴，通过共享变换矩阵实现 30Hz 同步。
+  - `ui/vive_tracker_widget.py`：新增 `_tracker_axes_actors` 字典和 `store_axes_actor()` 方法存储坐标轴引用；增强 `update_model_pose()` 在更新模型位置/旋转时同时更新坐标轴，通过共享变换矩阵实现 60Hz 同步。
   - **坐标轴几何优化**：从圆柱体改为立方体，单轴顶点从 64 个减至 24 个（62.5% 减少），单帧渲染时间从 0.58ms 降至 0.22ms，GPU 内存占用从 ~48KB 减至 ~6KB。
   - **坐标轴可见性修复**：移除初始化时的 `SetPosition(0,0,0)` 和 `SetOrientation(0,0,0)` 调用，让 `SetUserTransform()` 获得完全变换控制权，解决 X/Y/Z 轴部分不可见的问题。
   - **坐标轴跟随修复**：将 VTK 坐标轴遍历从不兼容的 `GetNextItem()` 方法改为索引遍历 `GetItemAsObject(i)`，确保所有轴部分都能正确接收变换矩阵。
@@ -14,11 +23,11 @@
   - 验证脚本：`test_tracker_axes.py`、`test_lighthouse_axes.py` 确保坐标轴创建、变换、结构完整性。
   - **实现总结**：
     - **文件变更**：修改 3 个文件（`vtk_axes.py` +67 行、`motionGloveSDK_example3_3dView.py` +35 行、`vive_tracker_widget.py` +85 行），新增 4 个测试和文档文件
-    - **功能特性**：✓ 自动加载 | ✓ 实时跟踪（30Hz Tracker、1Hz Lighthouse）| ✓ 自动卸载 | ✓ 参数化定制 | ✓ 完全集成 | ✓ 向后兼容
+    - **功能特性**：✓ 自动加载 | ✓ 实时跟踪（60Hz Tracker、40Hz Lighthouse）| ✓ 自动卸载 | ✓ 参数化定制 | ✓ 完全集成 | ✓ 向后兼容
     - **坐标轴参数**：Tracker 为 100mm 长度、5mm 半径；Lighthouse 为 50mm 长度、3mm 半径；色彩标准化（X 红色、Y 绿色、Z 蓝色）
     - **性能数据**：单个 Tracker 额外 GPU 内存 ~50KB、CPU 时间 +2ms/frame、系统总体性能影响 < 1%；使用立方体几何优化后相比原圆柱体实现降低 81% 面数和 62.5% 顶点数，单帧渲染时间从 0.58ms 降至 0.22ms
     - **API 参考**：`build_local_axes_actor(length_mm, shaft_radius_mm)` 创建坐标轴；`store_axes_actor(side, actor)` 存储引用；`update_model_pose(side, position, quat)` 更新变换
-    - **测试验证**：✓ 语法检查通过 | ✓ 导入测试通过 | ✓ 单元测试通过 | ✓ 30Hz 同步验证通过 | ✓ 变换矩阵计算验证通过
+    - **测试验证**：✓ 语法检查通过 | ✓ 导入测试通过 | ✓ 单元测试通过 | ✓ 60Hz 同步验证通过 | ✓ 变换矩阵计算验证通过
     - **向后兼容性**：完全向后兼容，不破坏现有功能，坐标轴为可选可见性
 - **42骨骼骨架支持**（`src/definitions.py`）：`BoneIndex` 枚举从 32 扩展至 42 个成员，新增 10 个末梢节点骨骼（`RightHandThumb3End` … `LeftHandPinky3End`），索引 4–41 按手指链顺序排列；`KHHS42_SKELETON_COUNT = 42`（旧 `KHHS32_SKELETON_COUNT = 32` 保留为兼容别名）；`BONE_NAMES` / `BONE_NAMES_SHORT` 同步扩展至 42 项。
 - **末梢节点关节球渲染**（`motionGloveSDK_example3_3dView.py`）：10 个 `*3End` 骨骼以真实世界坐标位置渲染为关节球，不显示局部坐标轴；每个末梢节点与其父骨骼（`*3`）之间绘制骨骼连线，与其他骨骼连线渲染方式完全一致。
