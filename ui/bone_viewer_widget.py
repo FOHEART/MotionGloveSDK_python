@@ -19,6 +19,7 @@ class BoneViewerWidget(QWidget):
         self.bone_checkboxes = {}  # bone_name -> QCheckBox
         self.bone_labels = {}      # bone_name -> QLabel (for Euler angles)
         self.bone_indices = {}     # bone_name -> BoneIndex value
+        self._bone_label_text_cache = {}  # bone_name -> last shown text
         self.current_frame = None
         
         self._init_ui()
@@ -183,7 +184,9 @@ class BoneViewerWidget(QWidget):
         # Update labels for checked bones
         for bone_name, checkbox in self.bone_checkboxes.items():
             if not checkbox.isChecked():
-                self.bone_labels[bone_name].setText("—")
+                if self._bone_label_text_cache.get(bone_name) != "—":
+                    self.bone_labels[bone_name].setText("—")
+                    self._bone_label_text_cache[bone_name] = "—"
                 continue
             
             # Find the skeleton with this bone name
@@ -197,5 +200,7 @@ class BoneViewerWidget(QWidget):
             if skel is not None and skel.contains_euler_degree:
                 ex, ey, ez = skel.euler_degree
                 euler_text = f"({ex:.1f}°, {ey:.1f}°, {ez:.1f}°)"
-            
-            self.bone_labels[bone_name].setText(euler_text)
+
+            if self._bone_label_text_cache.get(bone_name) != euler_text:
+                self.bone_labels[bone_name].setText(euler_text)
+                self._bone_label_text_cache[bone_name] = euler_text

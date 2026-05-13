@@ -145,11 +145,18 @@ class ViveTrackerWidget(QWidget):
         self._model_unload_callback = None  # 回调签名：(side: str, renderer) -> None
         self._lighthouse_update_callback = None  # 回调签名：(list[dict]) -> None
         self._tracking_state_changed_callback = None  # 回调签名：(enabled: bool) -> None
+        self._render_request_callback = None  # 回调签名：() -> None
         self._renderer = None  # VTK 渲染器引用
         
         # 模型对象引用（用于跟踪已加载的模型）
         self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
         self._tracker_axes_actors = {}   # {"left": vtkPropAssembly, "right": vtkPropAssembly}
+        
+        # ── VTK 对象缓存（避免每帧新建） ────────────────────
+        self._axes_transform_cache = {}  # {"left": vtkTransform, "right": vtkTransform}
+        self._axes_matrix_cache = {}     # {"left": vtkMatrix4x4, "right": vtkMatrix4x4}
+        # 记录最后一次坐标轴更新的位置和四元数，用于变化检测
+        self._last_axes_pose = {}        # {"left": (pos, quat), "right": (pos, quat)}
         
         # LightHouse 信息缓存（用于检测内容变化）
         self._last_lighthouse_content = None  # 存储上一次的基站信息内容
@@ -439,6 +446,7 @@ class ViveTrackerWidget(QWidget):
         model_unload_callback=None,
         lighthouse_update_callback=None,
         tracking_state_changed_callback=None,
+        render_request_callback=None,
     ):
         """设置 VTK 渲染器和模型加载/卸载回调。
         
@@ -448,16 +456,22 @@ class ViveTrackerWidget(QWidget):
             model_unload_callback: 模型卸载回调函数 (side: str, renderer) -> None
             lighthouse_update_callback: LightHouse 更新回调 (lighthouse_states: list[dict]) -> None
             tracking_state_changed_callback: 追踪状态改变回调 (enabled: bool) -> None
+            render_request_callback: 请求主窗口渲染回调 () -> None
         """
         self._renderer = renderer
         self._model_load_callback = model_load_callback
         self._model_unload_callback = model_unload_callback
         self._lighthouse_update_callback = lighthouse_update_callback
         self._tracking_state_changed_callback = tracking_state_changed_callback
+        self._render_request_callback = render_request_callback
         print("[ViveTrackerWidget] VTK 渲染器和模型回调已设置")
     
     def update_model_pose(self, side: str, position_xyz: tuple, quat_wxyz: tuple):
         """更新模型的位置和旋转（包括坐标轴）。坐标轴会完全跟随模型的位置和旋转。
+        
+        已优化：
+        - VTK 对象复用：缓存 vtkMatrix4x4 和 vtkTransform，避免每帧新建
+        - 变化检测：仅当位置/旋转改变时才更新坐标轴
         
         Args:
             side: "left" 或 "right"
@@ -475,16 +489,6 @@ class ViveTrackerWidget(QWidget):
             # 转换四元数格式从 (w, x, y, z) 到 (x, y, z, w)
             qx, qy, qz, qw = quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]
             
-            # 添加调试日志（每 60 帧打印一次以减少日志量）
-            if hasattr(self, '_model_pose_log_counter'):
-                self._model_pose_log_counter = (self._model_pose_log_counter + 1) % 60
-            else:
-                self._model_pose_log_counter = 0
-            
-            #if self._model_pose_log_counter == 0:
-                #print(f"[ModelPose] {side}: pos=({position_xyz[0]:.4f}, {position_xyz[1]:.4f}, {position_xyz[2]:.4f}) "
-                      #f"quat=(w={qw:.4f}, x={qx:.4f}, y={qy:.4f}, z={qz:.4f})")
-            
             # 更新追踪器 3D 模型的位置和旋转
             actor.set_position_and_rotation(position_xyz, (qx, qy, qz, qw))
             
@@ -492,6 +496,26 @@ class ViveTrackerWidget(QWidget):
             axes_actor = self._tracker_axes_actors.get(side)
             if axes_actor is not None:
                 try:
+                    # ── 变化检测：检查位置和旋转是否改变 ────────────────
+                    last_pose = self._last_axes_pose.get(side)
+                    current_pose = (position_xyz, quat_wxyz)
+                    
+                    # 比较函数：检查浮点数相等性（容差 1e-6）
+                    def _poses_equal(pose1, pose2, epsilon=1e-6):
+                        if pose1 is None or pose2 is None:
+                            return False
+                        pos1, quat1 = pose1
+                        pos2, quat2 = pose2
+                        return all(abs(a - b) < epsilon for a, b in zip(pos1, pos2)) and \
+                               all(abs(a - b) < epsilon for a, b in zip(quat1, quat2))
+                    
+                    # 如果位置和旋转未改变，跳过更新
+                    if _poses_equal(last_pose, current_pose):
+                        return
+                    
+                    # 记录本次更新（供下一帧比较）
+                    self._last_axes_pose[side] = current_pose
+                    
                     import vtk
                     
                     # 标准化四元数
@@ -518,10 +542,17 @@ class ViveTrackerWidget(QWidget):
                     r32 = 2*(qy_norm*qz_norm + qx_norm*qw_norm)
                     r33 = 1 - 2*(qx_norm*qx_norm + qy_norm*qy_norm)
                     
-                    # 创建 4x4 变换矩阵（旋转 + 平移）
-                    matrix = vtk.vtkMatrix4x4()
+                    # ── 复用缓存的 VTK 对象（避免每帧新建） ────────────────
+                    if side not in self._axes_matrix_cache:
+                        self._axes_matrix_cache[side] = vtk.vtkMatrix4x4()
+                    if side not in self._axes_transform_cache:
+                        self._axes_transform_cache[side] = vtk.vtkTransform()
                     
-                    # 设置旋转部分 (3x3)
+                    matrix = self._axes_matrix_cache[side]
+                    transform = self._axes_transform_cache[side]
+                    
+                    # 更新矩阵元素（复用对象）
+                    # 设置旋转部分 (3x3) + 平移
                     matrix.SetElement(0, 0, r11)
                     matrix.SetElement(0, 1, r12)
                     matrix.SetElement(0, 2, r13)
@@ -544,7 +575,6 @@ class ViveTrackerWidget(QWidget):
                     matrix.SetElement(3, 3, 1.0)
                     
                     # 为 assembly 中的每个 actor 应用相同的变换
-                    transform = vtk.vtkTransform()
                     transform.SetMatrix(matrix)
                     
                     parts = axes_actor.GetParts()
@@ -558,11 +588,12 @@ class ViveTrackerWidget(QWidget):
                     
                     # 标记 assembly 为已更新
                     axes_actor.Modified()
+
+                    if self._render_request_callback is not None:
+                        self._render_request_callback()
                     
                 except Exception as e:
-                    # 如果更新坐标轴失败，不要中断模型更新
-                    if self._model_pose_log_counter == 0:
-                        print(f"[ModelPose] ⚠ {side} 手坐标轴更新警告：{e}")
+                    print(f"[ModelPose] ⚠ {side} 手坐标轴更新警告：{e}")
                         
         except Exception as e:
             print(f"[ModelPose] 更新 {side} 模型位置失败：{e}")

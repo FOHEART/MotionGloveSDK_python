@@ -308,6 +308,10 @@ def _build_qt_app():
             self._lighthouse_polydata = None
             self._lighthouse_face_count = 0
             self._lighthouse_actors: dict[str, dict] = {}
+            self._scene_dirty = True
+            self._last_processed_frame_fn: int | None = None
+            self._last_left_panel_refresh_time = 0.0
+            self._last_bone_viewer_refresh_time = 0.0
 
             # CSV 回放模式专用
             self._csv_reader = None      # CsvFrameReader 实例
@@ -559,10 +563,14 @@ def _build_qt_app():
                 model_unload_callback=self._on_tracker_model_unload,
                 lighthouse_update_callback=self._on_lighthouse_pose_update,
                 tracking_state_changed_callback=self._on_vive_tracking_state_changed,
+                render_request_callback=self._mark_scene_dirty,
             )
             if create_tracker_actor is None:
                 print("[MainWindow] VR Tracker 模型加载器不可用（VTK 未安装或模型加载器导入失败）")
             print("[MainWindow] VR Tracker / LightHouse 回调已初始化")
+
+        def _mark_scene_dirty(self):
+            self._scene_dirty = True
         
         def _on_tracker_model_load(self, side: str, renderer):
             """加载 VR Tracker 模型的回调。
@@ -592,6 +600,7 @@ def _build_qt_app():
                         print(f"[MainWindow] ⚠ {side} 手 Tracker 坐标轴加载失败：{e}")
                     
                     self._update_mesh_stats()
+                    self._mark_scene_dirty()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已加载到 VTK 场景")
                 else:
                     print(f"[MainWindow] ✗ 无法为 {side} 手创建 Tracker 模型")
@@ -615,6 +624,7 @@ def _build_qt_app():
                 if actor is not None:
                     renderer.RemoveActor(actor.get_actor())
                     vive_widget.store_model_actor(side, None)
+                    self._mark_scene_dirty()
                     print(f"[MainWindow] ✓ {side} 手 Tracker 模型已从 VTK 场景移除")
                 
                 # 卸载坐标轴
@@ -655,6 +665,7 @@ def _build_qt_app():
                             try:
                                 self._renderer.RemoveActor(axes_actor)
                                 vive_widget.store_axes_actor(side, None)
+                                self._mark_scene_dirty()
                                 print(f"[MainWindow] ✓ {side} 手 Tracker 坐标轴已卸载")
                             except Exception as e:
                                 print(f"[MainWindow] ✗ 卸载 {side} 手 Tracker 坐标轴失败：{e}")
@@ -737,6 +748,7 @@ def _build_qt_app():
 
                 transform.SetMatrix(matrix)
                 transform.Modified()
+                self._mark_scene_dirty()
             except Exception as e:
                 print(f"[MainWindow] ✗ LightHouse 姿态应用失败：{e}")
 
@@ -761,6 +773,7 @@ def _build_qt_app():
                     pass
             self._lighthouse_actors.clear()
             self._update_mesh_stats()
+            self._mark_scene_dirty()
 
         def _on_lighthouse_pose_update(self, lighthouse_states):
             """由 ViveTracker 1Hz 定时器触发的 LightHouse 同步回调。"""
@@ -815,6 +828,7 @@ def _build_qt_app():
 
             if removed_any or len(desired_ids) != 0:
                 self._update_mesh_stats()
+                self._mark_scene_dirty()
 
         # ── SDK 轮询线程 ──────────────────────────────────
         def _start_sdk_poll(self):
@@ -906,6 +920,7 @@ def _build_qt_app():
                     la.set_color(*cfg.link_color)
                     la.set_line_width(cfg.link_width)
                 self._last_applied_config = cfg
+                self._mark_scene_dirty()
 
             with self._frame_lock:
                 frame = self._latest_frame[0]
@@ -921,7 +936,10 @@ def _build_qt_app():
                     + f"  丢失 {last - first + 1} 帧（累计 {cumulative}）"
                 )
 
-            if frame is not None:
+            frame_fn = None if frame is None else frame.header.frame_number
+            has_new_frame = frame_fn is not None and frame_fn != self._last_processed_frame_fn
+
+            if has_new_frame and frame is not None:
                 positions: list = [None] * KHHS42_SKELETON_COUNT
 
                 # 计算每根骨骼的全局四元数（局部四元数沿父链累乘）
@@ -998,14 +1016,25 @@ def _build_qt_app():
 
                 self._render_fps_overlay.tick()
 
-                # 更新骨骼查看面板的欧拉角显示
-                self._right_panel.bone_viewer.update_euler_angles(frame)
+                bone_tab_visible = (
+                    self._right_panel.isVisible()
+                    and self._right_panel.tab_widget.currentIndex() == 1
+                )
+                now = time.monotonic()
+                if bone_tab_visible and now - self._last_bone_viewer_refresh_time >= 0.1:
+                    self._right_panel.bone_viewer.update_euler_angles(frame)
+                    self._last_bone_viewer_refresh_time = now
+                self._last_processed_frame_fn = frame_fn
+                self._mark_scene_dirty()
 
-            # 每帧都渲染（不只在有手套数据时渲染，以便 Tracker 模型等能立即显示）
-            self._vtk_widget.GetRenderWindow().Render()
+            if self._scene_dirty:
+                self._vtk_widget.GetRenderWindow().Render()
+                self._scene_dirty = False
 
             # 更新左侧网络信息面板（UDP 模式）
-            if self._left_panel is not None:
+            now = time.monotonic()
+            if self._left_panel is not None and now - self._last_left_panel_refresh_time >= 0.1:
+                self._last_left_panel_refresh_time = now
                 addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
                 if addr is not None:
                     self._left_panel.lbl_ip.setText(addr[0])
