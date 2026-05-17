@@ -14,5 +14,13 @@
   "axis_length": 0.01,
   "default_boot_mode": "udpstream",
   "blender_exe": "D:\\Dev\\MotionGloveSDK_python\\libs\\blender-4.5.8-windows-x64\\blender.exe",
-  "language": "zh_CN"
+  "language": "zh_CN",
+  "LeftHandTracker": {
+    "SerialNumber": "LHR-D5301C8B",
+    "Description": "Left hand VR tracker"
+  },
+  "RightHandTracker": {
+    "SerialNumber": "",
+    "Description": "Right hand VR tracker (not configured)"
+  }
 }

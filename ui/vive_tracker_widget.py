@@ -786,11 +786,12 @@ class ViveTrackerWidget(QWidget):
                     serial = serial.decode('utf-8')
                 debug_lines.append(f"  {device_name}: {serial}")
                 
-                if serial == left_serial:
+                # 只有配置了序列号才进行匹配
+                if left_serial and serial == left_serial:
                     self._devices["left"] = device
                     debug_lines.append(f"    ✓ 左手匹配")
                     print(f"[StartTracking] 左手设备已匹配: {serial}")
-                elif serial == right_serial:
+                elif right_serial and serial == right_serial:
                     self._devices["right"] = device
                     debug_lines.append(f"    ✓ 右手匹配")
                     print(f"[StartTracking] 右手设备已匹配: {serial}")
@@ -802,8 +803,13 @@ class ViveTrackerWidget(QWidget):
         self._connection_status_text.setText(debug_text)
         
         if not self._devices:
-            error_text = f"未找到匹配的追踪器\n已配置序列号：\nLeft: {left_serial}\nRight: {right_serial}"
-            self._connection_status_text.setText(debug_text + "\n\n" + error_text)
+            # 检查是否缺少配置
+            if not left_serial and not right_serial:
+                error_text = "\n\n<font color='red'><b>错误：未配置追踪器序列号</b></font>\n请在 config.json 中配置 LeftHandTracker 和/或 RightHandTracker 的 SerialNumber"
+            else:
+                error_text = f"\n\n<font color='red'><b>未找到匹配的追踪器</b></font>\n已配置序列号：\nLeft: {left_serial if left_serial else '未配置'}\nRight: {right_serial if right_serial else '未配置'}"
+            
+            self._connection_status_text.setText(debug_text + error_text)
             self._openvr_system = None
             return
 
