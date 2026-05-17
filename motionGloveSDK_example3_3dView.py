@@ -751,6 +751,16 @@ def _build_qt_app():
             reset_camera_action = menu.addAction(self.tr("重置视角"))
 
             action = menu.exec(global_pos)
+
+            # 菜单关闭后，重置 VTK interactor style 的内部状态，防止残留右键拖拽模式
+            if self._interactor is not None:
+                try:
+                    style = self._interactor.GetInteractorStyle()
+                    if style is not None:
+                        style.OnRightButtonUp()
+                except Exception:
+                    pass
+
             rw = self._vtk_widget.GetRenderWindow()
 
             if action is axes_action:
