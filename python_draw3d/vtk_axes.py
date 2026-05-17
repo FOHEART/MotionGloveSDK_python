@@ -84,13 +84,13 @@ def build_local_axes_actor(length_mm: float = 50, shaft_radius_mm: float = 3):
         # 立方体默认中心在原点，所以需要平移 size/2 使其从原点开始
         transform_source = vtk.vtkTransform()
         if axis_name == "X":
-            # X轴：从 (0,0,0) 到 (100mm,0,0)
+            # X轴：从 (0,0,0) 向正X方向延伸
             transform_source.Translate(sizes[0] / 2, 0, 0)
         elif axis_name == "Y":
-            # Y轴：从 (0,0,0) 到 (0,100mm,0)
+            # Y轴：从 (0,0,0) 向正Y方向延伸（向上）
             transform_source.Translate(0, sizes[1] / 2, 0)
         else:  # Z
-            # Z轴：从 (0,0,0) 到 (0,0,100mm)
+            # Z轴：从 (0,0,0) 向正Z方向延伸
             transform_source.Translate(0, 0, sizes[2] / 2)
         
         # 应用变换到立方体的几何

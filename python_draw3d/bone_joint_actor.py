@@ -166,6 +166,17 @@ class BoneJointActor:
         for a, _, __ in self._axes:
             a.VisibilityOff()
 
+    def set_visibility(self, visible: bool):
+        """设置球体和三轴的可见性。"""
+        if visible:
+            self._s_actor.VisibilityOn()
+            for a, _, __ in self._axes:
+                a.VisibilityOn()
+        else:
+            self._s_actor.VisibilityOff()
+            for a, _, __ in self._axes:
+                a.VisibilityOff()
+
     def set_axis_length(self, length):
         """设置三轴线段长度。"""
         self._axis_len = length

@@ -69,6 +69,13 @@ class BoneLinkActor:
         """隐藏连线。"""
         self._actor.VisibilityOff()
 
+    def set_visibility(self, visible: bool):
+        """设置连线的可见性。"""
+        if visible:
+            self._actor.VisibilityOn()
+        else:
+            self._actor.VisibilityOff()
+
     def set_color(self, r, g, b):
         """修改连线颜色。"""
         self._actor.GetProperty().SetColor(r, g, b)
