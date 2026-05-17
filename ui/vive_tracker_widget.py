@@ -33,12 +33,9 @@ from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, Tracker
 # 导入 LightHouse 管理器
 from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighthouse_manager
 
-# 导入标定 widget
-from calibration_widget import CalibrationWidget
-
 # 导入独立的追踪信息和标定面板
 from vive_tracker_info import ViveTrackerInfoWidget
-from vive_tracker_cali import ViveTrackerCaliWidget
+from vive_tracker_cali import ViveTrackerCaliWidget, CaliTabManager
 
 
 def _find_ui_file() -> Path:
@@ -156,6 +153,9 @@ class ViveTrackerWidget(QWidget):
         # 记录最后一次坐标轴更新的位置和四元数，用于变化检测
         self._last_axes_pose = {}        # {"left": (pos, quat), "right": (pos, quat)}
         
+        # 标定tab管理器
+        self._cali_tab_manager = CaliTabManager(self)
+        
         self._init_ui()
         self._load_config()
         
@@ -203,12 +203,8 @@ class ViveTrackerWidget(QWidget):
         tracker_layout.addWidget(self._ui)
         self._tab_widget.addTab(tracker_tab, "追踪信息")
         
-        # 第二个 tab：定位标定
-        self._calibration_widget = CalibrationWidget(vive_tracker_widget=self)
-        self._calibration_tab_index = self._tab_widget.addTab(self._calibration_widget, "定位标定")
-        
-        # 默认禁用定位标定 tab（只有追踪成功开启后才启用）
-        self._tab_widget.setTabEnabled(self._calibration_tab_index, False)
+        # 第二个 tab：定位标定（由 CaliTabManager 管理）
+        self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
         
         # 获取 UI 中的控件
         self._left_config_label: QLabel = self._ui.findChild(QLabel, "leftHandConfigInfo")
@@ -884,8 +880,8 @@ class ViveTrackerWidget(QWidget):
         # 启动后台数据收集线程
         self._tracking_enabled = True
         
-        # 启用定位标定 tab（追踪成功开启）
-        self._tab_widget.setTabEnabled(self._calibration_tab_index, True)
+        # 启用定位标定 tab（由 CaliTabManager 管理，追踪成功开启）
+        self._cali_tab_manager.enable_calibration_tab(self._tab_widget)
         
         self._thread_stop_event.clear()
         self._tracking_thread = threading.Thread(target=self._tracking_loop, daemon=True)
@@ -952,8 +948,8 @@ class ViveTrackerWidget(QWidget):
         """停止追踪。"""
         self._tracking_enabled = False
         
-        # 禁用定位标定 tab（追踪已关闭）
-        self._tab_widget.setTabEnabled(self._calibration_tab_index, False)
+        # 禁用定位标定 tab（由 CaliTabManager 管理，追踪已关闭）
+        self._cali_tab_manager.disable_calibration_tab(self._tab_widget)
         
         self._update_timer.stop()
         self._lighthouse_update_timer.stop()
