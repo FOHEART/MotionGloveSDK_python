@@ -402,6 +402,9 @@ class InfoTabManager:
         
         self._info_tab_index = tab_widget.addTab(tracker_tab, "追踪信息")
         
+        # 追踪信息tab 始终启用
+        tab_widget.setTabEnabled(self._info_tab_index, True)
+        
         return self._info_widget
     
     def load_config(self):
@@ -412,6 +415,7 @@ class InfoTabManager:
         # 查找配置文件
         config_file = Path(__file__).parent.parent / "config.json"
         if not config_file.exists():
+            self._vive_tracker_widget._config = {}
             error_text = f"<font color='red'><b>配置文件未找到</b></font><br>{config_file}"
             self._info_widget.update_left_config(error_text)
             self._info_widget.update_right_config(error_text)
@@ -421,10 +425,13 @@ class InfoTabManager:
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
         except Exception as e:
+            self._vive_tracker_widget._config = {}
             error_text = f"<font color='red'><b>读取配置失败</b></font><br>{e}"
             self._info_widget.update_left_config(error_text)
             self._info_widget.update_right_config(error_text)
             return
+
+        self._vive_tracker_widget._config = config
         
         # 更新左手信息
         left_config = config.get("LeftHandTracker", {})
