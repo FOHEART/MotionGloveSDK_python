@@ -74,7 +74,7 @@ class ViveTrackerInfoWidget(QWidget):
         loader = QUiLoader()
         ui_file = QFile(str(ui_file_path))
         ui_file.open(QIODevice.ReadOnly)
-        self._ui = loader.load(ui_file)
+        self._ui = loader.load(ui_file, self)
         ui_file.close()
         
         # 将 UI 添加到当前 widget
@@ -226,14 +226,15 @@ class ViveTrackerInfoWidget(QWidget):
         Args:
             running: True 表示 SteamVR 已启动，False 表示未启动
         """
+        status_label = self._resolve_steamvr_status_label()
         if running:
-            self._steamvr_status_label.setText("SteamVR: 已启动")
-            self._steamvr_status_label.setStyleSheet(
+            status_label.setText("SteamVR: 已启动")
+            status_label.setStyleSheet(
                 "background-color: green; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
             )
         else:
-            self._steamvr_status_label.setText("SteamVR: 未启动")
-            self._steamvr_status_label.setStyleSheet(
+            status_label.setText("SteamVR: 未启动")
+            status_label.setStyleSheet(
                 "background-color: red; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
             )
     
@@ -305,48 +306,102 @@ class ViveTrackerInfoWidget(QWidget):
     def get_connection_status_text(self):
         """获取连接状态文本编辑框。"""
         return self._connection_status_text
+
+    def _resolve_connection_status_text(self):
+        """获取仍然有效的连接状态文本控件。"""
+        try:
+            if self._connection_status_text is not None:
+                self._connection_status_text.objectName()
+                return self._connection_status_text
+        except RuntimeError:
+            self._connection_status_text = None
+
+        self._connection_status_text = self.findChild(QTextEdit, "connectionStatusText")
+        if self._connection_status_text is None:
+            raise RuntimeError("UI 控件不可用：connectionStatusText")
+        return self._connection_status_text
+
+    def _resolve_steamvr_status_label(self):
+        """获取仍然有效的 SteamVR 状态标签。"""
+        try:
+            if self._steamvr_status_label is not None:
+                self._steamvr_status_label.objectName()
+                return self._steamvr_status_label
+        except RuntimeError:
+            self._steamvr_status_label = None
+
+        self._steamvr_status_label = self.findChild(QLabel, "steamvrStatusLabel")
+        if self._steamvr_status_label is None:
+            raise RuntimeError("UI 控件不可用：steamvrStatusLabel")
+        return self._steamvr_status_label
+
+    def _resolve_named_widget(self, attr_name: str, widget_type, object_name: str):
+        """按 objectName 获取仍然有效的控件。"""
+        widget = getattr(self, attr_name)
+        try:
+            if widget is not None:
+                widget.objectName()
+                return widget
+        except RuntimeError:
+            widget = None
+
+        widget = self.findChild(widget_type, object_name)
+        if widget is None:
+            raise RuntimeError(f"UI 控件不可用：{object_name}")
+        setattr(self, attr_name, widget)
+        return widget
+
+    def set_connection_status_text(self, text: str):
+        """更新连接状态文本。"""
+        self._resolve_connection_status_text().setText(text)
+
+    def get_connection_status_plain_text(self) -> str:
+        """获取连接状态的纯文本内容。"""
+        return self._resolve_connection_status_text().toPlainText()
     
     def get_position_labels(self):
         """获取位置标签字典。"""
         return {
-            "left": self._left_position_label,
-            "right": self._right_position_label
+            "left": self._resolve_named_widget("_left_position_label", QLabel, "leftHandPositionLabel"),
+            "right": self._resolve_named_widget("_right_position_label", QLabel, "rightHandPositionLabel")
         }
     
     def get_rotation_labels(self):
         """获取旋转标签字典。"""
         return {
-            "left": self._left_rotation_label,
-            "right": self._right_rotation_label
+            "left": self._resolve_named_widget("_left_rotation_label", QLabel, "leftHandRotationLabel"),
+            "right": self._resolve_named_widget("_right_rotation_label", QLabel, "rightHandRotationLabel")
         }
     
     def get_quat_labels(self):
         """获取四元数标签字典。"""
         return {
-            "left": self._left_quat_label,
-            "right": self._right_quat_label
+            "left": self._resolve_named_widget("_left_quat_label", QLabel, "leftHandQuatLabel"),
+            "right": self._resolve_named_widget("_right_quat_label", QLabel, "rightHandQuatLabel")
         }
     
     def get_config_labels(self):
         """获取配置标签字典。"""
         return {
-            "left": self._left_config_label,
-            "right": self._right_config_label
+            "left": self._resolve_named_widget("_left_config_label", QLabel, "leftHandConfigInfo"),
+            "right": self._resolve_named_widget("_right_config_label", QLabel, "rightHandConfigInfo")
         }
     
     def get_groups(self):
         """获取 GroupBox 字典。"""
         return {
-            "left": self._left_group,
-            "right": self._right_group
+            "left": self._resolve_named_widget("_left_group", QGroupBox, "leftHandGroup"),
+            "right": self._resolve_named_widget("_right_group", QGroupBox, "rightHandGroup")
         }
     
     def set_groupbox_online_status(self, side: str, is_online: bool):
         """设置 GroupBox 在线状态。"""
         if side == "left":
-            self._set_groupbox_online_status(self._left_group, is_online)
+            groupbox = self._resolve_named_widget("_left_group", QGroupBox, "leftHandGroup")
+            self._set_groupbox_online_status(groupbox, is_online)
         elif side == "right":
-            self._set_groupbox_online_status(self._right_group, is_online)
+            groupbox = self._resolve_named_widget("_right_group", QGroupBox, "rightHandGroup")
+            self._set_groupbox_online_status(groupbox, is_online)
     
     def set_steamvr_status(self, running: bool):
         """设置 SteamVR 状态。"""
@@ -354,35 +409,43 @@ class ViveTrackerInfoWidget(QWidget):
     
     def update_left_config(self, text: str):
         """更新左手配置标签。"""
-        self._left_config_label.setText(text)
+        label = self._resolve_named_widget("_left_config_label", QLabel, "leftHandConfigInfo")
+        label.setText(text)
     
     def update_right_config(self, text: str):
         """更新右手配置标签。"""
-        self._right_config_label.setText(text)
+        label = self._resolve_named_widget("_right_config_label", QLabel, "rightHandConfigInfo")
+        label.setText(text)
     
     def update_left_position(self, text: str):
         """更新左手位置标签。"""
-        self._left_position_label.setText(text)
+        label = self._resolve_named_widget("_left_position_label", QLabel, "leftHandPositionLabel")
+        label.setText(text)
     
     def update_right_position(self, text: str):
         """更新右手位置标签。"""
-        self._right_position_label.setText(text)
+        label = self._resolve_named_widget("_right_position_label", QLabel, "rightHandPositionLabel")
+        label.setText(text)
     
     def update_left_rotation(self, text: str):
         """更新左手旋转标签。"""
-        self._left_rotation_label.setText(text)
+        label = self._resolve_named_widget("_left_rotation_label", QLabel, "leftHandRotationLabel")
+        label.setText(text)
     
     def update_right_rotation(self, text: str):
         """更新右手旋转标签。"""
-        self._right_rotation_label.setText(text)
+        label = self._resolve_named_widget("_right_rotation_label", QLabel, "rightHandRotationLabel")
+        label.setText(text)
     
     def update_left_quat(self, text: str):
         """更新左手四元数标签。"""
-        self._left_quat_label.setText(text)
+        label = self._resolve_named_widget("_left_quat_label", QLabel, "leftHandQuatLabel")
+        label.setText(text)
     
     def update_right_quat(self, text: str):
         """更新右手四元数标签。"""
-        self._right_quat_label.setText(text)
+        label = self._resolve_named_widget("_right_quat_label", QLabel, "rightHandQuatLabel")
+        label.setText(text)
 
 
 class InfoTabManager:
@@ -412,15 +475,7 @@ class InfoTabManager:
         """
         # 创建追踪信息tab
         self._info_widget = ViveTrackerInfoWidget(parent=self._vive_tracker_widget)
-        
-        # 创建容器并添加到 tab_widget
-        from PySide6.QtWidgets import QWidget, QVBoxLayout
-        tracker_tab = QWidget()
-        tracker_layout = QVBoxLayout(tracker_tab)
-        tracker_layout.setContentsMargins(0, 0, 0, 0)
-        tracker_layout.addWidget(self._info_widget.get_ui())
-        
-        self._info_tab_index = tab_widget.addTab(tracker_tab, "追踪信息")
+        self._info_tab_index = tab_widget.addTab(self._info_widget, "追踪信息")
         tab_widget.setTabEnabled(self._info_tab_index, True)
         
         return self._info_widget
@@ -500,6 +555,17 @@ class InfoTabManager:
         """切换追踪信息 tab 内部依赖追踪状态的控件。"""
         if self._info_widget is not None:
             self._info_widget.set_tracking_controls_enabled(enabled)
+
+    def set_connection_status_text(self, text: str):
+        """更新连接状态文本。"""
+        if self._info_widget is not None:
+            self._info_widget.set_connection_status_text(text)
+
+    def get_connection_status_plain_text(self) -> str:
+        """获取连接状态的纯文本内容。"""
+        if self._info_widget is None:
+            return ""
+        return self._info_widget.get_connection_status_plain_text()
     
     def _format_config(self, config: dict) -> str:
         """将配置字典格式化为显示文本。

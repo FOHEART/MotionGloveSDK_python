@@ -45,6 +45,7 @@ class SteamVRStatusChecker:
         _debug_print("SteamVRStatusChecker", "启动定时器")
         self._timer.setInterval(self._check_interval)
         self._timer.start()
+        self._on_timer()
     
     def stop(self):
         """停止状态检查定时器。"""

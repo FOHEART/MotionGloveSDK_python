@@ -2,7 +2,7 @@
 Vive Tracker 配置显示和追踪面板
 
 功能：
-- 从 triad_openvr/hand_tracker_config.json 读取配置
+- 从项目根目录 config.json 读取配置
 - 初始化 OpenVR 系统
 - 后台线程以 60Hz 读取追踪数据
 - UI 以 60Hz 刷新显示位置和旋转信息
@@ -20,7 +20,7 @@ from typing import Optional, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit, QFrame, QTabWidget
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
+from PySide6.QtCore import QFile, QIODevice, QTimer, Qt, QEvent
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
 
@@ -33,9 +33,10 @@ from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, Tracker
 # 导入 LightHouse 管理器
 from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighthouse_manager
 
-# 导入独立的追踪信息和标定面板
+# 导入独立的追踪信息、标定和设备列表面板
 from vive_tracker_info import ViveTrackerInfoWidget, InfoTabManager
 from vive_tracker_cali import ViveTrackerCaliWidget, CaliTabManager
+from vive_tracker_all_devices import AllDevicesTabManager
 
 
 def _find_ui_file() -> Path:
@@ -81,12 +82,10 @@ def _find_ui_file() -> Path:
 
 
 def _find_config_file() -> Path:
-    """查找 hand_tracker_config.json 文件的路径。"""
+    """查找项目根目录 config.json 文件的路径。"""
     candidates = [
-        Path(__file__).parent.parent / "triad_openvr" / "hand_tracker_config.json",
-        Path(__file__).parent.parent / "hand_tracker_config.json",
-        Path.cwd() / "triad_openvr" / "hand_tracker_config.json",
-        Path.cwd() / "hand_tracker_config.json",
+        Path(__file__).parent.parent / "config.json",
+        Path.cwd() / "config.json",
     ]
     
     for candidate in candidates:
@@ -101,6 +100,8 @@ def _find_config_file() -> Path:
 
 class ViveTrackerWidget(QWidget):
     """Vive Tracker 配置显示和追踪面板。"""
+
+    _TAB_DEBUG_ENABLED = True
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -158,6 +159,9 @@ class ViveTrackerWidget(QWidget):
         
         # 标定tab管理器
         self._cali_tab_manager = CaliTabManager(self)
+
+        # 所有设备tab管理器
+        self._all_devices_tab_manager = AllDevicesTabManager(self)
         
         self._init_ui()
         self._load_config()
@@ -204,6 +208,11 @@ class ViveTrackerWidget(QWidget):
         
         # 第二个 tab：定位标定（由 CaliTabManager 管理）
         self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
+
+        # 第三个 tab：所有设备（完全独立）
+        self._all_devices_tab_manager.setup_all_devices_tab(self._tab_widget)
+
+        self._install_tab_debug_hooks()
         
         # 从 InfoTabManager 获取 UI 中的控件（保持向后兼容性）
         info_widget = self._info_tab_manager.get_info_widget()
@@ -220,8 +229,6 @@ class ViveTrackerWidget(QWidget):
         self._left_group: QGroupBox = info_widget.get_groups()["left"]
         self._right_group: QGroupBox = info_widget.get_groups()["right"]
         self._start_tracking_btn: QPushButton = info_widget.get_start_tracking_button()
-        self._connection_status_text: QTextEdit = info_widget.get_connection_status_text()
-        
         # 验证关键控件存在
         assert self._left_config_label is not None, "UI 控件未找到：leftHandConfigInfo"
         assert self._right_config_label is not None, "UI 控件未找到：rightHandConfigInfo"
@@ -229,6 +236,116 @@ class ViveTrackerWidget(QWidget):
         
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
+
+    def _install_tab_debug_hooks(self):
+        """安装 tab 切换调试日志。"""
+        if not self._TAB_DEBUG_ENABLED:
+            return
+
+        tab_bar = self._tab_widget.tabBar()
+        tab_bar.installEventFilter(self)
+        self._tab_widget.installEventFilter(self)
+
+        for index in range(self._tab_widget.count()):
+            page = self._tab_widget.widget(index)
+            if page is not None:
+                page.installEventFilter(self)
+
+        tab_bar.currentChanged.connect(self._on_tab_bar_current_changed)
+        tab_bar.tabBarClicked.connect(self._on_tab_bar_clicked)
+        self._tab_widget.currentChanged.connect(self._on_tab_widget_current_changed)
+
+        QTimer.singleShot(0, lambda: self._debug_dump_tab_state("init"))
+
+    def _describe_widget_brief(self, widget):
+        """生成简短的 QWidget 调试描述。"""
+        if widget is None:
+            return "None"
+
+        try:
+            object_name = widget.objectName() or "<no-object-name>"
+            geometry = widget.geometry()
+            return (
+                f"{widget.__class__.__name__}(name={object_name}, "
+                f"visible={widget.isVisible()}, enabled={widget.isEnabled()}, "
+                f"geom={geometry.getRect()})"
+            )
+        except RuntimeError:
+            return f"{widget.__class__.__name__}(deleted)"
+
+    def _debug_dump_tab_state(self, reason: str):
+        """打印当前 tab 状态，辅助定位切换异常。"""
+        if not self._TAB_DEBUG_ENABLED:
+            return
+
+        tab_bar = self._tab_widget.tabBar()
+        current_index = self._tab_widget.currentIndex()
+        current_widget = self._tab_widget.currentWidget()
+
+        print(f"[TabDebug] reason={reason}")
+        print(
+            f"[TabDebug] tabWidget currentIndex={current_index} "
+            f"count={self._tab_widget.count()} currentWidget={self._describe_widget_brief(current_widget)}"
+        )
+        print(f"[TabDebug] tabBar={self._describe_widget_brief(tab_bar)}")
+
+        for index in range(self._tab_widget.count()):
+            page = self._tab_widget.widget(index)
+            label = self._tab_widget.tabText(index)
+            page_parent = page.parentWidget().__class__.__name__ if page is not None and page.parentWidget() is not None else "None"
+            print(
+                f"[TabDebug] tab[{index}] text={label} enabled={self._tab_widget.isTabEnabled(index)} "
+                f"visible={page.isVisible() if page is not None else False} "
+                f"pageParent={page_parent} page={self._describe_widget_brief(page)}"
+            )
+
+        info_widget = self._info_tab_manager.get_info_widget()
+        if info_widget is not None:
+            print(f"[TabDebug] infoWidget={self._describe_widget_brief(info_widget)}")
+            print(f"[TabDebug] infoWidget.ui={self._describe_widget_brief(info_widget.get_ui())}")
+
+        calibration_widget = self._cali_tab_manager.get_calibration_widget()
+        if calibration_widget is not None:
+            print(f"[TabDebug] calibrationWidget={self._describe_widget_brief(calibration_widget)}")
+
+    def _on_tab_bar_clicked(self, index: int):
+        """记录 tabBar 点击。"""
+        self._debug_dump_tab_state(f"tabBarClicked index={index}")
+
+    def _on_tab_bar_current_changed(self, index: int):
+        """记录 tabBar 当前项变化。"""
+        self._debug_dump_tab_state(f"tabBar.currentChanged index={index}")
+
+    def _on_tab_widget_current_changed(self, index: int):
+        """记录 QTabWidget 当前页变化。"""
+        self._debug_dump_tab_state(f"tabWidget.currentChanged index={index}")
+
+    def eventFilter(self, watched, event):
+        """拦截 tab 相关事件，辅助定位点击失效问题。"""
+        if self._TAB_DEBUG_ENABLED and self._tab_widget is not None:
+            tab_bar = self._tab_widget.tabBar()
+            event_type = event.type()
+            watched_name = watched.__class__.__name__
+
+            if watched is tab_bar and event_type in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease):
+                pos = event.position().toPoint()
+                tab_index = tab_bar.tabAt(pos)
+                print(
+                    f"[TabDebug] event={event_type} watched=QTabBar pos=({pos.x()},{pos.y()}) "
+                    f"tabAt={tab_index} currentIndex={self._tab_widget.currentIndex()}"
+                )
+            elif watched is self._tab_widget and event_type in (QEvent.Resize, QEvent.Show):
+                self._debug_dump_tab_state(f"QTabWidget event={event_type}")
+            elif event_type in (QEvent.Show, QEvent.Hide, QEvent.Resize):
+                for index in range(self._tab_widget.count()):
+                    if watched is self._tab_widget.widget(index):
+                        print(
+                            f"[TabDebug] pageEvent tab={index} text={self._tab_widget.tabText(index)} "
+                            f"event={event_type} watched={watched_name} geom={watched.geometry().getRect()}"
+                        )
+                        break
+
+        return super().eventFilter(watched, event)
 
     def _init_bias_controls(self):
         """初始化位置偏差控件（从 UI 文件加载）。"""
@@ -416,7 +533,7 @@ class ViveTrackerWidget(QWidget):
                 self._left_online_state = is_online
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 左手 Tracker {status_str}")
-                self._set_groupbox_online_status(self._left_group, is_online)
+                self._info_tab_manager.get_info_widget().set_groupbox_online_status("left", is_online)
                 
                 # 处理模型加载/卸载
                 if is_online and self._renderer is not None and self._model_load_callback is not None:
@@ -434,7 +551,7 @@ class ViveTrackerWidget(QWidget):
                 self._right_online_state = is_online
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 右手 Tracker {status_str}")
-                self._set_groupbox_online_status(self._right_group, is_online)
+                self._info_tab_manager.get_info_widget().set_groupbox_online_status("right", is_online)
                 
                 # 处理模型加载/卸载
                 if is_online and self._renderer is not None and self._model_load_callback is not None:
@@ -800,7 +917,7 @@ class ViveTrackerWidget(QWidget):
                 print(f"[StartTracking] 读取设备失败: {e}")
         
         debug_text = "\n".join(debug_lines)
-        self._connection_status_text.setText(debug_text)
+        self._info_tab_manager.set_connection_status_text(debug_text)
         
         if not self._devices:
             # 检查是否缺少配置
@@ -809,7 +926,7 @@ class ViveTrackerWidget(QWidget):
             else:
                 error_text = f"\n\n<font color='red'><b>未找到匹配的追踪器</b></font>\n已配置序列号：\nLeft: {left_serial if left_serial else '未配置'}\nRight: {right_serial if right_serial else '未配置'}"
             
-            self._connection_status_text.setText(debug_text + error_text)
+            self._info_tab_manager.set_connection_status_text(debug_text + error_text)
             self._openvr_system = None
             return
 
@@ -913,10 +1030,10 @@ class ViveTrackerWidget(QWidget):
         # 清除基站信息并重置 LighthouseManager
         self._lighthouse_manager.clear()
         # 移除 connectionStatusText 中的 LightHouse 部分
-        current_text = self._connection_status_text.toPlainText()
+        current_text = self._info_tab_manager.get_connection_status_plain_text()
         if "\n=== LightHouse" in current_text:
             current_text = current_text[:current_text.index("\n=== LightHouse")]
-            self._connection_status_text.setText(current_text)
+            self._info_tab_manager.set_connection_status_text(current_text)
         
         # 重置在线状态并更新 GroupBox 样式
         self._left_online_state = False
@@ -1200,7 +1317,7 @@ class ViveTrackerWidget(QWidget):
         last_content = self._lighthouse_manager.get_last_content()
         if last_content != new_lighthouse_content:
             # 获取当前连接状态文本的前面部分（不含 LightHouse 部分）
-            current_text = self._connection_status_text.toPlainText()
+            current_text = self._info_tab_manager.get_connection_status_plain_text()
             
             # 移除旧的 LightHouse 部分
             if "\n=== LightHouse" in current_text:
@@ -1208,7 +1325,7 @@ class ViveTrackerWidget(QWidget):
             
             # 添加新的 LightHouse 信息
             updated_text = current_text + new_lighthouse_content
-            self._connection_status_text.setText(updated_text)
+            self._info_tab_manager.set_connection_status_text(updated_text)
             self._lighthouse_manager.set_last_content(new_lighthouse_content)
 
     def _on_update_timer(self):

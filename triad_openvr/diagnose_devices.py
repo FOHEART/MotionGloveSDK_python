@@ -2,7 +2,7 @@
 """
 ViveTracker 设备诊断工具
 
-帮助用户查看系统中所有 OpenVR 设备的实际序列号，以便正确配置 hand_tracker_config.json
+帮助用户查看系统中所有 OpenVR 设备的实际序列号，以便正确配置根目录 config.json
 """
 
 import sys
@@ -69,7 +69,7 @@ def diagnose_devices():
         
         if trackers:
             print("[4] 追踪器设备：")
-            print("请将以下信息复制到 triad_openvr/hand_tracker_config.json 中：")
+            print("请将以下信息复制到项目根目录 config.json 中：")
             print()
             print("{")
             print('  "LeftHandTracker": {')

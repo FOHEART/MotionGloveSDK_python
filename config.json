@@ -16,7 +16,7 @@
   "blender_exe": "D:\\Dev\\MotionGloveSDK_python\\libs\\blender-4.5.8-windows-x64\\blender.exe",
   "language": "zh_CN",
   "LeftHandTracker": {
-    "SerialNumber": "LHR-D5301C8B",
+    "SerialNumber": "LHR-29E6074C",
     "Description": "Left hand VR tracker"
   },
   "RightHandTracker": {

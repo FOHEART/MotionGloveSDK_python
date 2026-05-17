@@ -4,7 +4,7 @@
 # @details 实时OpenVR手部追踪器监控应用程序
 #          
 #          功能 / Features:
-#          - 读取hand_tracker_config.json配置文件 / Read hand_tracker_config.json
+#          - 读取项目根目录config.json配置文件 / Read root config.json
 #          - 初始化OpenVR系统并发现设备 / Initialize OpenVR and discover devices
 #          - 匹配序列号对应的追踪器 / Match trackers by serial number
 #          - 实时显示手部位置和旋转数据 / Display real-time hand position and rotation
@@ -51,15 +51,15 @@ def listen_for_exit():
         pass
 
 # Load hand tracker configuration / 加载手部追踪器配置
-## @brief 从脚本同目录读取hand_tracker_config.json / Read config from script directory
+## @brief 从项目根目录读取 config.json / Read config from project root
 script_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(script_dir, 'hand_tracker_config.json')
+config_path = os.path.join(os.path.dirname(script_dir), 'config.json')
 
 try:
     with open(config_path, 'r') as f:
         hand_config = json.load(f)  ##< @var hand_config 手部追踪器配置字典 / Hand tracker config dict
 except FileNotFoundError:
-    print(f"Error: hand_tracker_config.json not found at {config_path}")
+    print(f"Error: config.json not found at {config_path}")
     sys.exit(1)
 
 # Initialize OpenVR system / 初始化OpenVR系统
