@@ -36,6 +36,10 @@ from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighth
 # 导入标定 widget
 from calibration_widget import CalibrationWidget
 
+# 导入独立的追踪信息和标定面板
+from vive_tracker_info import ViveTrackerInfoWidget
+from vive_tracker_cali import ViveTrackerCaliWidget
+
 
 def _find_ui_file() -> Path:
     """查找 vive_tracker.ui 文件的路径。"""
