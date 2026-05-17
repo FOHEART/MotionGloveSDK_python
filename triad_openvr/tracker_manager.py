@@ -30,6 +30,10 @@ class TrackerData:
     quat_origin_x: float = 0.0
     quat_origin_y: float = 0.0
     quat_origin_z: float = 0.0
+    quat_calibration_w: float = 1.0
+    quat_calibration_x: float = 0.0
+    quat_calibration_y: float = 0.0
+    quat_calibration_z: float = 0.0
     pos_bias_x_m: float = 0.0  # 位置偏差 X 坐标（米）
     pos_bias_y_m: float = 0.0  # 位置偏差 Y 坐标（米）
     pos_bias_z_m: float = 0.0  # 位置偏差 Z 坐标（米）

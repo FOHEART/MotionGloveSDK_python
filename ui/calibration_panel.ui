@@ -82,7 +82,7 @@
       <item>
        <widget class="QLabel" name="statusLabel">
         <property name="text">
-         <string>状态：准备就绪</string>
+         <string>位置偏差：-</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -98,7 +98,10 @@
       <item>
        <widget class="QLabel" name="timeLabel">
         <property name="text">
-         <string>标定时间：-</string>
+         <string></string>
+        </property>
+        <property name="visible">
+         <bool>false</bool>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
