@@ -243,6 +243,8 @@ def _build_qt_app():
             self._frame_lock = threading.Lock()
             self._axes_visible = True
             self._ground_visible = True
+            self._left_hand_visible = True   # 左手可见性标志
+            self._right_hand_visible = True  # 右手可见性标志
             self._rb_press_pos = None   # 记录右键按下时的位置，用于判断是否发生了拖拽
             self._total_frames = 0       # 本次接收会话的累计帧数
             self._dropped_frames = 0     # 本次接收会话的累计丢失帧数
@@ -656,13 +658,28 @@ def _build_qt_app():
                         ja.set_pose(pos, global_quats[i])
                     else:
                         ja.set_position_only(pos)
+                    
+                    # 根据用户的显示/隐藏设置调整可见性
+                    is_left_hand = i >= BoneIndex.LeftHand
+                    if is_left_hand and not self._left_hand_visible:
+                        ja.hide()
+                    elif not is_left_hand and not self._right_hand_visible:
+                        ja.hide()
 
-                for la, (child, parent) in zip(self._link_actors, _BONE_LINKS):
+                for la_idx, la in enumerate(self._link_actors):
+                    child, parent = _BONE_LINKS[la_idx]
                     pc = positions[child]
                     pp = positions[parent]
                     if pc is not None and pp is not None:
                         la.update(pp, pc)
                     else:
+                        la.hide()
+                    
+                    # 根据用户的显示/隐藏设置调整连线可见性
+                    is_left_hand_link = child >= BoneIndex.LeftHand
+                    if is_left_hand_link and not self._left_hand_visible:
+                        la.hide()
+                    elif not is_left_hand_link and not self._right_hand_visible:
                         la.hide()
 
                 self._vtk_widget.GetRenderWindow().Render()
@@ -722,6 +739,15 @@ def _build_qt_app():
             fps_action = menu.addAction(fps_label)
 
             menu.addSeparator()
+            
+            # 新增：左右手显示/隐藏
+            left_hand_label = self.tr("隐藏左手") if self._left_hand_visible else self.tr("显示左手")
+            left_hand_action = menu.addAction(left_hand_label)
+            
+            right_hand_label = self.tr("隐藏右手") if self._right_hand_visible else self.tr("显示右手")
+            right_hand_action = menu.addAction(right_hand_label)
+
+            menu.addSeparator()
             reset_camera_action = menu.addAction(self.tr("重置视角"))
 
             action = menu.exec(global_pos)
@@ -737,6 +763,26 @@ def _build_qt_app():
                 rw.Render()
             elif action is fps_action:
                 self._render_fps_overlay.set_visible(not self._render_fps_overlay.is_visible())
+                rw.Render()
+            elif action is left_hand_action:
+                # 处理左手显示/隐藏（骨骼索引 21-41）
+                self._left_hand_visible = not self._left_hand_visible
+                for i in range(BoneIndex.LeftHand, BoneIndex.LeftHandPinky3End + 1):
+                    self._joint_actors[i].set_visibility(self._left_hand_visible)
+                # 隐藏/显示左手的连线
+                for link_idx, (child, _) in enumerate(_BONE_LINKS):
+                    if child >= BoneIndex.LeftHand:
+                        self._link_actors[link_idx].set_visibility(self._left_hand_visible)
+                rw.Render()
+            elif action is right_hand_action:
+                # 处理右手显示/隐藏（骨骼索引 0-20）
+                self._right_hand_visible = not self._right_hand_visible
+                for i in range(BoneIndex.RightHand, BoneIndex.RightHandPinky3End + 1):
+                    self._joint_actors[i].set_visibility(self._right_hand_visible)
+                # 隐藏/显示右手的连线
+                for link_idx, (child, _) in enumerate(_BONE_LINKS):
+                    if child < BoneIndex.LeftHand:
+                        self._link_actors[link_idx].set_visibility(self._right_hand_visible)
                 rw.Render()
             elif action is reset_camera_action:
                 self._reset_camera_cb.reset()
