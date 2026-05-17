@@ -363,3 +363,148 @@ class ViveTrackerInfoWidget(QWidget):
     def update_right_quat(self, text: str):
         """更新右手四元数标签。"""
         self._right_quat_label.setText(text)
+
+
+class InfoTabManager:
+    """追踪信息tab管理器。
+    
+    负责管理追踪信息tab的创建、初始化、配置加载、数据更新等。
+    """
+    
+    def __init__(self, vive_tracker_widget):
+        """初始化追踪信息tab管理器。
+        
+        Args:
+            vive_tracker_widget: ViveTrackerWidget 实例
+        """
+        self._vive_tracker_widget = vive_tracker_widget
+        self._info_widget = None
+        self._info_tab_index = None
+    
+    def setup_info_tab(self, tab_widget):
+        """设置追踪信息tab。
+        
+        Args:
+            tab_widget: QTabWidget 实例
+        
+        Returns:
+            创建的 ViveTrackerInfoWidget 实例
+        """
+        # 创建追踪信息tab
+        self._info_widget = ViveTrackerInfoWidget(parent=self._vive_tracker_widget)
+        
+        # 创建容器并添加到 tab_widget
+        from PySide6.QtWidgets import QWidget, QVBoxLayout
+        tracker_tab = QWidget()
+        tracker_layout = QVBoxLayout(tracker_tab)
+        tracker_layout.setContentsMargins(0, 0, 0, 0)
+        tracker_layout.addWidget(self._info_widget.get_ui())
+        
+        self._info_tab_index = tab_widget.addTab(tracker_tab, "追踪信息")
+        
+        return self._info_widget
+    
+    def load_config(self):
+        """从 JSON 文件加载配置。"""
+        import json
+        from pathlib import Path
+        
+        # 查找配置文件
+        config_file = Path(__file__).parent.parent / "config.json"
+        if not config_file.exists():
+            error_text = f"<font color='red'><b>配置文件未找到</b></font><br>{config_file}"
+            self._info_widget.update_left_config(error_text)
+            self._info_widget.update_right_config(error_text)
+            return
+        
+        try:
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except Exception as e:
+            error_text = f"<font color='red'><b>读取配置失败</b></font><br>{e}"
+            self._info_widget.update_left_config(error_text)
+            self._info_widget.update_right_config(error_text)
+            return
+        
+        # 更新左手信息
+        left_config = config.get("LeftHandTracker", {})
+        if left_config:
+            left_text = self._format_config(left_config)
+            self._info_widget.update_left_config(left_text)
+        else:
+            self._info_widget.update_left_config("<font color='gray'>未配置</font>")
+        
+        # 更新右手信息
+        right_config = config.get("RightHandTracker", {})
+        if right_config:
+            right_text = self._format_config(right_config)
+            self._info_widget.update_right_config(right_text)
+        else:
+            self._info_widget.update_right_config("<font color='gray'>未配置</font>")
+    
+    def update_tracker_display(self, side: str, pos_text: str, rot_text: str, quat_text: str, is_online: bool):
+        """更新追踪器显示信息。
+        
+        Args:
+            side: "left" 或 "right"
+            pos_text: 位置文本
+            rot_text: 旋转文本
+            quat_text: 四元数文本
+            is_online: 是否在线
+        """
+        if side == "left":
+            self._info_widget.update_left_position(pos_text)
+            self._info_widget.update_left_rotation(rot_text)
+            self._info_widget.update_left_quat(quat_text)
+            self._info_widget.set_groupbox_online_status("left", is_online)
+        elif side == "right":
+            self._info_widget.update_right_position(pos_text)
+            self._info_widget.update_right_rotation(rot_text)
+            self._info_widget.update_right_quat(quat_text)
+            self._info_widget.set_groupbox_online_status("right", is_online)
+    
+    def set_steamvr_status(self, running: bool):
+        """设置 SteamVR 状态。
+        
+        Args:
+            running: True 表示 SteamVR 已启动
+        """
+        self._info_widget.set_steamvr_status(running)
+    
+    def _format_config(self, config: dict) -> str:
+        """将配置字典格式化为显示文本。
+        
+        Args:
+            config: 配置字典
+        
+        Returns:
+            格式化后的 HTML 文本
+        """
+        lines = []
+        for key, value in config.items():
+            if isinstance(value, (str, int, float, bool)):
+                lines.append(f"<b>{key}:</b> {value}")
+            elif isinstance(value, dict):
+                lines.append(f"<b>{key}:</b>")
+                for k, v in value.items():
+                    lines.append(f"&nbsp;&nbsp;{k}: {v}")
+            else:
+                lines.append(f"<b>{key}:</b> {value}")
+        
+        return "<br>".join(lines) if lines else "无配置数据"
+    
+    def get_info_widget(self):
+        """获取追踪信息widget。
+        
+        Returns:
+            ViveTrackerInfoWidget 实例
+        """
+        return self._info_widget
+    
+    def get_info_tab_index(self):
+        """获取追踪信息tab索引。
+        
+        Returns:
+            追踪信息tab的索引
+        """
+        return self._info_tab_index

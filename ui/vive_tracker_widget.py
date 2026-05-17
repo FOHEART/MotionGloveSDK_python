@@ -34,7 +34,7 @@ from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, Tracker
 from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighthouse_manager
 
 # 导入独立的追踪信息和标定面板
-from vive_tracker_info import ViveTrackerInfoWidget
+from vive_tracker_info import ViveTrackerInfoWidget, InfoTabManager
 from vive_tracker_cali import ViveTrackerCaliWidget, CaliTabManager
 
 
@@ -153,6 +153,9 @@ class ViveTrackerWidget(QWidget):
         # 记录最后一次坐标轴更新的位置和四元数，用于变化检测
         self._last_axes_pose = {}        # {"left": (pos, quat), "right": (pos, quat)}
         
+        # 追踪信息tab管理器
+        self._info_tab_manager = InfoTabManager(self)
+        
         # 标定tab管理器
         self._cali_tab_manager = CaliTabManager(self)
         
@@ -196,65 +199,36 @@ class ViveTrackerWidget(QWidget):
         self._tab_widget = QTabWidget()
         layout.addWidget(self._tab_widget)
         
-        # 第一个 tab：追踪信息（原有的 UI）
-        tracker_tab = QWidget()
-        tracker_layout = QVBoxLayout(tracker_tab)
-        tracker_layout.setContentsMargins(0, 0, 0, 0)
-        tracker_layout.addWidget(self._ui)
-        self._tab_widget.addTab(tracker_tab, "追踪信息")
+        # 第一个 tab：追踪信息（由 InfoTabManager 管理）
+        self._info_tab_manager.setup_info_tab(self._tab_widget)
         
         # 第二个 tab：定位标定（由 CaliTabManager 管理）
         self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
         
-        # 获取 UI 中的控件
-        self._left_config_label: QLabel = self._ui.findChild(QLabel, "leftHandConfigInfo")
-        self._right_config_label: QLabel = self._ui.findChild(QLabel, "rightHandConfigInfo")
-        self._left_position_label: QLabel = self._ui.findChild(QLabel, "leftHandPositionLabel")
-        self._right_position_label: QLabel = self._ui.findChild(QLabel, "rightHandPositionLabel")
-        self._left_rotation_label: QLabel = self._ui.findChild(QLabel, "leftHandRotationLabel")
-        self._right_rotation_label: QLabel = self._ui.findChild(QLabel, "rightHandRotationLabel")
-        self._left_quat_label: QLabel = self._ui.findChild(QLabel, "leftHandQuatLabel")
-        self._right_quat_label: QLabel = self._ui.findChild(QLabel, "rightHandQuatLabel")
-        self._start_tracking_btn: QPushButton = self._ui.findChild(QPushButton, "startTrackingButton")
-        self._refresh_btn: QPushButton = self._ui.findChild(QPushButton, "refreshButton")
-        self._left_group: QGroupBox = self._ui.findChild(QGroupBox, "leftHandGroup")
-        self._right_group: QGroupBox = self._ui.findChild(QGroupBox, "rightHandGroup")
-        self._connection_status_text: QTextEdit = self._ui.findChild(QTextEdit, "connectionStatusText")
-        self._steamvr_status_label: QLabel = self._ui.findChild(QLabel, "steamvrStatusLabel")
+        # 从 InfoTabManager 获取 UI 中的控件（保持向后兼容性）
+        info_widget = self._info_tab_manager.get_info_widget()
+        # 从 InfoTabManager 获取 UI 中的控件
+        info_widget = self._info_tab_manager.get_info_widget()
+        self._left_config_label: QLabel = info_widget.get_config_labels()["left"]
+        self._right_config_label: QLabel = info_widget.get_config_labels()["right"]
+        self._left_position_label: QLabel = info_widget.get_position_labels()["left"]
+        self._right_position_label: QLabel = info_widget.get_position_labels()["right"]
+        self._left_rotation_label: QLabel = info_widget.get_rotation_labels()["left"]
+        self._right_rotation_label: QLabel = info_widget.get_rotation_labels()["right"]
+        self._left_quat_label: QLabel = info_widget.get_quat_labels()["left"]
+        self._right_quat_label: QLabel = info_widget.get_quat_labels()["right"]
+        self._left_group: QGroupBox = info_widget.get_groups()["left"]
+        self._right_group: QGroupBox = info_widget.get_groups()["right"]
+        self._start_tracking_btn: QPushButton = info_widget.get_start_tracking_button()
+        self._connection_status_text: QTextEdit = info_widget.get_connection_status_text()
         
-        # 验证所有必要的控件存在
+        # 验证关键控件存在
         assert self._left_config_label is not None, "UI 控件未找到：leftHandConfigInfo"
         assert self._right_config_label is not None, "UI 控件未找到：rightHandConfigInfo"
-        assert self._left_position_label is not None, "UI 控件未找到：leftHandPositionLabel"
-        assert self._right_position_label is not None, "UI 控件未找到：rightHandPositionLabel"
-        assert self._left_rotation_label is not None, "UI 控件未找到：leftHandRotationLabel"
-        assert self._right_rotation_label is not None, "UI 控件未找到：rightHandRotationLabel"
-        assert self._left_quat_label is not None, "UI 控件未找到：leftHandQuatLabel"
-        assert self._right_quat_label is not None, "UI 控件未找到：rightHandQuatLabel"
         assert self._start_tracking_btn is not None, "UI 控件未找到：startTrackingButton"
-        assert self._connection_status_text is not None, "UI 控件未找到：connectionStatusText"
-        assert self._steamvr_status_label is not None, "UI 控件未找到：steamvrStatusLabel"
-        
-        # 初始化 GroupBox 样式为离线（红色）
-        self._set_groupbox_online_status(self._left_group, False)
-        self._set_groupbox_online_status(self._right_group, False)
-        
-        # 默认隐藏四元数标签
-        self._left_quat_label.setVisible(False)
-        self._right_quat_label.setVisible(False)
         
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
-        
-        # 为 GroupBox 设置右键菜单
-        self._left_group.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._left_group.customContextMenuRequested.connect(self._on_left_group_context_menu)
-        
-        self._right_group.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._right_group.customContextMenuRequested.connect(self._on_right_group_context_menu)
-        
-        # 初始化位置偏差控件
-        self._init_bias_controls()
 
     def _init_bias_controls(self):
         """初始化位置偏差控件（从 UI 文件加载）。"""
@@ -325,21 +299,12 @@ class ViveTrackerWidget(QWidget):
             print(f"[PosBias] 右手偏差设置失败：无效的数值 - {e}")
 
     def _set_steamvr_status(self, running: bool):
-        """更新 SteamVR 状态标签。
+        """更新 SteamVR 状态标签。使用 InfoTabManager 处理。
         
         Args:
             running: True 表示 SteamVR 已启动，False 表示未启动
         """
-        if running:
-            self._steamvr_status_label.setText("SteamVR: 已启动")
-            self._steamvr_status_label.setStyleSheet(
-                "background-color: green; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
-            )
-        else:
-            self._steamvr_status_label.setText("SteamVR: 未启动")
-            self._steamvr_status_label.setStyleSheet(
-                "background-color: red; color: white; padding: 2px 8px; border-radius: 3px; font-weight: bold;"
-            )
+        self._info_tab_manager.set_steamvr_status(running)
 
     def _on_steamvr_status_changed(self, running: bool):
         """SteamVR 状态改变回调。
@@ -350,43 +315,8 @@ class ViveTrackerWidget(QWidget):
         self._set_steamvr_status(running)
 
     def _load_config(self):
-        """从 JSON 文件加载配置。"""
-        config_file = _find_config_file()
-
-        if not config_file.exists():
-            error_text = f"<font color='red'><b>配置文件未找到</b></font><br>{config_file}"
-            self._left_config_label.setText(error_text)
-            self._right_config_label.setText(error_text)
-            return
-
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                self._config = json.load(f)
-        except Exception as e:
-            error_text = f"<font color='red'><b>读取配置失败</b></font><br>{e}"
-            self._left_config_label.setText(error_text)
-            self._right_config_label.setText(error_text)
-            return
-
-        # 更新左手信息
-        left_config = self._config.get("LeftHandTracker", {})
-        if left_config:
-            left_text = self._format_config(left_config)
-            self._left_config_label.setText(left_text)
-            self._left_group.setEnabled(True)
-        else:
-            self._left_config_label.setText("<font color='gray'>未配置</font>")
-            self._left_group.setEnabled(False)
-
-        # 更新右手信息
-        right_config = self._config.get("RightHandTracker", {})
-        if right_config:
-            right_text = self._format_config(right_config)
-            self._right_config_label.setText(right_text)
-            self._right_group.setEnabled(True)
-        else:
-            self._right_config_label.setText("<font color='gray'>未配置</font>")
-            self._right_group.setEnabled(False)
+        """从 JSON 文件加载配置。使用 InfoTabManager 处理。"""
+        self._info_tab_manager.load_config()
 
     def _format_config(self, config: dict) -> str:
         """将配置字典格式化为显示文本。"""
@@ -1292,9 +1222,9 @@ class ViveTrackerWidget(QWidget):
                 pos_text = f"位置：X={self._left_data.pos_origin_x_m:8.4f}m  Y={self._left_data.pos_origin_y_m:8.4f}m  Z={self._left_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._left_data.yaw:7.2f}°  Pitch={self._left_data.pitch:7.2f}°  Roll={self._left_data.roll:7.2f}°"
                 quat_text = f"四元数：w={self._left_data.quat_origin_w:8.4f}  x={self._left_data.quat_origin_x:8.4f}  y={self._left_data.quat_origin_y:8.4f}  z={self._left_data.quat_origin_z:8.4f}"
-                self._left_position_label.setText(pos_text)
-                self._left_rotation_label.setText(rot_text)
-                self._left_quat_label.setText(quat_text)
+                
+                # 使用 InfoTabManager 更新显示
+                self._info_tab_manager.update_tracker_display("left", pos_text, rot_text, quat_text, True)
                 self._update_groupbox_status("left", True)
                 
                 # 更新 TrackerManager 中左手 Tracker 的数据
@@ -1334,9 +1264,9 @@ class ViveTrackerWidget(QWidget):
                 pos_text = f"位置：X={self._right_data.pos_origin_x_m:8.4f}m  Y={self._right_data.pos_origin_y_m:8.4f}m  Z={self._right_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._right_data.yaw:7.2f}°  Pitch={self._right_data.pitch:7.2f}°  Roll={self._right_data.roll:7.2f}°"
                 quat_text = f"四元数：w={self._right_data.quat_origin_w:8.4f}  x={self._right_data.quat_origin_x:8.4f}  y={self._right_data.quat_origin_y:8.4f}  z={self._right_data.quat_origin_z:8.4f}"
-                self._right_position_label.setText(pos_text)
-                self._right_rotation_label.setText(rot_text)
-                self._right_quat_label.setText(quat_text)
+                
+                # 使用 InfoTabManager 更新显示
+                self._info_tab_manager.update_tracker_display("right", pos_text, rot_text, quat_text, True)
                 self._update_groupbox_status("right", True)
                 
                 # 更新 TrackerManager 中右手 Tracker 的数据
