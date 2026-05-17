@@ -815,10 +815,8 @@ class ViveTrackerWidget(QWidget):
 
         # 启动后台数据收集线程
         self._tracking_enabled = True
-        self._info_tab_manager.set_tracking_controls_enabled(True)
         
-        # 启用定位标定 tab（由 CaliTabManager 管理，追踪成功开启）
-        self._cali_tab_manager.enable_calibration_tab(self._tab_widget)
+        # 不控制tab页面的enable/disable，保持两个tab始终完整可用
         
         self._thread_stop_event.clear()
         self._tracking_thread = threading.Thread(target=self._tracking_loop, daemon=True)
@@ -884,9 +882,8 @@ class ViveTrackerWidget(QWidget):
     def _stop_tracking(self):
         """停止追踪。"""
         self._tracking_enabled = False
-        self._info_tab_manager.set_tracking_controls_enabled(False)
         
-        # 不禁用定位标定tab，保持用户可返回页面查看数据
+        # 不控制tab页面的enable/disable，保持两个tab始终完整可用
         
         self._update_timer.stop()
         self._lighthouse_update_timer.stop()
