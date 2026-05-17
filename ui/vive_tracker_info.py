@@ -55,6 +55,8 @@ class ViveTrackerInfoWidget(QWidget):
         self._right_bias_x_edit = None
         self._right_bias_y_edit = None
         self._right_bias_z_edit = None
+        self._left_bias_set_btn = None
+        self._right_bias_set_btn = None
         
         self._setup_ui()
     
@@ -132,27 +134,27 @@ class ViveTrackerInfoWidget(QWidget):
         self._left_bias_x_edit = self._ui.findChild(QLineEdit, "leftBiasXEdit")
         self._left_bias_y_edit = self._ui.findChild(QLineEdit, "leftBiasYEdit")
         self._left_bias_z_edit = self._ui.findChild(QLineEdit, "leftBiasZEdit")
-        left_bias_set_btn = self._ui.findChild(QPushButton, "leftBiasSetBtn")
+        self._left_bias_set_btn = self._ui.findChild(QPushButton, "leftBiasSetBtn")
         
         # 从 UI 中查找右手偏差控件
         self._right_bias_x_edit = self._ui.findChild(QLineEdit, "rightBiasXEdit")
         self._right_bias_y_edit = self._ui.findChild(QLineEdit, "rightBiasYEdit")
         self._right_bias_z_edit = self._ui.findChild(QLineEdit, "rightBiasZEdit")
-        right_bias_set_btn = self._ui.findChild(QPushButton, "rightBiasSetBtn")
+        self._right_bias_set_btn = self._ui.findChild(QPushButton, "rightBiasSetBtn")
         
         # 验证所有偏差控件已找到
         assert self._left_bias_x_edit is not None, "UI 控件未找到：leftBiasXEdit"
         assert self._left_bias_y_edit is not None, "UI 控件未找到：leftBiasYEdit"
         assert self._left_bias_z_edit is not None, "UI 控件未找到：leftBiasZEdit"
-        assert left_bias_set_btn is not None, "UI 控件未找到：leftBiasSetBtn"
+        assert self._left_bias_set_btn is not None, "UI 控件未找到：leftBiasSetBtn"
         assert self._right_bias_x_edit is not None, "UI 控件未找到：rightBiasXEdit"
         assert self._right_bias_y_edit is not None, "UI 控件未找到：rightBiasYEdit"
         assert self._right_bias_z_edit is not None, "UI 控件未找到：rightBiasZEdit"
-        assert right_bias_set_btn is not None, "UI 控件未找到：rightBiasSetBtn"
+        assert self._right_bias_set_btn is not None, "UI 控件未找到：rightBiasSetBtn"
         
         # 连接信号
-        left_bias_set_btn.clicked.connect(self._on_set_left_bias)
-        right_bias_set_btn.clicked.connect(self._on_set_right_bias)
+        self._left_bias_set_btn.clicked.connect(self._on_set_left_bias)
+        self._right_bias_set_btn.clicked.connect(self._on_set_right_bias)
     
     def _on_set_left_bias(self):
         """处理设置左手偏差按钮点击事件。"""
@@ -199,6 +201,24 @@ class ViveTrackerInfoWidget(QWidget):
                         self._parent._mark_scene_dirty()
         except ValueError as e:
             print(f"[PosBias] 右手偏差设置失败：无效的数值 - {e}")
+
+    def set_tracking_controls_enabled(self, enabled: bool):
+        """切换依赖追踪状态的内部控件。
+
+        开始/停止追踪按钮始终保持可点击，只有偏差编辑与设置按钮随追踪状态启停。
+        """
+        for widget in (
+            self._left_bias_x_edit,
+            self._left_bias_y_edit,
+            self._left_bias_z_edit,
+            self._right_bias_x_edit,
+            self._right_bias_y_edit,
+            self._right_bias_z_edit,
+            self._left_bias_set_btn,
+            self._right_bias_set_btn,
+        ):
+            if widget is not None:
+                widget.setEnabled(enabled)
     
     def _set_steamvr_status(self, running: bool):
         """更新 SteamVR 状态标签。
@@ -401,8 +421,6 @@ class InfoTabManager:
         tracker_layout.addWidget(self._info_widget.get_ui())
         
         self._info_tab_index = tab_widget.addTab(tracker_tab, "追踪信息")
-        
-        # 追踪信息tab 始终启用
         tab_widget.setTabEnabled(self._info_tab_index, True)
         
         return self._info_widget
@@ -477,6 +495,11 @@ class InfoTabManager:
             running: True 表示 SteamVR 已启动
         """
         self._info_widget.set_steamvr_status(running)
+
+    def set_tracking_controls_enabled(self, enabled: bool):
+        """切换追踪信息 tab 内部依赖追踪状态的控件。"""
+        if self._info_widget is not None:
+            self._info_widget.set_tracking_controls_enabled(enabled)
     
     def _format_config(self, config: dict) -> str:
         """将配置字典格式化为显示文本。

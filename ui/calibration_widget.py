@@ -109,6 +109,13 @@ class CalibrationWidget(QWidget):
         self._calibration_btn.clicked.connect(self._on_calibration_clicked)
         self._cancel_calibration_btn.clicked.connect(self._on_cancel_calibration_clicked)
 
+    def set_tracking_controls_enabled(self, enabled: bool):
+        """切换依赖追踪状态的标定按钮。"""
+        self._calibration_btn.setEnabled(enabled)
+        self._cancel_calibration_btn.setEnabled(enabled)
+        if not enabled and not self._calibration_in_progress:
+            self._status_label.setText("状态：等待开启追踪")
+
     def _on_calibration_clicked(self):
         """处理标定按钮点击事件。
         

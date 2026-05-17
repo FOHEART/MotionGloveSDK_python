@@ -54,29 +54,27 @@ class CaliTabManager:
         # 创建标定tab
         self._calibration_widget = ViveTrackerCaliWidget(vive_tracker_widget=self._vive_tracker_widget)
         self._calibration_tab_index = tab_widget.addTab(self._calibration_widget, "定位标定")
-        
-        # 默认禁用定位标定 tab（只有追踪成功开启后才启用）
-        tab_widget.setTabEnabled(self._calibration_tab_index, False)
+        tab_widget.setTabEnabled(self._calibration_tab_index, True)
         
         return self._calibration_widget
     
     def enable_calibration_tab(self, tab_widget):
-        """启用标定tab（追踪成功开启）。
+        """启用标定 tab 内部控件（追踪成功开启）。
         
         Args:
             tab_widget: QTabWidget 实例
         """
-        if self._calibration_tab_index is not None:
-            tab_widget.setTabEnabled(self._calibration_tab_index, True)
+        if self._calibration_widget is not None:
+            self._calibration_widget.set_tracking_controls_enabled(True)
     
     def disable_calibration_tab(self, tab_widget):
-        """禁用标定tab（追踪已关闭）。
+        """禁用标定 tab 内部控件（追踪已关闭）。
         
         Args:
             tab_widget: QTabWidget 实例
         """
-        if self._calibration_tab_index is not None:
-            tab_widget.setTabEnabled(self._calibration_tab_index, False)
+        if self._calibration_widget is not None:
+            self._calibration_widget.set_tracking_controls_enabled(False)
     
     def get_calibration_widget(self):
         """获取标定widget。
