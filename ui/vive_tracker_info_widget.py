@@ -1,4 +1,4 @@
-"""vive_tracker_info.py
+"""vive_tracker_info_widget.py
 ViveTracker 追踪信息面板组件
 
 功能：
@@ -9,11 +9,55 @@ ViveTracker 追踪信息面板组件
 - SteamVR 状态监控
 """
 
+import sys
+from pathlib import Path
+
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
+
+
+def _find_info_ui_file() -> Path:
+    """查找 vive_tracker_info_widget.ui 文件的路径。"""
+    candidates = [
+        Path(__file__).parent / "vive_tracker_info_widget.ui",
+        Path(__file__).parent.parent / "ui" / "vive_tracker_info_widget.ui",
+        Path.cwd() / "ui" / "vive_tracker_info_widget.ui",
+    ]
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(2, Path(meipass) / "ui" / "vive_tracker_info_widget.ui")
+        candidates.insert(3, Path(meipass) / "_internal" / "ui" / "vive_tracker_info_widget.ui")
+
+    try:
+        exe_dir = Path(sys.executable).parent
+        candidates.insert(len(candidates) - 1, exe_dir / "ui" / "vive_tracker_info_widget.ui")
+        candidates.insert(len(candidates) - 1, exe_dir / "_internal" / "ui" / "vive_tracker_info_widget.ui")
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return candidate
+        except Exception:
+            continue
+
+    search_roots = [Path(__file__).parent, Path(__file__).parent.parent, Path.cwd()]
+    if meipass:
+        search_roots.insert(0, Path(meipass))
+
+    for root in search_roots:
+        try:
+            for path in root.rglob("vive_tracker_info_widget.ui"):
+                return path
+        except Exception:
+            continue
+
+    return candidates[0]
 
 
 class ViveTrackerInfoWidget(QWidget):
@@ -62,20 +106,19 @@ class ViveTrackerInfoWidget(QWidget):
     
     def _setup_ui(self):
         """从 UI 文件加载并初始化 UI。"""
-        from pathlib import Path
-        import sys
-        
-        # 查找 vive_tracker.ui 文件
-        ui_file_path = Path(__file__).parent / "vive_tracker.ui"
-        if not ui_file_path.exists():
-            raise FileNotFoundError(f"UI 文件未找到：{ui_file_path}")
-        
-        # 使用 QUiLoader 加载 UI
+        ui_file_path = _find_info_ui_file()
+
         loader = QUiLoader()
         ui_file = QFile(str(ui_file_path))
-        ui_file.open(QIODevice.ReadOnly)
+
+        if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
+            raise RuntimeError(f"无法打开 UI 文件：{ui_file_path}")
+
         self._ui = loader.load(ui_file, self)
         ui_file.close()
+
+        if self._ui is None:
+            raise RuntimeError(f"QUiLoader 加载失败：{ui_file_path}")
         
         # 将 UI 添加到当前 widget
         layout = QVBoxLayout(self)
