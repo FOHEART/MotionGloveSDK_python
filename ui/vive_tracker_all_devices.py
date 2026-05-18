@@ -14,6 +14,7 @@ from datetime import datetime
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice
+from shiboken6 import isValid
 
 
 def _find_all_devices_ui_file() -> Path:
@@ -102,6 +103,54 @@ class ViveTrackerAllDevicesWidget(QWidget):
         self._refresh_button.clicked.connect(self._on_refresh_clicked)
         self._copy_button.clicked.connect(self._on_copy_clicked)
 
+    def _find_child_from_self(self, widget_type, object_name: str):
+        """优先从 self 查找子控件，避免依赖可能失效的 _ui 引用。"""
+        try:
+            child = self.findChild(widget_type, object_name)
+        except RuntimeError:
+            child = None
+
+        if child is not None:
+            return child
+
+        if getattr(self, "_ui", None) is not None and isValid(self._ui):
+            try:
+                return self._ui.findChild(widget_type, object_name)
+            except RuntimeError:
+                return None
+
+        return None
+
+    def _resolve_refresh_button(self) -> QPushButton:
+        """安全获取刷新按钮。"""
+        if self._refresh_button is not None and isValid(self._refresh_button):
+            return self._refresh_button
+
+        self._refresh_button = self._find_child_from_self(QPushButton, "refreshButton")
+        if self._refresh_button is None:
+            raise RuntimeError("无法找到 refreshButton 控件")
+        return self._refresh_button
+
+    def _resolve_output_text(self) -> QTextEdit:
+        """安全获取输出文本框。"""
+        if self._output_text is not None and isValid(self._output_text):
+            return self._output_text
+
+        self._output_text = self._find_child_from_self(QTextEdit, "outputText")
+        if self._output_text is None:
+            raise RuntimeError("无法找到 outputText 控件")
+        return self._output_text
+
+    def _resolve_copy_button(self) -> QPushButton:
+        """安全获取复制按钮。"""
+        if self._copy_button is not None and isValid(self._copy_button):
+            return self._copy_button
+
+        self._copy_button = self._find_child_from_self(QPushButton, "copyButton")
+        if self._copy_button is None:
+            raise RuntimeError("无法找到 copyButton 控件")
+        return self._copy_button
+
     def _safe_call(self, func, default="不可用"):
         try:
             value = func()
@@ -155,7 +204,8 @@ class ViveTrackerAllDevicesWidget(QWidget):
         return lines
 
     def _on_refresh_clicked(self):
-        self._output_text.clear()
+        output_text = self._resolve_output_text()
+        output_text.clear()
 
         lines = [
             "=== 当前 OpenVR 设备检测结果 ===",
@@ -193,11 +243,13 @@ class ViveTrackerAllDevicesWidget(QWidget):
         except Exception as exc:
             lines.append(f"检测失败: {exc}")
 
-        self._output_text.setPlainText("\n".join(lines))
+        output_text = self._resolve_output_text()
+        output_text.setPlainText("\n".join(lines))
 
     def _on_copy_clicked(self):
+        output_text = self._resolve_output_text()
         clipboard = QApplication.clipboard()
-        clipboard.setText(self._output_text.toPlainText())
+        clipboard.setText(output_text.toPlainText())
 
 
 class AllDevicesTabManager:

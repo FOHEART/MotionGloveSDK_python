@@ -100,10 +100,22 @@ class CalibrationWidget(QWidget):
         self._left_hand_show_quat = True
         self._left_hand_info_tick = 0
         
+        # 右手信息标签（10Hz 刷新）
+        self._right_hand_position_label: QLabel | None = None
+        self._right_hand_rotation_label: QLabel | None = None
+        self._right_hand_quat_label: QLabel | None = None
+        self._right_hand_show_quat = True
+        self._right_hand_info_tick = 0
+        
         # 左手信息更新定时器（10Hz = 100ms）
         self._left_hand_info_timer = QTimer(self)
         self._left_hand_info_timer.timeout.connect(self._update_left_hand_info)
         self._left_hand_info_timer.setInterval(100)  # 100ms = 10Hz
+        
+        # 右手信息更新定时器（10Hz = 100ms）
+        self._right_hand_info_timer = QTimer(self)
+        self._right_hand_info_timer.timeout.connect(self._update_right_hand_info)
+        self._right_hand_info_timer.setInterval(100)  # 100ms = 10Hz
         
         self._init_ui()
         self._add_log("系统初始化完成")
@@ -334,6 +346,63 @@ class CalibrationWidget(QWidget):
         self._debug_widget_state("created_bias_value_label", self._bias_value_label)
         return self._bias_value_label
 
+    def _ensure_right_hand_info_widgets(self) -> None:
+        """确保右手信息区存在；若 UI 未定义则在运行时动态创建。"""
+        if (
+            self._right_hand_position_label is not None
+            and self._right_hand_rotation_label is not None
+            and self._right_hand_quat_label is not None
+        ):
+            return
+
+        right_group = self._find_child_from_self(QGroupBox, "rightHandInfoGroup")
+        if right_group is None:
+            main_layout = self._ui.layout() if getattr(self, "_ui", None) is not None else None
+            if main_layout is None:
+                main_layout = self.layout()
+            if main_layout is None:
+                raise RuntimeError("CalibrationWidget 缺少主布局，无法创建 rightHandInfoGroup")
+
+            right_group = QGroupBox("右手信息", self)
+            right_group.setObjectName("rightHandInfoGroup")
+            right_layout = QVBoxLayout(right_group)
+            right_layout.setObjectName("rightHandInfoLayout")
+
+            font = self._left_hand_position_label.font() if self._left_hand_position_label is not None else self.font()
+            label_specs = [
+                ("rightHandPositionLabel", "位置：X= 0.0000m  Y= 0.0000m  Z= 0.0000m"),
+                ("rightHandRotationLabel", "旋转：Yaw= 0.00°  Pitch= 0.00°  Roll= 0.00°"),
+                ("rightHandQuatLabel", "四元数：w= 0.0000  x= 0.0000  y= 0.0000  z= 0.0000"),
+            ]
+            for object_name, text in label_specs:
+                label = QLabel(text, right_group)
+                label.setObjectName(object_name)
+                label.setWordWrap(True)
+                label.setFont(font)
+                right_layout.addWidget(label)
+
+            insert_index = main_layout.count()
+            log_group = self._find_child_from_self(QGroupBox, "logGroup")
+            if log_group is not None:
+                for index in range(main_layout.count()):
+                    item = main_layout.itemAt(index)
+                    if item is not None and item.widget() is log_group:
+                        insert_index = index
+                        break
+            main_layout.insertWidget(insert_index, right_group)
+
+        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel")
+        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel")
+        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel")
+
+        if (
+            self._right_hand_position_label is None
+            or self._right_hand_rotation_label is None
+            or self._right_hand_quat_label is None
+        ):
+            self._debug_snapshot("ensure_right_hand_info_widgets_failed")
+            raise RuntimeError("无法创建右手信息控件")
+
     def _init_ui(self):
         """从 UI 文件加载界面并初始化控件连接。
         
@@ -374,6 +443,12 @@ class CalibrationWidget(QWidget):
         self._left_hand_rotation_label = self.findChild(QLabel, "leftHandRotationLabel")
         self._left_hand_quat_label = self.findChild(QLabel, "leftHandQuatLabel")
         
+        # 获取右手信息标签
+        self._right_hand_position_label = self.findChild(QLabel, "rightHandPositionLabel")
+        self._right_hand_rotation_label = self.findChild(QLabel, "rightHandRotationLabel")
+        self._right_hand_quat_label = self.findChild(QLabel, "rightHandQuatLabel")
+        self._ensure_right_hand_info_widgets()
+        
         # 调试：打印找到的控件
         print(f"[CalibDebug] 控件查询结果:")
         print(f"  calibrationButton: {self._calibration_btn}")
@@ -408,6 +483,9 @@ class CalibrationWidget(QWidget):
         assert self._left_hand_position_label is not None, "UI 控件未找到：leftHandPositionLabel"
         assert self._left_hand_rotation_label is not None, "UI 控件未找到：leftHandRotationLabel"
         assert self._left_hand_quat_label is not None, "UI 控件未找到：leftHandQuatLabel"
+        assert self._right_hand_position_label is not None, "右手信息控件创建失败：rightHandPositionLabel"
+        assert self._right_hand_rotation_label is not None, "右手信息控件创建失败：rightHandRotationLabel"
+        assert self._right_hand_quat_label is not None, "右手信息控件创建失败：rightHandQuatLabel"
 
         if self._vive_tracker_widget is not None:
             self._position_rotation_checkbox.setChecked(
@@ -418,6 +496,12 @@ class CalibrationWidget(QWidget):
         self._left_hand_rotation_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
         self._left_hand_quat_label.setContextMenuPolicy(Qt.CustomContextMenu)
         self._left_hand_quat_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
+        
+        # 为右手标签设置右键菜单
+        self._right_hand_rotation_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._right_hand_rotation_label.customContextMenuRequested.connect(self._on_right_hand_attitude_context_menu)
+        self._right_hand_quat_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._right_hand_quat_label.customContextMenuRequested.connect(self._on_right_hand_attitude_context_menu)
         
         # 强制确保标签可见（解决隐藏问题）
         print("[CalibDebug] 强制设置标签可见性...")
@@ -450,7 +534,11 @@ class CalibrationWidget(QWidget):
         self._bind_destroyed_debug("leftHandPositionLabel", self._left_hand_position_label)
         self._bind_destroyed_debug("leftHandRotationLabel", self._left_hand_rotation_label)
         self._bind_destroyed_debug("leftHandQuatLabel", self._left_hand_quat_label)
+        self._bind_destroyed_debug("rightHandPositionLabel", self._right_hand_position_label)
+        self._bind_destroyed_debug("rightHandRotationLabel", self._right_hand_rotation_label)
+        self._bind_destroyed_debug("rightHandQuatLabel", self._right_hand_quat_label)
         self._apply_left_hand_attitude_display_mode()
+        self._apply_right_hand_attitude_display_mode()
         self._debug_snapshot("after_init_ui")
         
         # 连接信号
@@ -463,6 +551,13 @@ class CalibrationWidget(QWidget):
         print(
             "[CalibDebug] 左手信息定时器已启动: "
             f"active={self._left_hand_info_timer.isActive()} interval={self._left_hand_info_timer.interval()}ms"
+        )
+        
+        # 启动右手信息更新定时器（10Hz）
+        self._right_hand_info_timer.start()
+        print(
+            "[CalibDebug] 右手信息定时器已启动: "
+            f"active={self._right_hand_info_timer.isActive()} interval={self._right_hand_info_timer.interval()}ms"
         )
 
     def set_tracking_controls_enabled(self, enabled: bool):
@@ -601,13 +696,11 @@ class CalibrationWidget(QWidget):
 
     def _resolve_left_hand_position_label(self) -> QLabel:
         """安全地获取左手位置标签引用（防止过期指针）。"""
+        if self._left_hand_position_label is not None and isValid(self._left_hand_position_label):
+            return self._left_hand_position_label
         if self._left_hand_position_label is not None:
-            try:
-                _ = self._left_hand_position_label.parent()
-                return self._left_hand_position_label
-            except RuntimeError as e:
-                print(f"[CalibDebug] leftHandPositionLabel 已被删除，重新查询: {e}")
-                self._left_hand_position_label = None
+            print("[CalibDebug] leftHandPositionLabel 已失效，重新查询")
+            self._left_hand_position_label = None
 
         self._left_hand_position_label = self._find_child_from_self(QLabel, "leftHandPositionLabel")
         if self._left_hand_position_label is None:
@@ -618,13 +711,11 @@ class CalibrationWidget(QWidget):
 
     def _resolve_left_hand_rotation_label(self) -> QLabel:
         """安全地获取左手旋转标签引用（防止过期指针）。"""
+        if self._left_hand_rotation_label is not None and isValid(self._left_hand_rotation_label):
+            return self._left_hand_rotation_label
         if self._left_hand_rotation_label is not None:
-            try:
-                _ = self._left_hand_rotation_label.parent()
-                return self._left_hand_rotation_label
-            except RuntimeError as e:
-                print(f"[CalibDebug] leftHandRotationLabel 已被删除，重新查询: {e}")
-                self._left_hand_rotation_label = None
+            print("[CalibDebug] leftHandRotationLabel 已失效，重新查询")
+            self._left_hand_rotation_label = None
 
         self._left_hand_rotation_label = self._find_child_from_self(QLabel, "leftHandRotationLabel")
         if self._left_hand_rotation_label is None:
@@ -635,13 +726,11 @@ class CalibrationWidget(QWidget):
 
     def _resolve_left_hand_quat_label(self) -> QLabel:
         """安全地获取左手四元数标签引用（防止过期指针）。"""
+        if self._left_hand_quat_label is not None and isValid(self._left_hand_quat_label):
+            return self._left_hand_quat_label
         if self._left_hand_quat_label is not None:
-            try:
-                _ = self._left_hand_quat_label.parent()
-                return self._left_hand_quat_label
-            except RuntimeError as e:
-                print(f"[CalibDebug] leftHandQuatLabel 已被删除，重新查询: {e}")
-                self._left_hand_quat_label = None
+            print("[CalibDebug] leftHandQuatLabel 已失效，重新查询")
+            self._left_hand_quat_label = None
 
         self._left_hand_quat_label = self._find_child_from_self(QLabel, "leftHandQuatLabel")
         if self._left_hand_quat_label is None:
@@ -657,6 +746,24 @@ class CalibrationWidget(QWidget):
         rotation_label.setVisible(not self._left_hand_show_quat)
         quat_label.setVisible(self._left_hand_show_quat)
 
+    def _set_label_text_with_retry(
+        self,
+        resolve_label,
+        cache_attr_name: str,
+        text: str,
+    ) -> QLabel:
+        """设置标签文本；若 Qt 底层对象已销毁，则重新查找后重试一次。"""
+        label = resolve_label()
+        try:
+            label.setText(text)
+            return label
+        except RuntimeError as exc:
+            print(f"[CalibDebug] {cache_attr_name} setText 失败，准备重试: {exc}")
+            setattr(self, cache_attr_name, None)
+            label = resolve_label()
+            label.setText(text)
+            return label
+
     def _on_left_hand_attitude_context_menu(self, pos) -> None:
         """左手姿态行右键菜单，切换四元数/欧拉角显示。"""
         menu = QMenu(self)
@@ -671,6 +778,73 @@ class CalibrationWidget(QWidget):
         elif action == quat_action:
             self._left_hand_show_quat = True
             self._apply_left_hand_attitude_display_mode()
+
+    def _resolve_right_hand_position_label(self) -> QLabel:
+        """安全地获取右手位置标签引用（防止过期指针）。"""
+        if self._right_hand_position_label is not None and isValid(self._right_hand_position_label):
+            return self._right_hand_position_label
+        if self._right_hand_position_label is not None:
+            print("[CalibDebug] rightHandPositionLabel 已失效，重新查询")
+            self._right_hand_position_label = None
+
+        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel")
+        if self._right_hand_position_label is None:
+            self._debug_snapshot("resolve_right_hand_position_label_failed")
+            raise RuntimeError("无法找到 rightHandPositionLabel 控件")
+        self._debug_widget_state("resolved_right_hand_position_label", self._right_hand_position_label)
+        return self._right_hand_position_label
+
+    def _resolve_right_hand_rotation_label(self) -> QLabel:
+        """安全地获取右手旋转标签引用（防止过期指针）。"""
+        if self._right_hand_rotation_label is not None and isValid(self._right_hand_rotation_label):
+            return self._right_hand_rotation_label
+        if self._right_hand_rotation_label is not None:
+            print("[CalibDebug] rightHandRotationLabel 已失效，重新查询")
+            self._right_hand_rotation_label = None
+
+        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel")
+        if self._right_hand_rotation_label is None:
+            self._debug_snapshot("resolve_right_hand_rotation_label_failed")
+            raise RuntimeError("无法找到 rightHandRotationLabel 控件")
+        self._debug_widget_state("resolved_right_hand_rotation_label", self._right_hand_rotation_label)
+        return self._right_hand_rotation_label
+
+    def _resolve_right_hand_quat_label(self) -> QLabel:
+        """安全地获取右手四元数标签引用（防止过期指针）。"""
+        if self._right_hand_quat_label is not None and isValid(self._right_hand_quat_label):
+            return self._right_hand_quat_label
+        if self._right_hand_quat_label is not None:
+            print("[CalibDebug] rightHandQuatLabel 已失效，重新查询")
+            self._right_hand_quat_label = None
+
+        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel")
+        if self._right_hand_quat_label is None:
+            self._debug_snapshot("resolve_right_hand_quat_label_failed")
+            raise RuntimeError("无法找到 rightHandQuatLabel 控件")
+        self._debug_widget_state("resolved_right_hand_quat_label", self._right_hand_quat_label)
+        return self._right_hand_quat_label
+
+    def _apply_right_hand_attitude_display_mode(self) -> None:
+        """应用右手姿态显示模式，只显示四元数或欧拉角其中之一。"""
+        rotation_label = self._resolve_right_hand_rotation_label()
+        quat_label = self._resolve_right_hand_quat_label()
+        rotation_label.setVisible(not self._right_hand_show_quat)
+        quat_label.setVisible(self._right_hand_show_quat)
+
+    def _on_right_hand_attitude_context_menu(self, pos) -> None:
+        """右手姿态行右键菜单，切换四元数/欧拉角显示。"""
+        menu = QMenu(self)
+
+        euler_action = menu.addAction("显示欧拉角" if self._right_hand_show_quat else "✓ 显示欧拉角")
+        quat_action = menu.addAction("✓ 显示四元数" if self._right_hand_show_quat else "显示四元数")
+
+        action = menu.exec(QCursor.pos())
+        if action == euler_action:
+            self._right_hand_show_quat = False
+            self._apply_right_hand_attitude_display_mode()
+        elif action == quat_action:
+            self._right_hand_show_quat = True
+            self._apply_right_hand_attitude_display_mode()
 
     def _on_calibration_clicked(self):
         """处理标定按钮点击事件。
@@ -747,6 +921,26 @@ class CalibrationWidget(QWidget):
                 tracker_cali_manager.set_location_bias_quaternion_wxyz(location_bias_quat_wxyz)
                 self._vive_tracker_widget.set_calibration_active(True)
                 
+                # 同时为右手 tracker 应用相同的标定四元数（使用右手原始四元数）
+                right_data = self._vive_tracker_widget._right_data
+                if right_data.valid:
+                    right_raw_quat_wxyz = (
+                        right_data.quat_origin_w,
+                        right_data.quat_origin_x,
+                        right_data.quat_origin_y,
+                        right_data.quat_origin_z,
+                    )
+                    right_calibration_quat_wxyz = right_raw_quat_wxyz
+                    right_data.quat_calibration_w = right_calibration_quat_wxyz[0]
+                    right_data.quat_calibration_x = right_calibration_quat_wxyz[1]
+                    right_data.quat_calibration_y = right_calibration_quat_wxyz[2]
+                    right_data.quat_calibration_z = right_calibration_quat_wxyz[3]
+                    print(
+                        "[CalibDebug] 右手 Tracker 标定四元数已设置: "
+                        f"quat=({right_calibration_quat_wxyz[0]:.4f}, {right_calibration_quat_wxyz[1]:.4f}, "
+                        f"{right_calibration_quat_wxyz[2]:.4f}, {right_calibration_quat_wxyz[3]:.4f})"
+                    )
+                
                 # 获取所有 lighthouse，应用相同的偏差
                 lighthouse_manager = self._vive_tracker_widget._lighthouse_manager
                 all_lighthouses = lighthouse_manager.get_all_lighthouses()
@@ -766,7 +960,7 @@ class CalibrationWidget(QWidget):
                 f"  位置偏移四元数: {self._format_quaternion_wxyz(location_bias_quat_wxyz)}\n"
                 f"  标定后当前四元数: {self._format_quaternion_wxyz(calibrated_current_quat_wxyz)}\n"
                 f"  应用的位置偏差: X={bias_x:.4f}m, Y={bias_y:.4f}m, Z={bias_z:.4f}m\n"
-                f"  已应用到: 左手 Tracker + {len(all_lighthouses)} 个 Lighthouse\n"
+                f"  已应用到: 左手 Tracker + 右手 Tracker + {len(all_lighthouses)} 个 Lighthouse\n"
                 f"  效果: 所有设备虚拟位置已设置为原点，后续运动相对于原点"
             )
             print(calibration_msg)
@@ -853,6 +1047,14 @@ class CalibrationWidget(QWidget):
                 left_data.quat_calibration_x = 0.0
                 left_data.quat_calibration_y = 0.0
                 left_data.quat_calibration_z = 0.0
+                
+                # 重置右手 tracker 的标定四元数
+                right_data = self._vive_tracker_widget._right_data
+                right_data.quat_calibration_w = 1.0
+                right_data.quat_calibration_x = 0.0
+                right_data.quat_calibration_y = 0.0
+                right_data.quat_calibration_z = 0.0
+                
                 self._vive_tracker_widget.set_calibration_active(False)
                 
                 # 重置所有 lighthouse 的位置偏差
@@ -866,7 +1068,7 @@ class CalibrationWidget(QWidget):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             cancel_msg = (
                 f"[{timestamp}] ✅ 取消标定完成\n"
-                f"  已重置: 左手 Tracker + {len(all_lighthouses)} 个 Lighthouse\n"
+                f"  已重置: 左手 Tracker + 右手 Tracker + {len(all_lighthouses)} 个 Lighthouse\n"
                 f"  所有设备位置偏差已恢复为 0"
             )
             print(cancel_msg)
@@ -1002,22 +1204,19 @@ class CalibrationWidget(QWidget):
                 euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
             
             # 更新位置标签
-            pos_label = self._resolve_left_hand_position_label()
             pos_text = f"位置：X={final_x:8.4f}m  Y={final_y:8.4f}m  Z={final_z:8.4f}m"
-            pos_label.setText(pos_text)
+            self._set_label_text_with_retry(self._resolve_left_hand_position_label, "_left_hand_position_label", pos_text)
             
             # 更新旋转标签（由当前显示的四元数换算，顺序固定为 ZXY）
-            rot_label = self._resolve_left_hand_rotation_label()
             rot_text = self._format_euler_zxy_text(euler_degree)
-            rot_label.setText(rot_text)
+            self._set_label_text_with_retry(self._resolve_left_hand_rotation_label, "_left_hand_rotation_label", rot_text)
             
             # 更新四元数标签
-            quat_label = self._resolve_left_hand_quat_label()
             quat_text = (
                 f"四元数：w={calibrated_quat[0]:8.4f}  x={calibrated_quat[1]:8.4f}  "
                 f"y={calibrated_quat[2]:8.4f}  z={calibrated_quat[3]:8.4f}"
             )
-            quat_label.setText(quat_text)
+            self._set_label_text_with_retry(self._resolve_left_hand_quat_label, "_left_hand_quat_label", quat_text)
             self._apply_left_hand_attitude_display_mode()
 
             if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
@@ -1030,10 +1229,75 @@ class CalibrationWidget(QWidget):
         except Exception as e:
             print(f"[CalibDebug] 更新左手信息失败: {e}")
     
+    def _update_right_hand_info(self):
+        """更新右手信息显示（10Hz 刷新）。
+        
+        从 ViveTrackerWidget 中获取右手追踪器的标定后位置和四元数，
+        并更新"右手信息"面板中的三个标签。
+        """
+        if self._vive_tracker_widget is None:
+            print("[CalibDebug] _update_right_hand_info: vive_tracker_widget is None")
+            return
+        
+        try:
+            self._right_hand_info_tick += 1
+            with self._vive_tracker_widget._data_lock:
+                right_data = self._vive_tracker_widget._right_data
+                tracking_enabled = self._vive_tracker_widget.is_tracking_enabled()
+                if self._right_hand_info_tick <= 5 or self._right_hand_info_tick % 20 == 0:
+                    tracker_cali_state = self._vive_tracker_widget.get_tracker_cali_manager().get_state_snapshot()
+                    print(
+                        "[CalibDebug] right_info_tick="
+                        f"{self._right_hand_info_tick} tracking={tracking_enabled} valid={right_data.valid} "
+                        f"origin=({right_data.pos_origin_x_m:.4f}, {right_data.pos_origin_y_m:.4f}, {right_data.pos_origin_z_m:.4f}) "
+                        f"bias=({tracker_cali_state.pos_bias_x_m:.4f}, {tracker_cali_state.pos_bias_y_m:.4f}, {tracker_cali_state.pos_bias_z_m:.4f}) "
+                        f"quat_origin=({right_data.quat_origin_w:.4f}, {right_data.quat_origin_x:.4f}, {right_data.quat_origin_y:.4f}, {right_data.quat_origin_z:.4f}) "
+                        f"quat_calib=({right_data.quat_calibration_w:.4f}, {right_data.quat_calibration_x:.4f}, {right_data.quat_calibration_y:.4f}, {right_data.quat_calibration_z:.4f}) "
+                        f"quat_add=({tracker_cali_state.quat_additional_w:.4f}, {tracker_cali_state.quat_additional_x:.4f}, {tracker_cali_state.quat_additional_y:.4f}, {tracker_cali_state.quat_additional_z:.4f})"
+                    )
+                if not right_data.valid:
+                    if self._right_hand_info_tick <= 5 or self._right_hand_info_tick % 20 == 0:
+                        print("[CalibDebug] _update_right_hand_info: right_data.valid is False, skip UI update")
+                    return
+
+                # 计算标定后的位置（原始位置 + 偏差，并按需应用 quat_calibration 旋转）
+                final_x, final_y, final_z = self._vive_tracker_widget.compose_tracker_data_display_position_xyz(right_data)
+
+                calibrated_quat = self._vive_tracker_widget.compose_tracker_data_display_quaternion_wxyz(right_data)
+                euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
+            
+            # 更新位置标签
+            pos_text = f"位置：X={final_x:8.4f}m  Y={final_y:8.4f}m  Z={final_z:8.4f}m"
+            self._set_label_text_with_retry(self._resolve_right_hand_position_label, "_right_hand_position_label", pos_text)
+            
+            # 更新旋转标签（由当前显示的四元数换算，顺序固定为 ZXY）
+            rot_text = self._format_euler_zxy_text(euler_degree)
+            self._set_label_text_with_retry(self._resolve_right_hand_rotation_label, "_right_hand_rotation_label", rot_text)
+            
+            # 更新四元数标签
+            quat_text = (
+                f"四元数：w={calibrated_quat[0]:8.4f}  x={calibrated_quat[1]:8.4f}  "
+                f"y={calibrated_quat[2]:8.4f}  z={calibrated_quat[3]:8.4f}"
+            )
+            self._set_label_text_with_retry(self._resolve_right_hand_quat_label, "_right_hand_quat_label", quat_text)
+            self._apply_right_hand_attitude_display_mode()
+
+            if self._right_hand_info_tick <= 5 or self._right_hand_info_tick % 20 == 0:
+                print(
+                    "[CalibDebug] right_info_ui_updated: "
+                    f"pos=({final_x:.4f}, {final_y:.4f}, {final_z:.4f}) "
+                    f"quat=({calibrated_quat[0]:.4f}, {calibrated_quat[1]:.4f}, {calibrated_quat[2]:.4f}, {calibrated_quat[3]:.4f}) "
+                    f"euler_zxy=({euler_degree[2]:.2f}, {euler_degree[0]:.2f}, {euler_degree[1]:.2f})"
+                )
+        except Exception as e:
+            print(f"[CalibDebug] 更新右手信息失败: {e}")
+    
     def cleanup(self):
         """清理资源，停止定时器。"""
         if self._left_hand_info_timer.isActive():
             self._left_hand_info_timer.stop()
+        if self._right_hand_info_timer.isActive():
+            self._right_hand_info_timer.stop()
 
 
 class ViveTrackerCaliWidget(CalibrationWidget):

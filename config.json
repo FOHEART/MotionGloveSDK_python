@@ -20,7 +20,7 @@
     "Description": "Left hand VR tracker"
   },
   "RightHandTracker": {
-    "SerialNumber": "",
+    "SerialNumber": "LHR-D5301C8B",
     "Description": "Right hand VR tracker (not configured)"
   }
 }
