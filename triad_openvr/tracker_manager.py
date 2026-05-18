@@ -20,32 +20,21 @@ import numpy as np
 @dataclass
 class TrackerData:
     """追踪器数据结构（用于实时追踪线程）。"""
-    pos_origin_x_m: float = 0.0
-    pos_origin_y_m: float = 0.0
-    pos_origin_z_m: float = 0.0
-    yaw: float = 0.0
-    pitch: float = 0.0
-    roll: float = 0.0
-    quat_origin_w: float = 0.0
-    quat_origin_x: float = 0.0
-    quat_origin_y: float = 0.0
-    quat_origin_z: float = 0.0
-    quat_calibration_w: float = 1.0
-    quat_calibration_x: float = 0.0
-    quat_calibration_y: float = 0.0
-    quat_calibration_z: float = 0.0
-    quat_location_bias_w: float = 0.382683
-    quat_location_bias_x: float = 0.0
-    quat_location_bias_y: float = -0.923880
-    quat_location_bias_z: float = 0.0
-    quat_additional_w: float = 0.7071 # 附加 旋转 90 度（绕 X 轴）的四元数 w 分量
-    quat_additional_x: float = 0.7071
-    quat_additional_y: float = 0.0
-    quat_additional_z: float = 0.0
-    pos_bias_x_m: float = 0.0  # 位置偏差 X 坐标（米）
-    pos_bias_y_m: float = 0.0  # 位置偏差 Y 坐标（米）
-    pos_bias_z_m: float = 0.0  # 位置偏差 Z 坐标（米）
-    valid: bool = False
+    pos_origin_x_m: float = 0.0  # 追踪器原始位置 X 坐标（米）
+    pos_origin_y_m: float = 0.0  # 追踪器原始位置 Y 坐标（米）
+    pos_origin_z_m: float = 0.0  # 追踪器原始位置 Z 坐标（米）
+    yaw: float = 0.0  # 欧拉角偏航（度）
+    pitch: float = 0.0  # 欧拉角俯仰（度）
+    roll: float = 0.0  # 欧拉角翻滚（度）
+    quat_origin_w: float = 0.0  # 原始四元数 W 分量
+    quat_origin_x: float = 0.0  # 原始四元数 X 分量
+    quat_origin_y: float = 0.0  # 原始四元数 Y 分量
+    quat_origin_z: float = 0.0  # 原始四元数 Z 分量
+    quat_calibration_w: float = 1.0  # 标定四元数 W 分量（默认恒等）
+    quat_calibration_x: float = 0.0  # 标定四元数 X 分量
+    quat_calibration_y: float = 0.0  # 标定四元数 Y 分量
+    quat_calibration_z: float = 0.0  # 标定四元数 Z 分量
+    valid: bool = False  # 数据是否有效
 
 
 @dataclass

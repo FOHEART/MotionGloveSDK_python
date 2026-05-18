@@ -245,12 +245,20 @@ class CalibrationWidget(QWidget):
             try:
                 with self._vive_tracker_widget._data_lock:
                     left_data = self._vive_tracker_widget._left_data
+                    tracker_cali_state = self._vive_tracker_widget.get_tracker_cali_manager().get_state_snapshot()
                     print(
                         "[CalibDebug] left_data: "
                         f"valid={left_data.valid} "
                         f"origin=({left_data.pos_origin_x_m:.4f}, {left_data.pos_origin_y_m:.4f}, {left_data.pos_origin_z_m:.4f}) "
-                        f"bias=({left_data.pos_bias_x_m:.4f}, {left_data.pos_bias_y_m:.4f}, {left_data.pos_bias_z_m:.4f}) "
                         f"calib_quat=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f})"
+                    )
+                    print(
+                        "[CalibDebug] tracker_cali_state: "
+                        f"pos_bias=({tracker_cali_state.pos_bias_x_m:.4f}, {tracker_cali_state.pos_bias_y_m:.4f}, {tracker_cali_state.pos_bias_z_m:.4f}) "
+                        f"location_bias=({tracker_cali_state.quat_location_bias_w:.4f}, {tracker_cali_state.quat_location_bias_x:.4f}, "
+                        f"{tracker_cali_state.quat_location_bias_y:.4f}, {tracker_cali_state.quat_location_bias_z:.4f}) "
+                        f"additional=({tracker_cali_state.quat_additional_w:.4f}, {tracker_cali_state.quat_additional_x:.4f}, "
+                        f"{tracker_cali_state.quat_additional_y:.4f}, {tracker_cali_state.quat_additional_z:.4f})"
                     )
             except Exception as exc:
                 print(f"[CalibDebug] left_data snapshot failed: {exc}")
@@ -721,36 +729,22 @@ class CalibrationWidget(QWidget):
                     left_data.quat_origin_z,
                 )
                 location_bias_quat_wxyz = self._build_y_axis_quaternion_wxyz(left_data.pitch)
+                tracker_cali_manager = self._vive_tracker_widget.get_tracker_cali_manager()
+                additional_quat_wxyz = tracker_cali_manager.get_additional_quaternion_wxyz()
                 calibration_quat_wxyz = raw_quat_wxyz
                 calibrated_current_quat_wxyz = self._vive_tracker_widget.compose_display_quaternion_wxyz(
-                    (
-                        left_data.quat_additional_w,
-                        left_data.quat_additional_x,
-                        left_data.quat_additional_y,
-                        left_data.quat_additional_z,
-                    ),
+                    additional_quat_wxyz,
                     calibration_quat_wxyz,
                     raw_quat_wxyz,
                 )
 
                 # 设置左手 tracker 的位置偏差
-                left_data.pos_bias_x_m = bias_x
-                left_data.pos_bias_y_m = bias_y
-                left_data.pos_bias_z_m = bias_z
+                tracker_cali_manager.set_position_bias_xyz((bias_x, bias_y, bias_z))
                 left_data.quat_calibration_w = calibration_quat_wxyz[0]
                 left_data.quat_calibration_x = calibration_quat_wxyz[1]
                 left_data.quat_calibration_y = calibration_quat_wxyz[2]
                 left_data.quat_calibration_z = calibration_quat_wxyz[3]
-                left_data.quat_location_bias_w = location_bias_quat_wxyz[0]
-                left_data.quat_location_bias_x = location_bias_quat_wxyz[1]
-                left_data.quat_location_bias_y = location_bias_quat_wxyz[2]
-                left_data.quat_location_bias_z = location_bias_quat_wxyz[3]
-
-                right_data = self._vive_tracker_widget._right_data
-                right_data.quat_location_bias_w = location_bias_quat_wxyz[0]
-                right_data.quat_location_bias_x = location_bias_quat_wxyz[1]
-                right_data.quat_location_bias_y = location_bias_quat_wxyz[2]
-                right_data.quat_location_bias_z = location_bias_quat_wxyz[3]
+                tracker_cali_manager.set_location_bias_quaternion_wxyz(location_bias_quat_wxyz)
                 self._vive_tracker_widget.set_calibration_active(True)
                 
                 # 获取所有 lighthouse，应用相同的偏差
@@ -798,12 +792,7 @@ class CalibrationWidget(QWidget):
                 bias_info = self._build_calibration_info_text(
                     (bias_x, bias_y, bias_z),
                     calibration_quat_wxyz,
-                    (
-                        left_data.quat_additional_w,
-                        left_data.quat_additional_x,
-                        left_data.quat_additional_y,
-                        left_data.quat_additional_z,
-                    ),
+                    additional_quat_wxyz,
                     location_bias_quat_wxyz,
                 )
                 
@@ -859,9 +848,7 @@ class CalibrationWidget(QWidget):
             with self._vive_tracker_widget._data_lock:
                 # 重置左手 tracker 的位置偏差
                 left_data = self._vive_tracker_widget._left_data
-                left_data.pos_bias_x_m = 0.0
-                left_data.pos_bias_y_m = 0.0
-                left_data.pos_bias_z_m = 0.0
+                self._vive_tracker_widget.get_tracker_cali_manager().set_position_bias_xyz((0.0, 0.0, 0.0))
                 left_data.quat_calibration_w = 1.0
                 left_data.quat_calibration_x = 0.0
                 left_data.quat_calibration_y = 0.0
@@ -905,13 +892,8 @@ class CalibrationWidget(QWidget):
                 reset_info = self._build_calibration_info_text(
                     None,
                     (1.0, 0.0, 0.0, 0.0),
-                    None,
-                    (
-                        left_data.quat_location_bias_w,
-                        left_data.quat_location_bias_x,
-                        left_data.quat_location_bias_y,
-                        left_data.quat_location_bias_z,
-                    ),
+                    self._vive_tracker_widget.get_tracker_cali_manager().get_additional_quaternion_wxyz(),
+                    self._vive_tracker_widget.get_tracker_cali_manager().get_location_bias_quaternion_wxyz(),
                 )
                 
                 print(f"[CalibDebug] 设置 biasValueLabel 为: {reset_info}")
@@ -998,14 +980,15 @@ class CalibrationWidget(QWidget):
                 left_data = self._vive_tracker_widget._left_data
                 tracking_enabled = self._vive_tracker_widget.is_tracking_enabled()
                 if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
+                    tracker_cali_state = self._vive_tracker_widget.get_tracker_cali_manager().get_state_snapshot()
                     print(
                         "[CalibDebug] left_info_tick="
                         f"{self._left_hand_info_tick} tracking={tracking_enabled} valid={left_data.valid} "
                         f"origin=({left_data.pos_origin_x_m:.4f}, {left_data.pos_origin_y_m:.4f}, {left_data.pos_origin_z_m:.4f}) "
-                        f"bias=({left_data.pos_bias_x_m:.4f}, {left_data.pos_bias_y_m:.4f}, {left_data.pos_bias_z_m:.4f}) "
+                        f"bias=({tracker_cali_state.pos_bias_x_m:.4f}, {tracker_cali_state.pos_bias_y_m:.4f}, {tracker_cali_state.pos_bias_z_m:.4f}) "
                         f"quat_origin=({left_data.quat_origin_w:.4f}, {left_data.quat_origin_x:.4f}, {left_data.quat_origin_y:.4f}, {left_data.quat_origin_z:.4f}) "
                         f"quat_calib=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f}) "
-                        f"quat_add=({left_data.quat_additional_w:.4f}, {left_data.quat_additional_x:.4f}, {left_data.quat_additional_y:.4f}, {left_data.quat_additional_z:.4f})"
+                        f"quat_add=({tracker_cali_state.quat_additional_w:.4f}, {tracker_cali_state.quat_additional_x:.4f}, {tracker_cali_state.quat_additional_y:.4f}, {tracker_cali_state.quat_additional_z:.4f})"
                     )
                 if not left_data.valid:
                     if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:

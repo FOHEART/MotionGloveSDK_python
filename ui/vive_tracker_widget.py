@@ -29,6 +29,7 @@ from triad_openvr.steamvr_status_checker import SteamVRStatusChecker
 
 # 导入 Tracker 管理器和追踪数据类
 from triad_openvr.tracker_manager import ViveTrackerMgr, TrackerManager, TrackerData, get_global_tracker_manager
+from triad_openvr.tracker_cali_manager import TrackerCaliManager, get_global_tracker_cali_manager
 
 # 导入 LightHouse 管理器
 from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighthouse_manager
@@ -111,6 +112,9 @@ class ViveTrackerWidget(QWidget):
         
         # LightHouse 管理器（存储所有 LightHouse 基站的统一信息）
         self._lighthouse_manager: LighthouseManager = get_global_lighthouse_manager()
+
+        # Tracker 标定偏移管理器（存储所有 Vive Tracker 共享的偏移四元数）
+        self._tracker_cali_manager: TrackerCaliManager = get_global_tracker_cali_manager()
 
         # 追踪状态
         self._tracking_enabled = False
@@ -397,11 +401,8 @@ class ViveTrackerWidget(QWidget):
             x = float(self._left_bias_x_edit.text())
             y = float(self._left_bias_y_edit.text())
             z = float(self._left_bias_z_edit.text())
-            
-            with self._data_lock:
-                self._left_data.pos_bias_x_m = x
-                self._left_data.pos_bias_y_m = y
-                self._left_data.pos_bias_z_m = z
+
+            self._tracker_cali_manager.set_position_bias_xyz((x, y, z))
             
             print(f"[PosBias] 左手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
             
@@ -417,11 +418,8 @@ class ViveTrackerWidget(QWidget):
             x = float(self._right_bias_x_edit.text())
             y = float(self._right_bias_y_edit.text())
             z = float(self._right_bias_z_edit.text())
-            
-            with self._data_lock:
-                self._right_data.pos_bias_x_m = x
-                self._right_data.pos_bias_y_m = y
-                self._right_data.pos_bias_z_m = z
+
+            self._tracker_cali_manager.set_position_bias_xyz((x, y, z))
             
             print(f"[PosBias] 右手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
             
@@ -881,17 +879,17 @@ class ViveTrackerWidget(QWidget):
         )
         return cls._normalize_quaternion_wxyz(display_quat)
 
-    def _get_tracker_position_bias_quaternion_wxyz_unlocked(
-        self,
-        tracker_data: TrackerData,
-    ) -> tuple[float, float, float, float]:
+    def _get_tracker_position_bias_quaternion_wxyz_unlocked(self) -> tuple[float, float, float, float]:
         """获取用于位置旋转的四元数偏置。"""
-        return (
-            tracker_data.quat_location_bias_w,
-            tracker_data.quat_location_bias_x,
-            tracker_data.quat_location_bias_y,
-            tracker_data.quat_location_bias_z,
-        )
+        return self._tracker_cali_manager.get_location_bias_quaternion_wxyz()
+
+    def _get_tracker_additional_quaternion_wxyz_unlocked(self) -> tuple[float, float, float, float]:
+        """获取用于姿态显示的附加旋转四元数。"""
+        return self._tracker_cali_manager.get_additional_quaternion_wxyz()
+
+    def _get_tracker_position_bias_xyz_unlocked(self) -> tuple[float, float, float]:
+        """获取对所有 Vive Tracker 共享的位置偏差。"""
+        return self._tracker_cali_manager.get_position_bias_xyz()
 
     def compose_display_position_xyz(
         self,
@@ -914,18 +912,15 @@ class ViveTrackerWidget(QWidget):
         tracker_data: TrackerData,
     ) -> tuple[float, float, float]:
         """基于 TrackerData 计算最终用于界面显示和模型更新的位置。"""
+        position_bias_xyz = self._get_tracker_position_bias_xyz_unlocked()
         return self.compose_display_position_xyz(
             (
                 tracker_data.pos_origin_x_m,
                 tracker_data.pos_origin_y_m,
                 tracker_data.pos_origin_z_m,
             ),
-            (
-                tracker_data.pos_bias_x_m,
-                tracker_data.pos_bias_y_m,
-                tracker_data.pos_bias_z_m,
-            ),
-            self._get_tracker_position_bias_quaternion_wxyz_unlocked(tracker_data),
+            position_bias_xyz,
+            self._get_tracker_position_bias_quaternion_wxyz_unlocked(),
         )
 
     def compose_tracker_data_display_quaternion_wxyz(
@@ -943,12 +938,7 @@ class ViveTrackerWidget(QWidget):
             return self._normalize_quaternion_wxyz(realtime_quat)
 
         return self.compose_display_quaternion_wxyz(
-            (
-                tracker_data.quat_additional_w,
-                tracker_data.quat_additional_x,
-                tracker_data.quat_additional_y,
-                tracker_data.quat_additional_z,
-            ),
+            self._get_tracker_additional_quaternion_wxyz_unlocked(),
             (
                 tracker_data.quat_calibration_w,
                 tracker_data.quat_calibration_x,
@@ -969,6 +959,10 @@ class ViveTrackerWidget(QWidget):
     def is_position_calibration_rotation_enabled(self) -> bool:
         """返回是否启用基于 quat_calibration 的位置向量旋转。"""
         return self._rotate_position_by_calibration
+
+    def get_tracker_cali_manager(self) -> TrackerCaliManager:
+        """返回全局 Tracker 标定偏移管理器。"""
+        return self._tracker_cali_manager
 
     def get_left_calibration_quaternion_wxyz(self) -> tuple[float, float, float, float]:
         """获取左手校准四元数（线程安全）。
@@ -1709,11 +1703,6 @@ class ViveTrackerWidget(QWidget):
                 quat_origin_y=self._left_data.quat_origin_y, quat_origin_z=self._left_data.quat_origin_z,
                 quat_calibration_w=self._left_data.quat_calibration_w, quat_calibration_x=self._left_data.quat_calibration_x,
                 quat_calibration_y=self._left_data.quat_calibration_y, quat_calibration_z=self._left_data.quat_calibration_z,
-                quat_location_bias_w=self._left_data.quat_location_bias_w, quat_location_bias_x=self._left_data.quat_location_bias_x,
-                quat_location_bias_y=self._left_data.quat_location_bias_y, quat_location_bias_z=self._left_data.quat_location_bias_z,
-                quat_additional_w=self._left_data.quat_additional_w, quat_additional_x=self._left_data.quat_additional_x,
-                quat_additional_y=self._left_data.quat_additional_y, quat_additional_z=self._left_data.quat_additional_z,
-                pos_bias_x_m=self._left_data.pos_bias_x_m, pos_bias_y_m=self._left_data.pos_bias_y_m, pos_bias_z_m=self._left_data.pos_bias_z_m,
                 valid=True,
             )
 
@@ -1731,11 +1720,6 @@ class ViveTrackerWidget(QWidget):
                 quat_origin_y=self._right_data.quat_origin_y, quat_origin_z=self._right_data.quat_origin_z,
                 quat_calibration_w=self._right_data.quat_calibration_w, quat_calibration_x=self._right_data.quat_calibration_x,
                 quat_calibration_y=self._right_data.quat_calibration_y, quat_calibration_z=self._right_data.quat_calibration_z,
-                quat_location_bias_w=self._right_data.quat_location_bias_w, quat_location_bias_x=self._right_data.quat_location_bias_x,
-                quat_location_bias_y=self._right_data.quat_location_bias_y, quat_location_bias_z=self._right_data.quat_location_bias_z,
-                quat_additional_w=self._right_data.quat_additional_w, quat_additional_x=self._right_data.quat_additional_x,
-                quat_additional_y=self._right_data.quat_additional_y, quat_additional_z=self._right_data.quat_additional_z,
-                pos_bias_x_m=self._right_data.pos_bias_x_m, pos_bias_y_m=self._right_data.pos_bias_y_m, pos_bias_z_m=self._right_data.pos_bias_z_m,
                 valid=True,
             )
 

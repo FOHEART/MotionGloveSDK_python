@@ -160,11 +160,12 @@ class CalibrationWidget(QWidget):
             try:
                 with self._vive_tracker_widget._data_lock:
                     left_data = self._vive_tracker_widget._left_data
+                    tracker_cali_state = self._vive_tracker_widget.get_tracker_cali_manager().get_state_snapshot()
                     print(
                         "[CalibDebug] left_data: "
                         f"valid={left_data.valid} "
                         f"origin=({left_data.pos_origin_x_m:.4f}, {left_data.pos_origin_y_m:.4f}, {left_data.pos_origin_z_m:.4f}) "
-                        f"bias=({left_data.pos_bias_x_m:.4f}, {left_data.pos_bias_y_m:.4f}, {left_data.pos_bias_z_m:.4f}) "
+                        f"bias=({tracker_cali_state.pos_bias_x_m:.4f}, {tracker_cali_state.pos_bias_y_m:.4f}, {tracker_cali_state.pos_bias_z_m:.4f}) "
                         f"calib_quat=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f})"
                     )
             except Exception as exc:
@@ -472,9 +473,7 @@ class CalibrationWidget(QWidget):
                 )
 
                 # 设置左手 tracker 的位置偏差
-                left_data.pos_bias_x_m = bias_x
-                left_data.pos_bias_y_m = bias_y
-                left_data.pos_bias_z_m = bias_z
+                self._vive_tracker_widget.get_tracker_cali_manager().set_position_bias_xyz((bias_x, bias_y, bias_z))
                 left_data.quat_calibration_w = calibration_quat_wxyz[0]
                 left_data.quat_calibration_x = calibration_quat_wxyz[1]
                 left_data.quat_calibration_y = calibration_quat_wxyz[2]
@@ -577,9 +576,7 @@ class CalibrationWidget(QWidget):
             with self._vive_tracker_widget._data_lock:
                 # 重置左手 tracker 的位置偏差
                 left_data = self._vive_tracker_widget._left_data
-                left_data.pos_bias_x_m = 0.0
-                left_data.pos_bias_y_m = 0.0
-                left_data.pos_bias_z_m = 0.0
+                self._vive_tracker_widget.get_tracker_cali_manager().set_position_bias_xyz((0.0, 0.0, 0.0))
                 left_data.quat_calibration_w = 1.0
                 left_data.quat_calibration_x = 0.0
                 left_data.quat_calibration_y = 0.0

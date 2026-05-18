@@ -207,11 +207,8 @@ class ViveTrackerInfoWidget(QWidget):
             z = float(self._left_bias_z_edit.text())
             
             # 调用父窗口的方法来处理偏差设置
-            if hasattr(self._parent, '_left_data') and hasattr(self._parent, '_data_lock'):
-                with self._parent._data_lock:
-                    self._parent._left_data.pos_bias_x_m = x
-                    self._parent._left_data.pos_bias_y_m = y
-                    self._parent._left_data.pos_bias_z_m = z
+            if hasattr(self._parent, 'get_tracker_cali_manager'):
+                self._parent.get_tracker_cali_manager().set_position_bias_xyz((x, y, z))
                 
                 print(f"[PosBias] 左手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
                 
@@ -230,11 +227,8 @@ class ViveTrackerInfoWidget(QWidget):
             z = float(self._right_bias_z_edit.text())
             
             # 调用父窗口的方法来处理偏差设置
-            if hasattr(self._parent, '_right_data') and hasattr(self._parent, '_data_lock'):
-                with self._parent._data_lock:
-                    self._parent._right_data.pos_bias_x_m = x
-                    self._parent._right_data.pos_bias_y_m = y
-                    self._parent._right_data.pos_bias_z_m = z
+            if hasattr(self._parent, 'get_tracker_cali_manager'):
+                self._parent.get_tracker_cali_manager().set_position_bias_xyz((x, y, z))
                 
                 print(f"[PosBias] 右手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
                 

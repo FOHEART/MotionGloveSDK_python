@@ -47,12 +47,14 @@ MotionGloveSDK_python/
 ├── triad_openvr/                      # OpenVR 追踪器集成模块（SteamVR 手部追踪支持）
 │   ├── triad_openvr.py                # OpenVR 设备发现与控制主类
 │   ├── hand_tracker_monitor.py        # 手部追踪器实时监控工具（显示位置/姿态）
-│   ├── hand_tracker_config.json       # 手部追踪器序列号配置文件
-│   ├── config.json                    # OpenVR 设备全局配置文件（HMD/控制器/追踪器）
+│   ├── tracker_cali_manager.py        # 全局追踪器标定偏移管理器
+│   ├── tracker_manager.py             # 追踪器数据结构与管理
 │   ├── controller_test.py             # 控制器功能测试脚本
 │   ├── tracker_test.py                # 追踪器功能测试脚本
 │   ├── udp_emitter.py                 # UDP 数据广播工具
 │   └── udp_receiver.cs                # C# 示例：UDP 数据接收程序
+│
+├── config.json                        # OpenVR 全局配置文件（HMD/控制器/追踪器/手部映射）
 │
 ├── fonts/
 │   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
@@ -383,6 +385,187 @@ python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
 
 ---
 
+## 架构与数据结构
+
+### 系统架构概述
+
+本项目采用**分层数据处理架构**，分离实时数据、标定数据和显示数据：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    硬件数据源                                    │
+│  (OpenVR Tracker / MotionGlove Hand Tracker)                    │
+└────────────┬────────────────────────────────────────────────────┘
+             │ UDP 接收 (后台线程)
+             ↓
+┌─────────────────────────────────────────────────────────────────┐
+│              TrackerData (实时数据模型)                         │
+│  - pos_origin_*: 原始位置 (X/Y/Z，米)                           │
+│  - quat_origin_*: 原始四元数 (W/X/Y/Z)                          │
+│  - yaw/pitch/roll: 欧拉角 (度)                                  │
+│  - quat_calibration_*: 标定校准四元数                           │
+│  - valid: 数据有效标志                                          │
+│  ⚠ 不再包含位置偏差 (已迁移至 TrackerCaliState)                 │
+└────────────┬────────────────────────────────────────────────────┘
+             │ 线程安全读取 (_data_lock)
+             ↓
+┌──────────────────────────────┐  ┌─────────────────────────────┐
+│  TrackerCaliState            │  │  ViveTrackerWidget          │
+│  (全局标定偏移状态)          │  │  (主控制器)                 │
+│                              │  │                             │
+│ - pos_bias_*: 共享位置偏差   │  │ - 位置合成:                 │
+│   (应用于所有 Tracker)       │  │   final_pos = origin + bias │
+│ - quat_location_bias_*:      │  │   + rotation                │
+│   位置偏移四元数             │  │ - 四元数合成:               │
+│ - quat_additional_*:         │  │   quat_additional ×         │
+│   附加旋转四元数             │  │   inverse(quat_calib) ×     │
+│                              │  │   quat_origin               │
+│ ✓ 由 TrackerCaliManager      │  │                             │
+│   统一管理 (RLock 保护)      │  │ 通过 get_tracker_cali_      │
+│                              │  │ manager() 访问              │
+└──────────────────────────────┘  └─────────────────────────────┘
+             │                              │
+             └──────────────┬───────────────┘
+                            ↓
+                ┌─────────────────────────┐
+                │  显示数据合成           │
+                │  (UI/3D 模型更新)      │
+                │                         │
+                │ - display_position     │
+                │ - display_quaternion   │
+                │ - model_transform      │
+                └─────────────────────────┘
+```
+
+### TrackerData — 实时追踪数据模型
+
+`triad_openvr/tracker_manager.py` 中定义，代表单个追踪器的实时状态。每个追踪器（左手、右手）各有一份独立的 `TrackerData`，在后台线程中由 OpenVR 设备数据持续更新。
+
+**字段说明：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pos_origin_x_m/y_m/z_m` | float | 追踪器原始位置（米） |
+| `yaw/pitch/roll` | float | 欧拉角（度） |
+| `quat_origin_w/x/y/z` | float | 原始四元数 (W/X/Y/Z) |
+| `quat_calibration_w/x/y/z` | float | 标定四元数，默认恒等 (1,0,0,0) |
+| `valid` | bool | 数据是否有效 |
+
+**线程安全机制：**
+- 所有读写操作由 `ViveTrackerWidget._data_lock` (RLock) 保护
+- 后台追踪线程 (`_tracking_loop`) 更新字段
+- UI 线程通过 `_on_update_timer` 安全读取
+
+---
+
+### TrackerCaliState 与 TrackerCaliManager — 全局标定状态
+
+`triad_openvr/tracker_cali_manager.py` 中定义，管理对**所有追踪器共有的标定偏移**。这些偏移在标定时计算，之后应用于所有追踪器的位置和姿态显示。
+
+**共享状态字段：**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pos_bias_x_m/y_m/z_m` | float | 共享位置偏差（米），应用于所有 Tracker |
+| `quat_location_bias_w/x/y/z` | float | 位置偏移四元数，用于旋转最终位置 |
+| `quat_additional_w/x/y/z` | float | 附加旋转四元数，额外的姿态修正 |
+
+**访问接口（通过 TrackerCaliManager）：**
+
+```python
+from triad_openvr.tracker_cali_manager import get_global_tracker_cali_manager
+
+manager = get_global_tracker_cali_manager()
+
+# 读取共享位置偏差
+bias_x, bias_y, bias_z = manager.get_position_bias_xyz()
+
+# 设置共享位置偏差（标定完成后调用）
+manager.set_position_bias_xyz((bias_x, bias_y, bias_z))
+
+# 读取位置偏移四元数
+quat_w, qx, qy, qz = manager.get_location_bias_quaternion_wxyz()
+
+# 读取附加旋转四元数
+add_w, add_x, add_y, add_z = manager.get_additional_quaternion_wxyz()
+
+# 获取完整快照（调试用）
+state = manager.get_state_snapshot()
+print(f"位置偏差: ({state.pos_bias_x_m}, {state.pos_bias_y_m}, {state.pos_bias_z_m})")
+```
+
+**线程安全机制：**
+- 所有读写操作由内部 `RLock` 保护
+- 全局单例模式，通过 `get_global_tracker_cali_manager()` 获取
+
+---
+
+### 位置和姿态合成流程
+
+#### 1. 位置合成 (ViveTrackerWidget.compose_display_position_xyz)
+
+```
+最终显示位置 = (原始位置 + 共享偏差) 
+                 + 可选: 按 quat_location_bias 旋转
+```
+
+- 首先平移：`translated = origin + bias`
+- 若启用 `_rotate_position_by_calibration`，则旋转：`rotated = rotate(translated, quat_location_bias)`
+- 用于 UI 更新和 3D 模型变换
+
+#### 2. 姿态合成 (ViveTrackerWidget.compose_display_quaternion_wxyz)
+
+```
+最终显示四元数 = quat_additional × inverse(quat_calibration) × quat_origin
+```
+
+- 先倒转校准四元数：`inv_calib = inverse(quat_calibration)`
+- 后乘原始四元数：`composed = quat_additional × inv_calib × quat_origin`
+- 用于关节坐标轴方向和 3D 骨骼姿态显示
+
+---
+
+### Vive Tracker 标定流程
+
+#### 标定触发点：`vive_tracker_cali_widget.py` 中的 `_on_calibration_clicked()`
+
+**步骤 1：计算偏差**
+- 获取左手追踪器当前原始位置：`pos_x, pos_y, pos_z = left_data.pos_origin_*`
+- 计算偏差为负值：`bias_x = -pos_x; bias_y = -pos_y; bias_z = -pos_z`
+- 目的：将追踪器虚拟位置平移到原点
+
+**步骤 2：构造位置偏移四元数**
+- 读取左手追踪器当前俯仰角（Pitch）
+- 构造绕 Y 轴旋转的四元数：`quat_location_bias = quaternion_from_y_axis_rotation(pitch)`
+- 存储到全局 `TrackerCaliManager`
+
+**步骤 3：存储标定四元数**
+- 读取左手原始四元数：`raw_quat = left_data.quat_origin_*`
+- 计算标定四元数：`quat_calibration = raw_quat`（当前四元数作为校准基准）
+- 存储到 `left_data.quat_calibration_*`
+
+**步骤 4：应用到所有 Lighthouse**
+- 遍历所有灯塔设备，调用 `update_position_bias(bias_x, bias_y, bias_z)`
+- 保持所有设备的位置偏差一致
+
+**步骤 5：激活标定模式**
+- 设置 `_calibration_active = True`
+- 启用位置和姿态合成公式
+
+**步骤 6：日志和 UI 更新**
+- 打印 `[CalibDebug]` 日志记录所有计算数据
+- 更新标定信息面板显示位置偏差和位置偏移四元数
+
+#### 取消标定：`_on_cancel_calibration_clicked()`
+
+- 重置 `pos_bias` 为 (0, 0, 0)
+- 重置 `quat_calibration` 为恒等四元数 (1, 0, 0, 0)
+- 重置所有灯塔的位置偏差
+- 设置 `_calibration_active = False`
+- 停用所有合成公式
+
+---
+
 ## Triad OpenVR 模块 — SteamVR 手部追踪支持
 
 `triad_openvr/` 目录包含 OpenVR（SteamVR）集成工具，用于与 HTC Vive 等 OpenVR 设备（如手部追踪器）交互。
@@ -393,8 +576,9 @@ python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
 |---|---|
 | `triad_openvr.py` | OpenVR 核心类：设备发现、序列号映射、姿态读取 |
 | `hand_tracker_monitor.py` | 手部追踪器实时监控工具 |
-| `hand_tracker_config.json` | 手部追踪器配置（序列号 → 设备映射） |
-| `config.json` | OpenVR 全局设备配置（HMD/控制器/追踪器） |
+| `tracker_cali_manager.py` | 全局追踪器标定偏移管理器 |
+| `tracker_manager.py` | 追踪器数据结构与管理 |
+| `config.json` | OpenVR 全局设备配置（HMD/控制器/追踪器/手部映射） |
 | `controller_test.py` | 控制器测试脚本 |
 | `tracker_test.py` | 追踪器测试脚本 |
 | `udp_emitter.py` | UDP 广播工具 |
@@ -402,9 +586,9 @@ python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
 
 ### 快速开始
 
-#### 1. 配置文件：`hand_tracker_config.json`
+#### 1. 配置文件：`config.json`
 
-用于将追踪器序列号映射到逻辑名称。格式如下：
+位于工程根目录，用于配置 OpenVR 设备的全局信息，包括追踪器序列号映射。格式如下：
 
 ```json
 {
@@ -428,7 +612,9 @@ python motionGloveSDK_rawReceiver.py --port 5001 --print-raw
      LHR-D5301C8B -> tracker_2
    ```
 
-3. 将这些序列号复制到 `hand_tracker_config.json` 中对应的字段
+3. 将这些序列号复制到工程根目录的 `config.json` 中对应的 `"SerialNumber"` 字段
+
+> **注意：** `config.json` 存放在工程根目录，由所有 OpenVR 相关工具（如 `hand_tracker_monitor.py`、3D 查看器等）共享使用
 
 #### 2. 手部追踪器监控工具：`hand_tracker_monitor.py`
 
@@ -447,7 +633,7 @@ python triad_openvr/hand_tracker_monitor.py 30
 **功能：**
 
 - 自动初始化 OpenVR 系统并发现设备
-- 根据 `hand_tracker_config.json` 匹配追踪器
+- 根据 `config.json` 中的配置匹配追踪器
 - 实时打印每个追踪器的位置（X/Y/Z，单位：米）和旋转欧拉角（Yaw/Pitch/Roll，单位：度）
 - **支持三种退出方式：**
   - **Ctrl+C** — 中断信号
@@ -698,7 +884,7 @@ ViveTracker 面板包含以下主要区域：
 
 | 字段 | 显示内容 | 更新频率 |
 |---|---|---|
-| **配置信息** | 从 `hand_tracker_config.json` 加载的序列号等配置数据，格式为 `SerialNumber: LHR-XXXXX` | 启动时加载一次；如果配置文件不存在，显示红色错误提示 |
+| **配置信息** | 从 `config.json` 加载的序列号等配置数据，格式为 `SerialNumber: LHR-XXXXX` | 启动时加载一次；如果配置文件不存在，显示红色错误提示 |
 | **位置信息** | `X=xxxx.xxxx m  Y=xxxx.xxxx m  Z=xxxx.xxxx m`（单位：米，精座4位小数） | 60Hz（追踪时） |
 | **旋转信息** | 根据右键菜单选择显示以下之一：<br>• **欧拉角（默认）：** `Yaw=xxx.xx° Pitch=xxx.xx° Roll=xxx.xx°`<br>• **四元数：** `w=x.xxxx x=x.xxxx y=x.xxxx z=x.xxxx` | 60Hz（追踪时） |
 
@@ -758,9 +944,9 @@ ViveTracker 面板包含以下主要区域：
 
 ### 追踪数据来源与配置
 
-#### 1. 配置文件：`triad_openvr/hand_tracker_config.json`
+#### 1. 配置文件：`config.json`
 
-定义左右手追踪器的 SteamVR 设备序列号映射：
+位于工程根目录，定义左右手追踪器的 SteamVR 设备序列号映射：
 
 ```json
 {
@@ -794,7 +980,7 @@ ViveTracker 面板包含以下主要区域：
 ### 实时追踪工作流程
 
 1. **初始化阶段**
-   - 启动时从 `hand_tracker_config.json` 读取配置
+   - 启动时从工程根目录的 `config.json` 读取配置
    - 显示配置中已定义的左右手追踪器序列号
 
 2. **启动追踪**
