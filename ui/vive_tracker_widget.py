@@ -258,7 +258,14 @@ class ViveTrackerWidget(QWidget):
         QTimer.singleShot(0, lambda: self._debug_dump_tab_state("init"))
 
     def _describe_widget_brief(self, widget):
-        """生成简短的 QWidget 调试描述。"""
+        """生成简短的 QWidget 调试描述。
+        
+        Args:
+            widget: 要描述的 QWidget 对象
+        
+        Returns:
+            str: 包含类名、对象名、可见性、启用状态和几何信息的描述字符串
+        """
         if widget is None:
             return "None"
 
@@ -348,7 +355,14 @@ class ViveTrackerWidget(QWidget):
         return super().eventFilter(watched, event)
 
     def _init_bias_controls(self):
-        """初始化位置偏差控件（从 UI 文件加载）。"""
+        """初始化位置偏差控件（从 UI 文件加载）。
+        
+        从 UI 文件中查找左右手的位置偏差输入控件（XYZ三个轴）以及设置按钮，
+        并连接相应的信号槽。
+        
+        Raises:
+            AssertionError: 当必需的 UI 控件未找到时
+        """
         # 从 UI 中查找左手偏差控件
         self._left_bias_x_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasXEdit")
         self._left_bias_y_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasYEdit")
@@ -451,7 +465,11 @@ class ViveTrackerWidget(QWidget):
         return "<br>".join(lines) if lines else "无配置数据"
 
     def _on_left_group_context_menu(self, pos):
-        """左手 GroupBox 的右键菜单。"""
+        """左手 GroupBox 的右键菜单（欧拉角/四元数显示切换）。
+        
+        Args:
+            pos: 右键点击位置
+        """
         menu = QMenu(self)
         
         euler_action = menu.addAction("显示欧拉角" if self._left_show_quat else "✓ 显示欧拉角")
@@ -469,7 +487,11 @@ class ViveTrackerWidget(QWidget):
             self._left_quat_label.setVisible(True)
 
     def _on_right_group_context_menu(self, pos):
-        """右手 GroupBox 的右键菜单。"""
+        """右手 GroupBox 的右键菜单（欧拉角/四元数显示切换）。
+        
+        Args:
+            pos: 右键点击位置
+        """
         menu = QMenu(self)
         
         euler_action = menu.addAction("显示欧拉角" if self._right_show_quat else "✓ 显示欧拉角")
@@ -745,6 +767,14 @@ class ViveTrackerWidget(QWidget):
 
     @staticmethod
     def _normalize_quaternion_wxyz(quat_wxyz: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+        """标准化四元数（单位四元数）。
+        
+        Args:
+            quat_wxyz: 输入四元数 (w, x, y, z)
+        
+        Returns:
+            tuple: 标准化后的四元数 (w, x, y, z)。若输入长度过小则返回单位四元数 (1.0, 0.0, 0.0, 0.0)
+        """
         w, x, y, z = quat_wxyz
         norm = (w * w + x * x + y * y + z * z) ** 0.5
         if norm <= 1e-8:
@@ -756,6 +786,15 @@ class ViveTrackerWidget(QWidget):
         lhs_wxyz: tuple[float, float, float, float],
         rhs_wxyz: tuple[float, float, float, float],
     ) -> tuple[float, float, float, float]:
+        """四元数乘法运算。
+        
+        Args:
+            lhs_wxyz: 左操作数四元数 (w, x, y, z)
+            rhs_wxyz: 右操作数四元数 (w, x, y, z)
+        
+        Returns:
+            tuple: 乘法结果四元数 (w, x, y, z)
+        """
         lw, lx, ly, lz = lhs_wxyz
         rw, rx, ry, rz = rhs_wxyz
         return (
@@ -767,6 +806,14 @@ class ViveTrackerWidget(QWidget):
 
     @classmethod
     def invert_quaternion_wxyz(cls, quat_wxyz: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+        """四元数取逆（共轭）。
+        
+        Args:
+            quat_wxyz: 输入四元数 (w, x, y, z)
+        
+        Returns:
+            tuple: 逆四元数 (w, -x, -y, -z)（已标准化）
+        """
         qw, qx, qy, qz = cls._normalize_quaternion_wxyz(quat_wxyz)
         return (qw, -qx, -qy, -qz)
 
@@ -776,6 +823,17 @@ class ViveTrackerWidget(QWidget):
         calibration_quat_wxyz: tuple[float, float, float, float],
         realtime_quat_wxyz: tuple[float, float, float, float],
     ) -> tuple[float, float, float, float]:
+        """应用校准四元数到实时四元数。
+        
+        计算方式：calibration_quat × realtime_quat
+        
+        Args:
+            calibration_quat_wxyz: 校准四元数 (w, x, y, z)
+            realtime_quat_wxyz: 实时四元数 (w, x, y, z)
+        
+        Returns:
+            tuple: 校准后的四元数 (w, x, y, z)（已标准化）
+        """
         calibrated = cls._multiply_quaternion_wxyz(
             cls._normalize_quaternion_wxyz(calibration_quat_wxyz),
             cls._normalize_quaternion_wxyz(realtime_quat_wxyz),
@@ -783,6 +841,11 @@ class ViveTrackerWidget(QWidget):
         return cls._normalize_quaternion_wxyz(calibrated)
 
     def get_left_calibration_quaternion_wxyz(self) -> tuple[float, float, float, float]:
+        """获取左手校准四元数（线程安全）。
+        
+        Returns:
+            tuple: 校准四元数 (w, x, y, z)
+        """
         with self._data_lock:
             return (
                 self._left_data.quat_calibration_w,
@@ -792,6 +855,13 @@ class ViveTrackerWidget(QWidget):
             )
 
     def get_left_calibrated_quaternion_wxyz(self) -> tuple[float, float, float, float]:
+        """获取左手已校准的四元数（线程安全）。
+        
+        计算方式：应用校准四元数到原始实时四元数
+        
+        Returns:
+            tuple: 已校准的四元数 (w, x, y, z)
+        """
         with self._data_lock:
             return self.apply_calibration_quaternion_wxyz(
                 (
@@ -939,7 +1009,14 @@ class ViveTrackerWidget(QWidget):
             self._stop_tracking()
 
     def _start_tracking(self):
-        """启动追踪。"""
+        """启动追踪。
+        
+        初始化 OpenVR 系统，从配置中查找并匹配左右手追踪器，
+        启动后台数据收集线程和 UI 更新定时器。
+        
+        会打印设备扫描信息和匹配结果。如果初始化失败或未找到设备，
+        会在 UI 中显示错误信息并返回。
+        """
         try:
             from triad_openvr.triad_openvr import triad_openvr
             self._openvr_system = triad_openvr()
@@ -1062,7 +1139,12 @@ class ViveTrackerWidget(QWidget):
             traceback.print_exc()
 
     def _stop_tracking(self):
-        """停止追踪。"""
+        """停止追踪。
+        
+        关闭 OpenVR 系统，停止后台数据收集线程，
+        重置 UI 显示，卸载已加载的 VR 模型，并恢复各种状态。
+        触发追踪状态改变回调。
+        """
         self._tracking_enabled = False
         
         # 不控制tab页面的enable/disable，保持两个tab始终完整可用
@@ -1542,7 +1624,11 @@ class ViveTrackerWidget(QWidget):
             )
 
     def is_tracking_enabled(self) -> bool:
-        """是否处于追踪开启状态。"""
+        """是否处于追踪开启状态。
+        
+        Returns:
+            bool: True 表示追踪已启用，False 表示未启用
+        """
         return self._tracking_enabled
     
     def get_tracker_manager(self) -> TrackerManager:

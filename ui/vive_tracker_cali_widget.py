@@ -15,12 +15,16 @@ from datetime import datetime
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit, QGroupBox
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QIODevice
-from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
+from PySide6.QtGui import QTextCursor, QCursor
+from PySide6.QtWidgets import QMenu
 from shiboken6 import isValid
 
+from src.xsqeconverter import quat_to_euler_degree
 
-CALIBRATION_DEBUG_PRINTS = False
+
+CALIBRATION_DEBUG_PRINTS = True
+_EULER_ORDER_ZXY = 4
 
 
 def print(*args, **kwargs):
@@ -74,6 +78,12 @@ class CalibrationWidget(QWidget):
     """定位标定面板。"""
 
     def __init__(self, parent=None, vive_tracker_widget=None):
+        """初始化标定面板。
+        
+        Args:
+            parent: 父 QWidget
+            vive_tracker_widget: ViveTrackerWidget 实例引用，用于访问追踪器数据
+        """
         super().__init__(parent)
         
         self._calibration_in_progress = False
@@ -81,11 +91,31 @@ class CalibrationWidget(QWidget):
         self._bias_value_label: QLabel | None = None
         self._info_group: QGroupBox | None = None
         
+        # 左手信息标签（10Hz 刷新）
+        self._left_hand_position_label: QLabel | None = None
+        self._left_hand_rotation_label: QLabel | None = None
+        self._left_hand_quat_label: QLabel | None = None
+        self._left_hand_show_quat = True
+        self._left_hand_info_tick = 0
+        
+        # 左手信息更新定时器（10Hz = 100ms）
+        self._left_hand_info_timer = QTimer(self)
+        self._left_hand_info_timer.timeout.connect(self._update_left_hand_info)
+        self._left_hand_info_timer.setInterval(100)  # 100ms = 10Hz
+        
         self._init_ui()
         self._add_log("系统初始化完成")
 
     @staticmethod
     def _format_quaternion_wxyz(quat_wxyz: tuple[float, float, float, float]) -> str:
+        """将四元数 (w, x, y, z) 格式化为字符串显示。
+        
+        Args:
+            quat_wxyz: 四元数 (w, x, y, z)
+        
+        Returns:
+            str: 格式化的四元数字符串，例如 "w=1.0000  x=0.0000  y=0.0000  z=0.0000"
+        """
         return (
             f"w={quat_wxyz[0]:.4f}  x={quat_wxyz[1]:.4f}  "
             f"y={quat_wxyz[2]:.4f}  z={quat_wxyz[3]:.4f}"
@@ -96,6 +126,15 @@ class CalibrationWidget(QWidget):
         bias_xyz: tuple[float, float, float] | None,
         calibration_quat_wxyz: tuple[float, float, float, float],
     ) -> str:
+        """构建标定信息显示文本。
+        
+        Args:
+            bias_xyz: 位置偏差 (x, y, z)，单位米。若为 None，显示为 "-"
+            calibration_quat_wxyz: 校准四元数 (w, x, y, z)
+        
+        Returns:
+            str: 包含位置偏差和校准四元数的格式化文本
+        """
         if bias_xyz is None:
             bias_line = "位置偏差：-"
         else:
@@ -103,8 +142,19 @@ class CalibrationWidget(QWidget):
         quat_line = f"标定四元数: {self._format_quaternion_wxyz(calibration_quat_wxyz)}"
         return f"{bias_line}\n{quat_line}"
 
+    @staticmethod
+    def _format_euler_zxy_text(euler_xyz_degree: tuple[float, float, float]) -> str:
+        """将由 ZXY 顺序换算得到的欧拉角格式化为显示文本。"""
+        x_deg, y_deg, z_deg = euler_xyz_degree
+        return f"欧拉角(ZXY)：Z={z_deg:7.2f}°  X={x_deg:7.2f}°  Y={y_deg:7.2f}°"
+
     def _bind_destroyed_debug(self, label: str, widget) -> None:
-        """记录 Qt 对象何时被销毁。"""
+        """记录 Qt 对象何时被销毁。
+        
+        Args:
+            label: 对象标签/名称，用于日志输出
+            widget: 要监听的 Qt 对象
+        """
         if widget is None or not isValid(widget):
             return
 
@@ -116,7 +166,12 @@ class CalibrationWidget(QWidget):
             print(f"[CalibDebug] bind destroyed failed for {label}: {exc}")
 
     def _debug_widget_state(self, label: str, widget) -> None:
-        """输出 widget 当前状态，便于定位 Qt 对象生命周期问题。"""
+        """输出 widget 当前状态，便于定位 Qt 对象生命周期问题。
+        
+        Args:
+            label: 调试标签
+            widget: 要检查的 QWidget 对象
+        """
         if widget is None:
             print(f"[CalibDebug] {label}: valid=False obj=None")
             return
@@ -144,7 +199,11 @@ class CalibrationWidget(QWidget):
             print(f"[CalibDebug] {label}: valid=True but access failed: {exc}")
 
     def _debug_snapshot(self, stage: str) -> None:
-        """输出标定 UI 与数据状态快照。"""
+        """输出标定 UI 与数据状态快照，用于故障排查。
+        
+        Args:
+            stage: 阶段标签，表示当前操作阶段（如 "init_ui", "calibration_complete" 等）
+        """
         print(f"[CalibDebug] ---- snapshot: {stage} ----")
         self._debug_widget_state("self", self)
         self._debug_widget_state("ui", getattr(self, "_ui", None))
@@ -173,7 +232,15 @@ class CalibrationWidget(QWidget):
         print(f"[CalibDebug] ---- snapshot end: {stage} ----")
 
     def _find_child_from_self(self, widget_type, object_name: str):
-        """优先从 self 查找子控件，避免依赖可能失效的 _ui 引用。"""
+        """优先从 self 查找子控件，避免依赖可能失效的 _ui 引用。
+        
+        Args:
+            widget_type: 要查找的 QWidget 类型
+            object_name: 控件的对象名称
+        
+        Returns:
+            QWidget 或其子类实例，若未找到则返回 None
+        """
         try:
             child = self.findChild(widget_type, object_name)
         except RuntimeError as exc:
@@ -192,7 +259,16 @@ class CalibrationWidget(QWidget):
         return None
 
     def _ensure_bias_value_label(self) -> QLabel:
-        """确保用于显示位置偏差的专用标签存在且可用。"""
+        """确保用于显示位置偏差的专用标签存在且可用。
+        
+        若标签已存在，直接返回；否则尝试查找或动态创建。
+        
+        Returns:
+            QLabel 实例，用于显示位置偏差信息
+        
+        Raises:
+            RuntimeError: 当 infoGroup 不存在或其布局不可用时
+        """
         if self._bias_value_label is not None and isValid(self._bias_value_label):
             return self._bias_value_label
 
@@ -225,7 +301,15 @@ class CalibrationWidget(QWidget):
         return self._bias_value_label
 
     def _init_ui(self):
-        """从 UI 文件加载界面。"""
+        """从 UI 文件加载界面并初始化控件连接。
+        
+        加载 vive_tracker_cali_widget.ui 文件，从中提取必要的控件，
+        并连接相应的信号槽。初始化完成后会输出调试信息和状态快照。
+        
+        Raises:
+            RuntimeError: 当 UI 文件无法打开或加载失败时
+            AssertionError: 当必要的 UI 控件未找到时
+        """
         loader = QUiLoader()
         ui_file = QFile(str(_find_calibration_ui_file()))
         
@@ -249,6 +333,11 @@ class CalibrationWidget(QWidget):
         self._status_label: QLabel = self.findChild(QLabel, "statusLabel")
         self._time_label: QLabel = self.findChild(QLabel, "timeLabel")
         self._log_text: QTextEdit = self.findChild(QTextEdit, "logText")
+        
+        # 获取左手信息标签
+        self._left_hand_position_label = self.findChild(QLabel, "leftHandPositionLabel")
+        self._left_hand_rotation_label = self.findChild(QLabel, "leftHandRotationLabel")
+        self._left_hand_quat_label = self.findChild(QLabel, "leftHandQuatLabel")
         
         # 调试：打印找到的控件
         print(f"[CalibDebug] 控件查询结果:")
@@ -279,6 +368,14 @@ class CalibrationWidget(QWidget):
         assert self._status_label is not None, "UI 控件未找到：statusLabel"
         assert self._time_label is not None, "UI 控件未找到：timeLabel"
         assert self._log_text is not None, "UI 控件未找到：logText"
+        assert self._left_hand_position_label is not None, "UI 控件未找到：leftHandPositionLabel"
+        assert self._left_hand_rotation_label is not None, "UI 控件未找到：leftHandRotationLabel"
+        assert self._left_hand_quat_label is not None, "UI 控件未找到：leftHandQuatLabel"
+
+        self._left_hand_rotation_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._left_hand_rotation_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
+        self._left_hand_quat_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._left_hand_quat_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
         
         # 强制确保标签可见（解决隐藏问题）
         print("[CalibDebug] 强制设置标签可见性...")
@@ -307,14 +404,29 @@ class CalibrationWidget(QWidget):
         self._bind_destroyed_debug("timeLabel", self._time_label)
         self._bind_destroyed_debug("logText", self._log_text)
         self._bind_destroyed_debug("infoGroup", self._info_group)
+        self._bind_destroyed_debug("leftHandPositionLabel", self._left_hand_position_label)
+        self._bind_destroyed_debug("leftHandRotationLabel", self._left_hand_rotation_label)
+        self._bind_destroyed_debug("leftHandQuatLabel", self._left_hand_quat_label)
+        self._apply_left_hand_attitude_display_mode()
         self._debug_snapshot("after_init_ui")
         
         # 连接信号
         self._calibration_btn.clicked.connect(self._on_calibration_clicked)
         self._cancel_calibration_btn.clicked.connect(self._on_cancel_calibration_clicked)
+        
+        # 启动左手信息更新定时器（10Hz）
+        self._left_hand_info_timer.start()
+        print(
+            "[CalibDebug] 左手信息定时器已启动: "
+            f"active={self._left_hand_info_timer.isActive()} interval={self._left_hand_info_timer.interval()}ms"
+        )
 
     def set_tracking_controls_enabled(self, enabled: bool):
-        """切换依赖追踪状态的标定按钮。"""
+        """切换依赖追踪状态的标定按钮启用/禁用状态。
+        
+        Args:
+            enabled: True 表示启用按钮，False 表示禁用按钮
+        """
         try:
             self._calibration_btn.setEnabled(enabled)
             self._cancel_calibration_btn.setEnabled(enabled)
@@ -333,7 +445,11 @@ class CalibrationWidget(QWidget):
             print(f"[CalibDebug] set_tracking_controls_enabled 失败: {e}")
 
     def _is_ui_valid(self) -> bool:
-        """检查 UI 是否仍然有效。"""
+        """检查 UI 是否仍然有效（对象未被删除）。
+        
+        Returns:
+            bool: True 表示 UI 对象有效，False 表示已被删除
+        """
         if self._ui is None:
             return False
         if not isValid(self._ui):
@@ -349,7 +465,14 @@ class CalibrationWidget(QWidget):
             return False
 
     def _resolve_log_text(self) -> QTextEdit:
-        """安全地获取 logText 控件引用（防止过期指针）。"""
+        """安全地获取 logText 控件引用（防止过期指针）。
+        
+        Returns:
+            QTextEdit 实例
+        
+        Raises:
+            RuntimeError: 当 logText 控件无法找到时
+        """
         if self._log_text is not None:
             try:
                 _ = self._log_text.parent()
@@ -366,7 +489,14 @@ class CalibrationWidget(QWidget):
         return self._log_text
 
     def _resolve_status_label(self) -> QLabel:
-        """安全地获取 statusLabel 控件引用（防止过期指针）。"""
+        """安全地获取 statusLabel 控件引用（防止过期指针）。
+        
+        Returns:
+            QLabel 实例
+        
+        Raises:
+            RuntimeError: 当 statusLabel 控件无法找到时
+        """
         if self._status_label is not None:
             try:
                 _ = self._status_label.parent()
@@ -388,7 +518,14 @@ class CalibrationWidget(QWidget):
         return self._status_label
 
     def _resolve_time_label(self) -> QLabel:
-        """安全地获取 timeLabel 控件引用（防止过期指针）。"""
+        """安全地获取 timeLabel 控件引用（防止过期指针）。
+        
+        Returns:
+            QLabel 实例
+        
+        Raises:
+            RuntimeError: 当 timeLabel 控件无法找到时
+        """
         if self._time_label is not None:
             try:
                 _ = self._time_label.parent()
@@ -408,6 +545,79 @@ class CalibrationWidget(QWidget):
         print(f"[CalibDebug] ✅ timeLabel 已找到")
         self._debug_widget_state("resolved_time_label", self._time_label)
         return self._time_label
+
+    def _resolve_left_hand_position_label(self) -> QLabel:
+        """安全地获取左手位置标签引用（防止过期指针）。"""
+        if self._left_hand_position_label is not None:
+            try:
+                _ = self._left_hand_position_label.parent()
+                return self._left_hand_position_label
+            except RuntimeError as e:
+                print(f"[CalibDebug] leftHandPositionLabel 已被删除，重新查询: {e}")
+                self._left_hand_position_label = None
+
+        self._left_hand_position_label = self._find_child_from_self(QLabel, "leftHandPositionLabel")
+        if self._left_hand_position_label is None:
+            self._debug_snapshot("resolve_left_hand_position_label_failed")
+            raise RuntimeError("无法找到 leftHandPositionLabel 控件")
+        self._debug_widget_state("resolved_left_hand_position_label", self._left_hand_position_label)
+        return self._left_hand_position_label
+
+    def _resolve_left_hand_rotation_label(self) -> QLabel:
+        """安全地获取左手旋转标签引用（防止过期指针）。"""
+        if self._left_hand_rotation_label is not None:
+            try:
+                _ = self._left_hand_rotation_label.parent()
+                return self._left_hand_rotation_label
+            except RuntimeError as e:
+                print(f"[CalibDebug] leftHandRotationLabel 已被删除，重新查询: {e}")
+                self._left_hand_rotation_label = None
+
+        self._left_hand_rotation_label = self._find_child_from_self(QLabel, "leftHandRotationLabel")
+        if self._left_hand_rotation_label is None:
+            self._debug_snapshot("resolve_left_hand_rotation_label_failed")
+            raise RuntimeError("无法找到 leftHandRotationLabel 控件")
+        self._debug_widget_state("resolved_left_hand_rotation_label", self._left_hand_rotation_label)
+        return self._left_hand_rotation_label
+
+    def _resolve_left_hand_quat_label(self) -> QLabel:
+        """安全地获取左手四元数标签引用（防止过期指针）。"""
+        if self._left_hand_quat_label is not None:
+            try:
+                _ = self._left_hand_quat_label.parent()
+                return self._left_hand_quat_label
+            except RuntimeError as e:
+                print(f"[CalibDebug] leftHandQuatLabel 已被删除，重新查询: {e}")
+                self._left_hand_quat_label = None
+
+        self._left_hand_quat_label = self._find_child_from_self(QLabel, "leftHandQuatLabel")
+        if self._left_hand_quat_label is None:
+            self._debug_snapshot("resolve_left_hand_quat_label_failed")
+            raise RuntimeError("无法找到 leftHandQuatLabel 控件")
+        self._debug_widget_state("resolved_left_hand_quat_label", self._left_hand_quat_label)
+        return self._left_hand_quat_label
+
+    def _apply_left_hand_attitude_display_mode(self) -> None:
+        """应用左手姿态显示模式，只显示四元数或欧拉角其中之一。"""
+        rotation_label = self._resolve_left_hand_rotation_label()
+        quat_label = self._resolve_left_hand_quat_label()
+        rotation_label.setVisible(not self._left_hand_show_quat)
+        quat_label.setVisible(self._left_hand_show_quat)
+
+    def _on_left_hand_attitude_context_menu(self, pos) -> None:
+        """左手姿态行右键菜单，切换四元数/欧拉角显示。"""
+        menu = QMenu(self)
+
+        euler_action = menu.addAction("显示欧拉角" if self._left_hand_show_quat else "✓ 显示欧拉角")
+        quat_action = menu.addAction("✓ 显示四元数" if self._left_hand_show_quat else "显示四元数")
+
+        action = menu.exec(QCursor.pos())
+        if action == euler_action:
+            self._left_hand_show_quat = False
+            self._apply_left_hand_attitude_display_mode()
+        elif action == quat_action:
+            self._left_hand_show_quat = True
+            self._apply_left_hand_attitude_display_mode()
 
     def _on_calibration_clicked(self):
         """处理标定按钮点击事件。
@@ -651,7 +861,13 @@ class CalibrationWidget(QWidget):
             traceback.print_exc()
 
     def _add_log(self, message: str):
-        """添加日志信息到日志显示区域。"""
+        """添加日志信息到日志显示区域（线程安全）。
+        
+        Args:
+            message: 要添加的日志信息
+        
+        若 UI 已被删除，仅输出到控制台而不抛出异常。
+        """
         try:
             if not isValid(self):
                 print(f"[CalibDebug] ⚠️ CalibrationWidget 已失效，无法添加日志: {message}")
@@ -683,11 +899,101 @@ class CalibrationWidget(QWidget):
             import traceback
             traceback.print_exc()
 
+    def _update_left_hand_info(self):
+        """更新左手信息显示（10Hz 刷新）。
+        
+        从 ViveTrackerWidget 中获取左手追踪器的标定后位置和四元数，
+        并更新"左手信息"面板中的三个标签。
+        """
+        if self._vive_tracker_widget is None:
+            print("[CalibDebug] _update_left_hand_info: vive_tracker_widget is None")
+            return
+        
+        try:
+            self._left_hand_info_tick += 1
+            with self._vive_tracker_widget._data_lock:
+                left_data = self._vive_tracker_widget._left_data
+                tracking_enabled = self._vive_tracker_widget.is_tracking_enabled()
+                if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
+                    print(
+                        "[CalibDebug] left_info_tick="
+                        f"{self._left_hand_info_tick} tracking={tracking_enabled} valid={left_data.valid} "
+                        f"origin=({left_data.pos_origin_x_m:.4f}, {left_data.pos_origin_y_m:.4f}, {left_data.pos_origin_z_m:.4f}) "
+                        f"bias=({left_data.pos_bias_x_m:.4f}, {left_data.pos_bias_y_m:.4f}, {left_data.pos_bias_z_m:.4f}) "
+                        f"quat_origin=({left_data.quat_origin_w:.4f}, {left_data.quat_origin_x:.4f}, {left_data.quat_origin_y:.4f}, {left_data.quat_origin_z:.4f}) "
+                        f"quat_calib=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f})"
+                    )
+                if not left_data.valid:
+                    if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
+                        print("[CalibDebug] _update_left_hand_info: left_data.valid is False, skip UI update")
+                    return
+
+                # 计算标定后的位置（原始位置 + 偏差）
+                final_x = left_data.pos_origin_x_m + left_data.pos_bias_x_m
+                final_y = left_data.pos_origin_y_m + left_data.pos_bias_y_m
+                final_z = left_data.pos_origin_z_m + left_data.pos_bias_z_m
+
+                calibrated_quat = self._vive_tracker_widget.apply_calibration_quaternion_wxyz(
+                    (
+                        left_data.quat_calibration_w,
+                        left_data.quat_calibration_x,
+                        left_data.quat_calibration_y,
+                        left_data.quat_calibration_z,
+                    ),
+                    (
+                        left_data.quat_origin_w,
+                        left_data.quat_origin_x,
+                        left_data.quat_origin_y,
+                        left_data.quat_origin_z,
+                    ),
+                )
+                euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
+            
+            # 更新位置标签
+            pos_label = self._resolve_left_hand_position_label()
+            pos_text = f"位置：X={final_x:8.4f}m  Y={final_y:8.4f}m  Z={final_z:8.4f}m"
+            pos_label.setText(pos_text)
+            
+            # 更新旋转标签（由当前显示的四元数换算，顺序固定为 ZXY）
+            rot_label = self._resolve_left_hand_rotation_label()
+            rot_text = self._format_euler_zxy_text(euler_degree)
+            rot_label.setText(rot_text)
+            
+            # 更新四元数标签
+            quat_label = self._resolve_left_hand_quat_label()
+            quat_text = (
+                f"四元数：w={calibrated_quat[0]:8.4f}  x={calibrated_quat[1]:8.4f}  "
+                f"y={calibrated_quat[2]:8.4f}  z={calibrated_quat[3]:8.4f}"
+            )
+            quat_label.setText(quat_text)
+            self._apply_left_hand_attitude_display_mode()
+
+            if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
+                print(
+                    "[CalibDebug] left_info_ui_updated: "
+                    f"pos=({final_x:.4f}, {final_y:.4f}, {final_z:.4f}) "
+                    f"quat=({calibrated_quat[0]:.4f}, {calibrated_quat[1]:.4f}, {calibrated_quat[2]:.4f}, {calibrated_quat[3]:.4f}) "
+                    f"euler_zxy=({euler_degree[2]:.2f}, {euler_degree[0]:.2f}, {euler_degree[1]:.2f})"
+                )
+        except Exception as e:
+            print(f"[CalibDebug] 更新左手信息失败: {e}")
+    
+    def cleanup(self):
+        """清理资源，停止定时器。"""
+        if self._left_hand_info_timer.isActive():
+            self._left_hand_info_timer.stop()
+
 
 class ViveTrackerCaliWidget(CalibrationWidget):
     """定位标定面板组件（CalibrationWidget 的包装）。"""
 
     def __init__(self, vive_tracker_widget=None, parent=None):
+        """初始化 Vive Tracker 标定面板。
+        
+        Args:
+            vive_tracker_widget: ViveTrackerWidget 实例
+            parent: 父 QWidget
+        """
         super().__init__(vive_tracker_widget=vive_tracker_widget, parent=parent)
 
 
@@ -695,31 +1001,59 @@ class CaliTabManager:
     """标定 tab 管理器。"""
 
     def __init__(self, vive_tracker_widget):
+        """初始化标定 tab 管理器。
+        
+        Args:
+            vive_tracker_widget: ViveTrackerWidget 实例，用于传递给标定面板
+        """
         self._vive_tracker_widget = vive_tracker_widget
         self._calibration_widget = None
         self._calibration_tab_index = None
 
     def setup_calibration_tab(self, tab_widget):
-        """设置标定 tab。"""
+        """设置标定 tab 并添加到 QTabWidget。
+        
+        Args:
+            tab_widget: 目标 QTabWidget
+        
+        Returns:
+            ViveTrackerCaliWidget 实例
+        """
         self._calibration_widget = ViveTrackerCaliWidget(vive_tracker_widget=self._vive_tracker_widget)
         self._calibration_tab_index = tab_widget.addTab(self._calibration_widget, "定位标定")
         tab_widget.setTabEnabled(self._calibration_tab_index, True)
         return self._calibration_widget
 
     def enable_calibration_tab(self, tab_widget):
-        """启用标定 tab 内部控件。"""
+        """启用标定 tab 内部控件。
+        
+        Args:
+            tab_widget: QTabWidget 实例（用于一致性，此方法主要作用于内部标定面板）
+        """
         if self._calibration_widget is not None:
             self._calibration_widget.set_tracking_controls_enabled(True)
 
     def disable_calibration_tab(self, tab_widget):
-        """禁用标定 tab 内部控件。"""
+        """禁用标定 tab 内部控件。
+        
+        Args:
+            tab_widget: QTabWidget 实例（用于一致性，此方法主要作用于内部标定面板）
+        """
         if self._calibration_widget is not None:
             self._calibration_widget.set_tracking_controls_enabled(False)
 
     def get_calibration_widget(self):
-        """获取标定 widget。"""
+        """获取标定 widget。
+        
+        Returns:
+            ViveTrackerCaliWidget 实例或 None
+        """
         return self._calibration_widget
 
     def get_calibration_tab_index(self):
-        """获取标定 tab 索引。"""
+        """获取标定 tab 索引。
+        
+        Returns:
+            int: 标定 tab 在 QTabWidget 中的索引，若未设置则为 None
+        """
         return self._calibration_tab_index
