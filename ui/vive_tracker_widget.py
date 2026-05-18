@@ -114,6 +114,7 @@ class ViveTrackerWidget(QWidget):
 
         # 追踪状态
         self._tracking_enabled = False
+        self._calibration_active = False
         self._config = {}
         self._left_data = TrackerData()
         self._right_data = TrackerData()
@@ -840,6 +841,60 @@ class ViveTrackerWidget(QWidget):
         )
         return cls._normalize_quaternion_wxyz(calibrated)
 
+    @classmethod
+    def compose_display_quaternion_wxyz(
+        cls,
+        additional_quat_wxyz: tuple[float, float, float, float],
+        calibration_quat_wxyz: tuple[float, float, float, float],
+        realtime_quat_wxyz: tuple[float, float, float, float],
+    ) -> tuple[float, float, float, float]:
+        """组合最终用于界面显示和 VTK 的四元数。
+
+        计算方式：quat_additional × inverse(quat_calibration) × quat_origin
+        """
+        display_quat = cls._multiply_quaternion_wxyz(
+            cls._normalize_quaternion_wxyz(additional_quat_wxyz),
+            cls._multiply_quaternion_wxyz(
+                cls.invert_quaternion_wxyz(calibration_quat_wxyz),
+                cls._normalize_quaternion_wxyz(realtime_quat_wxyz),
+            ),
+        )
+        return cls._normalize_quaternion_wxyz(display_quat)
+
+    def compose_tracker_data_display_quaternion_wxyz(
+        self,
+        tracker_data: TrackerData,
+    ) -> tuple[float, float, float, float]:
+        """基于 TrackerData 计算最终用于界面显示和 VTK 的四元数。"""
+        realtime_quat = (
+            tracker_data.quat_origin_w,
+            tracker_data.quat_origin_x,
+            tracker_data.quat_origin_y,
+            tracker_data.quat_origin_z,
+        )
+        if not self._calibration_active:
+            return self._normalize_quaternion_wxyz(realtime_quat)
+
+        return self.compose_display_quaternion_wxyz(
+            (
+                tracker_data.quat_additional_w,
+                tracker_data.quat_additional_x,
+                tracker_data.quat_additional_y,
+                tracker_data.quat_additional_z,
+            ),
+            (
+                tracker_data.quat_calibration_w,
+                tracker_data.quat_calibration_x,
+                tracker_data.quat_calibration_y,
+                tracker_data.quat_calibration_z,
+            ),
+            realtime_quat,
+        )
+
+    def set_calibration_active(self, active: bool) -> None:
+        """设置是否启用标定姿态补偿。"""
+        self._calibration_active = active
+
     def get_left_calibration_quaternion_wxyz(self) -> tuple[float, float, float, float]:
         """获取左手校准四元数（线程安全）。
         
@@ -857,26 +912,13 @@ class ViveTrackerWidget(QWidget):
     def get_left_calibrated_quaternion_wxyz(self) -> tuple[float, float, float, float]:
         """获取左手已校准的四元数（线程安全）。
         
-        计算方式：应用校准四元数到原始实时四元数
+        计算方式：quat_additional × inverse(quat_calibration) × quat_origin
         
         Returns:
             tuple: 已校准的四元数 (w, x, y, z)
         """
         with self._data_lock:
-            return self.apply_calibration_quaternion_wxyz(
-                (
-                    self._left_data.quat_calibration_w,
-                    self._left_data.quat_calibration_x,
-                    self._left_data.quat_calibration_y,
-                    self._left_data.quat_calibration_z,
-                ),
-                (
-                    self._left_data.quat_origin_w,
-                    self._left_data.quat_origin_x,
-                    self._left_data.quat_origin_y,
-                    self._left_data.quat_origin_z,
-                ),
-            )
+            return self.compose_tracker_data_display_quaternion_wxyz(self._left_data)
     
     def store_model_actor(self, side: str, actor):
         """存储模型 Actor 引用。
@@ -1146,6 +1188,7 @@ class ViveTrackerWidget(QWidget):
         触发追踪状态改变回调。
         """
         self._tracking_enabled = False
+        self._calibration_active = False
         
         # 不控制tab页面的enable/disable，保持两个tab始终完整可用
         
@@ -1487,20 +1530,7 @@ class ViveTrackerWidget(QWidget):
             if self._left_data.valid:
                 # 有有效数据，重置离线计数器
                 self._left_offline_counter = 0
-                left_calibrated_quat = self.apply_calibration_quaternion_wxyz(
-                    (
-                        self._left_data.quat_calibration_w,
-                        self._left_data.quat_calibration_x,
-                        self._left_data.quat_calibration_y,
-                        self._left_data.quat_calibration_z,
-                    ),
-                    (
-                        self._left_data.quat_origin_w,
-                        self._left_data.quat_origin_x,
-                        self._left_data.quat_origin_y,
-                        self._left_data.quat_origin_z,
-                    ),
-                )
+                left_calibrated_quat = self.compose_tracker_data_display_quaternion_wxyz(self._left_data)
                 pos_text = f"位置：X={self._left_data.pos_origin_x_m:8.4f}m  Y={self._left_data.pos_origin_y_m:8.4f}m  Z={self._left_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._left_data.yaw:7.2f}°  Pitch={self._left_data.pitch:7.2f}°  Roll={self._left_data.roll:7.2f}°"
                 quat_text = (
@@ -1546,9 +1576,10 @@ class ViveTrackerWidget(QWidget):
             if self._right_data.valid:
                 # 有有效数据，重置离线计数器
                 self._right_offline_counter = 0
+                right_display_quat = self.compose_tracker_data_display_quaternion_wxyz(self._right_data)
                 pos_text = f"位置：X={self._right_data.pos_origin_x_m:8.4f}m  Y={self._right_data.pos_origin_y_m:8.4f}m  Z={self._right_data.pos_origin_z_m:8.4f}m"
                 rot_text = f"旋转：Yaw={self._right_data.yaw:7.2f}°  Pitch={self._right_data.pitch:7.2f}°  Roll={self._right_data.roll:7.2f}°"
-                quat_text = f"四元数：w={self._right_data.quat_origin_w:8.4f}  x={self._right_data.quat_origin_x:8.4f}  y={self._right_data.quat_origin_y:8.4f}  z={self._right_data.quat_origin_z:8.4f}"
+                quat_text = f"四元数：w={right_display_quat[0]:8.4f}  x={right_display_quat[1]:8.4f}  y={right_display_quat[2]:8.4f}  z={right_display_quat[3]:8.4f}"
                 
                 # 使用 InfoTabManager 更新显示
                 self._info_tab_manager.update_tracker_display("right", pos_text, rot_text, quat_text, True)
@@ -1563,14 +1594,14 @@ class ViveTrackerWidget(QWidget):
                 right_tracker.valid = True
                 right_tracker.update_position(self._right_data.pos_origin_x_m, self._right_data.pos_origin_y_m, self._right_data.pos_origin_z_m)
                 right_tracker.update_euler(self._right_data.yaw, self._right_data.pitch, self._right_data.roll)
-                right_tracker.update_quat(self._right_data.quat_origin_w, self._right_data.quat_origin_x, self._right_data.quat_origin_y, self._right_data.quat_origin_z)
+                right_tracker.update_quat(*right_display_quat)
                 right_tracker.timestamp = time.time()
                 
                 # 更新模型位置和旋转
                 self.update_model_pose(
                     "right",
                     (self._right_data.pos_origin_x_m, self._right_data.pos_origin_y_m, self._right_data.pos_origin_z_m),
-                    (self._right_data.quat_origin_w, self._right_data.quat_origin_x, self._right_data.quat_origin_y, self._right_data.quat_origin_z)
+                    right_display_quat
                 )
                 tracker_pose_updated = True
             else:
@@ -1601,6 +1632,8 @@ class ViveTrackerWidget(QWidget):
                 quat_origin_y=self._left_data.quat_origin_y, quat_origin_z=self._left_data.quat_origin_z,
                 quat_calibration_w=self._left_data.quat_calibration_w, quat_calibration_x=self._left_data.quat_calibration_x,
                 quat_calibration_y=self._left_data.quat_calibration_y, quat_calibration_z=self._left_data.quat_calibration_z,
+                quat_additional_w=self._left_data.quat_additional_w, quat_additional_x=self._left_data.quat_additional_x,
+                quat_additional_y=self._left_data.quat_additional_y, quat_additional_z=self._left_data.quat_additional_z,
                 pos_bias_x_m=self._left_data.pos_bias_x_m, pos_bias_y_m=self._left_data.pos_bias_y_m, pos_bias_z_m=self._left_data.pos_bias_z_m,
                 valid=True,
             )
@@ -1619,6 +1652,8 @@ class ViveTrackerWidget(QWidget):
                 quat_origin_y=self._right_data.quat_origin_y, quat_origin_z=self._right_data.quat_origin_z,
                 quat_calibration_w=self._right_data.quat_calibration_w, quat_calibration_x=self._right_data.quat_calibration_x,
                 quat_calibration_y=self._right_data.quat_calibration_y, quat_calibration_z=self._right_data.quat_calibration_z,
+                quat_additional_w=self._right_data.quat_additional_w, quat_additional_x=self._right_data.quat_additional_x,
+                quat_additional_y=self._right_data.quat_additional_y, quat_additional_z=self._right_data.quat_additional_z,
                 pos_bias_x_m=self._right_data.pos_bias_x_m, pos_bias_y_m=self._right_data.pos_bias_y_m, pos_bias_z_m=self._right_data.pos_bias_z_m,
                 valid=True,
             )

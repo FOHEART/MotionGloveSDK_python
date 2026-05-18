@@ -125,22 +125,30 @@ class CalibrationWidget(QWidget):
         self,
         bias_xyz: tuple[float, float, float] | None,
         calibration_quat_wxyz: tuple[float, float, float, float],
+        quat_additional_wxyz: tuple[float, float, float, float] | None = None,
     ) -> str:
         """构建标定信息显示文本。
         
         Args:
             bias_xyz: 位置偏差 (x, y, z)，单位米。若为 None，显示为 "-"
             calibration_quat_wxyz: 校准四元数 (w, x, y, z)
+            quat_additional_wxyz: 附加旋转四元数 (w, x, y, z)，若为 None 则不显示
         
         Returns:
-            str: 包含位置偏差和校准四元数的格式化文本
+            str: 包含位置偏差、校准四元数和附加旋转的格式化文本
         """
         if bias_xyz is None:
             bias_line = "位置偏差：-"
         else:
             bias_line = f"位置偏差: X={bias_xyz[0]:.4f}m, Y={bias_xyz[1]:.4f}m, Z={bias_xyz[2]:.4f}m"
         quat_line = f"标定四元数: {self._format_quaternion_wxyz(calibration_quat_wxyz)}"
-        return f"{bias_line}\n{quat_line}"
+        
+        lines = [bias_line, quat_line]
+        if quat_additional_wxyz is not None:
+            additional_line = f"附加旋转: {self._format_quaternion_wxyz(quat_additional_wxyz)}"
+            lines.append(additional_line)
+        
+        return "\n".join(lines)
 
     @staticmethod
     def _format_euler_zxy_text(euler_xyz_degree: tuple[float, float, float]) -> str:
@@ -675,8 +683,14 @@ class CalibrationWidget(QWidget):
                     left_data.quat_origin_y,
                     left_data.quat_origin_z,
                 )
-                calibration_quat_wxyz = self._vive_tracker_widget.invert_quaternion_wxyz(raw_quat_wxyz)
-                calibrated_current_quat_wxyz = self._vive_tracker_widget.apply_calibration_quaternion_wxyz(
+                calibration_quat_wxyz = raw_quat_wxyz
+                calibrated_current_quat_wxyz = self._vive_tracker_widget.compose_display_quaternion_wxyz(
+                    (
+                        left_data.quat_additional_w,
+                        left_data.quat_additional_x,
+                        left_data.quat_additional_y,
+                        left_data.quat_additional_z,
+                    ),
                     calibration_quat_wxyz,
                     raw_quat_wxyz,
                 )
@@ -689,6 +703,7 @@ class CalibrationWidget(QWidget):
                 left_data.quat_calibration_x = calibration_quat_wxyz[1]
                 left_data.quat_calibration_y = calibration_quat_wxyz[2]
                 left_data.quat_calibration_z = calibration_quat_wxyz[3]
+                self._vive_tracker_widget.set_calibration_active(True)
                 
                 # 获取所有 lighthouse，应用相同的偏差
                 lighthouse_manager = self._vive_tracker_widget._lighthouse_manager
@@ -733,6 +748,12 @@ class CalibrationWidget(QWidget):
                 bias_info = self._build_calibration_info_text(
                     (bias_x, bias_y, bias_z),
                     calibration_quat_wxyz,
+                    (
+                        left_data.quat_additional_w,
+                        left_data.quat_additional_x,
+                        left_data.quat_additional_y,
+                        left_data.quat_additional_z,
+                    ),
                 )
                 
                 print(f"[CalibDebug] 设置 biasValueLabel 为: {bias_info}")
@@ -794,6 +815,7 @@ class CalibrationWidget(QWidget):
                 left_data.quat_calibration_x = 0.0
                 left_data.quat_calibration_y = 0.0
                 left_data.quat_calibration_z = 0.0
+                self._vive_tracker_widget.set_calibration_active(False)
                 
                 # 重置所有 lighthouse 的位置偏差
                 lighthouse_manager = self._vive_tracker_widget._lighthouse_manager
@@ -921,7 +943,8 @@ class CalibrationWidget(QWidget):
                         f"origin=({left_data.pos_origin_x_m:.4f}, {left_data.pos_origin_y_m:.4f}, {left_data.pos_origin_z_m:.4f}) "
                         f"bias=({left_data.pos_bias_x_m:.4f}, {left_data.pos_bias_y_m:.4f}, {left_data.pos_bias_z_m:.4f}) "
                         f"quat_origin=({left_data.quat_origin_w:.4f}, {left_data.quat_origin_x:.4f}, {left_data.quat_origin_y:.4f}, {left_data.quat_origin_z:.4f}) "
-                        f"quat_calib=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f})"
+                        f"quat_calib=({left_data.quat_calibration_w:.4f}, {left_data.quat_calibration_x:.4f}, {left_data.quat_calibration_y:.4f}, {left_data.quat_calibration_z:.4f}) "
+                        f"quat_add=({left_data.quat_additional_w:.4f}, {left_data.quat_additional_x:.4f}, {left_data.quat_additional_y:.4f}, {left_data.quat_additional_z:.4f})"
                     )
                 if not left_data.valid:
                     if self._left_hand_info_tick <= 5 or self._left_hand_info_tick % 20 == 0:
@@ -933,20 +956,7 @@ class CalibrationWidget(QWidget):
                 final_y = left_data.pos_origin_y_m + left_data.pos_bias_y_m
                 final_z = left_data.pos_origin_z_m + left_data.pos_bias_z_m
 
-                calibrated_quat = self._vive_tracker_widget.apply_calibration_quaternion_wxyz(
-                    (
-                        left_data.quat_calibration_w,
-                        left_data.quat_calibration_x,
-                        left_data.quat_calibration_y,
-                        left_data.quat_calibration_z,
-                    ),
-                    (
-                        left_data.quat_origin_w,
-                        left_data.quat_origin_x,
-                        left_data.quat_origin_y,
-                        left_data.quat_origin_z,
-                    ),
-                )
+                calibrated_quat = self._vive_tracker_widget.compose_tracker_data_display_quaternion_wxyz(left_data)
                 euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
             
             # 更新位置标签

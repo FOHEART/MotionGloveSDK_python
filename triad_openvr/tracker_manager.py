@@ -34,6 +34,10 @@ class TrackerData:
     quat_calibration_x: float = 0.0
     quat_calibration_y: float = 0.0
     quat_calibration_z: float = 0.0
+    quat_additional_w: float = 0.7071 # 附加 旋转 90 度（绕 X 轴）的四元数 w 分量
+    quat_additional_x: float = 0.7071
+    quat_additional_y: float = 0.0
+    quat_additional_z: float = 0.0
     pos_bias_x_m: float = 0.0  # 位置偏差 X 坐标（米）
     pos_bias_y_m: float = 0.0  # 位置偏差 Y 坐标（米）
     pos_bias_z_m: float = 0.0  # 位置偏差 Z 坐标（米）
