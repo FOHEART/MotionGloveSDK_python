@@ -312,6 +312,10 @@ def _build_qt_app():
             self._lighthouse_actors: dict[str, dict] = {}
             self._scene_dirty = True
             self._last_processed_frame_fn: int | None = None
+            self._cached_positions: list[list[float] | tuple[float, float, float] | None] | None = None
+            self._cached_global_quats: list[tuple[float, float, float, float] | None] | None = None
+            self._last_left_follow_tracker_position: tuple[float, float, float] | None = None
+            self._last_right_follow_tracker_position: tuple[float, float, float] | None = None
             self._last_left_panel_refresh_time = 0.0
             self._last_bone_viewer_refresh_time = 0.0
 
@@ -573,6 +577,111 @@ def _build_qt_app():
 
         def _mark_scene_dirty(self):
             self._scene_dirty = True
+
+        @staticmethod
+        def _clone_positions(positions):
+            return [None if pos is None else [pos[0], pos[1], pos[2]] for pos in positions]
+
+        @staticmethod
+        def _vec3_close(lhs, rhs, epsilon=1e-6):
+            if lhs is None or rhs is None:
+                return False
+            return (
+                abs(lhs[0] - rhs[0]) < epsilon
+                and abs(lhs[1] - rhs[1]) < epsilon
+                and abs(lhs[2] - rhs[2]) < epsilon
+            )
+
+        def _apply_hand_tracker_follow(self, positions, side: str):
+            vive_widget = self._right_panel.vive_tracker if self._right_panel is not None else None
+            if vive_widget is None:
+                return False
+
+            if side == "left":
+                enabled = vive_widget.is_left_hand_root_follow_tracker_enabled()
+                tracker_position = vive_widget.get_left_hand_tracker_display_position_xyz()
+                root_index = BoneIndex.LeftHand
+                start_index = BoneIndex.LeftHand
+                end_index = KHHS42_SKELETON_COUNT
+                if not enabled:
+                    self._last_left_follow_tracker_position = None
+                    return False
+            else:
+                enabled = vive_widget.is_right_hand_root_follow_tracker_enabled()
+                tracker_position = vive_widget.get_right_hand_tracker_display_position_xyz()
+                root_index = BoneIndex.RightHand
+                start_index = BoneIndex.RightHand
+                end_index = BoneIndex.LeftHand
+                if not enabled:
+                    self._last_right_follow_tracker_position = None
+                    return False
+
+            root_position = positions[root_index]
+            if tracker_position is None or root_position is None:
+                return False
+
+            offset_xyz = (
+                tracker_position[0] - root_position[0],
+                tracker_position[1] - root_position[1],
+                tracker_position[2] - root_position[2],
+            )
+            for bone_idx in range(start_index, end_index):
+                pos = positions[bone_idx]
+                if pos is None:
+                    continue
+                positions[bone_idx] = [
+                    pos[0] + offset_xyz[0],
+                    pos[1] + offset_xyz[1],
+                    pos[2] + offset_xyz[2],
+                ]
+            if side == "left":
+                self._last_left_follow_tracker_position = tracker_position
+            else:
+                self._last_right_follow_tracker_position = tracker_position
+            return True
+
+        def _update_hand_scene(self, positions, global_quats, side: str):
+            if side == "left":
+                start_index = BoneIndex.LeftHand
+                end_index = KHHS42_SKELETON_COUNT
+                visible = self._left_hand_visible
+            else:
+                start_index = BoneIndex.RightHand
+                end_index = BoneIndex.LeftHand
+                visible = self._right_hand_visible
+
+            for i in range(start_index, end_index):
+                ja = self._joint_actors[i]
+                pos = positions[i]
+                if pos is None:
+                    ja.hide()
+                elif global_quats[i] is not None:
+                    ja.set_pose(pos, global_quats[i])
+                else:
+                    ja.set_position_only(pos)
+
+                if not visible:
+                    ja.hide()
+
+            for la_idx, la in enumerate(self._link_actors):
+                child, parent = _BONE_LINKS[la_idx]
+                if side == "left":
+                    if child < BoneIndex.LeftHand:
+                        continue
+                else:
+                    if child >= BoneIndex.LeftHand:
+                        continue
+                pc = positions[child]
+                pp = positions[parent]
+                if pc is not None and pp is not None:
+                    la.update(pp, pc)
+                else:
+                    la.hide()
+
+                if not visible:
+                    la.hide()
+
+            self._mark_scene_dirty()
         
         def _on_tracker_model_load(self, side: str, renderer):
             """加载 VR Tracker 模型的回调。
@@ -1017,6 +1126,11 @@ def _build_qt_app():
                         # 虚拟末梢点继承第三段的全局旋转（axis tripod 朝向与第三段一致）
                         global_quats[end_idx] = q3
 
+                self._cached_positions = self._clone_positions(positions)
+                self._cached_global_quats = list(global_quats)
+                self._apply_hand_tracker_follow(positions, "left")
+                self._apply_hand_tracker_follow(positions, "right")
+
                 for i, ja in enumerate(self._joint_actors):
                     pos = positions[i]
                     if pos is None:
@@ -1061,6 +1175,43 @@ def _build_qt_app():
                     self._last_bone_viewer_refresh_time = now
                 self._last_processed_frame_fn = frame_fn
                 self._mark_scene_dirty()
+
+            elif self._cached_positions is not None and self._cached_global_quats is not None:
+                vive_widget = self._right_panel.vive_tracker if self._right_panel is not None else None
+                if (
+                    vive_widget is not None
+                    and (
+                        vive_widget.is_left_hand_root_follow_tracker_enabled()
+                        or vive_widget.is_right_hand_root_follow_tracker_enabled()
+                    )
+                ):
+                    left_changed = False
+                    right_changed = False
+                    left_tracker_position = vive_widget.get_left_hand_tracker_display_position_xyz()
+                    if (
+                        vive_widget.is_left_hand_root_follow_tracker_enabled()
+                        and left_tracker_position is not None
+                        and not self._vec3_close(left_tracker_position, self._last_left_follow_tracker_position)
+                    ):
+                        left_changed = True
+
+                    right_tracker_position = vive_widget.get_right_hand_tracker_display_position_xyz()
+                    if (
+                        vive_widget.is_right_hand_root_follow_tracker_enabled()
+                        and right_tracker_position is not None
+                        and not self._vec3_close(right_tracker_position, self._last_right_follow_tracker_position)
+                    ):
+                        right_changed = True
+
+                    if left_changed or right_changed:
+                        positions = self._clone_positions(self._cached_positions)
+                        global_quats = list(self._cached_global_quats)
+                        self._apply_hand_tracker_follow(positions, "left")
+                        self._apply_hand_tracker_follow(positions, "right")
+                        if left_changed:
+                            self._update_hand_scene(positions, global_quats, "left")
+                        if right_changed:
+                            self._update_hand_scene(positions, global_quats, "right")
 
             if self._scene_dirty:
                 self._vtk_widget.GetRenderWindow().Render()

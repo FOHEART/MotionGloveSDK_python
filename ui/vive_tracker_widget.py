@@ -37,6 +37,7 @@ from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighth
 # 导入独立的追踪信息、标定和设备列表面板
 from vive_tracker_info_widget import ViveTrackerInfoWidget, InfoTabManager
 from vive_tracker_cali_widget import ViveTrackerCaliWidget, CaliTabManager
+from vive_tracker_caliApply import CaliApplyTabManager
 from vive_tracker_all_devices import AllDevicesTabManager
 
 
@@ -120,6 +121,10 @@ class ViveTrackerWidget(QWidget):
         self._tracking_enabled = False
         self._calibration_active = False
         self._rotate_position_by_calibration = True
+        self._left_hand_root_follow_tracker = False
+        self._left_hand_last_tracker_display_position_xyz: tuple[float, float, float] | None = None
+        self._right_hand_root_follow_tracker = False
+        self._right_hand_last_tracker_display_position_xyz: tuple[float, float, float] | None = None
         self._config = {}
         self._left_data = TrackerData()
         self._right_data = TrackerData()
@@ -165,6 +170,9 @@ class ViveTrackerWidget(QWidget):
         
         # 标定tab管理器
         self._cali_tab_manager = CaliTabManager(self)
+
+        # 应用定位 tab 管理器
+        self._cali_apply_tab_manager = CaliApplyTabManager(self)
 
         # 所有设备tab管理器
         self._all_devices_tab_manager = AllDevicesTabManager(self)
@@ -215,7 +223,10 @@ class ViveTrackerWidget(QWidget):
         # 第二个 tab：定位标定（由 CaliTabManager 管理）
         self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
 
-        # 第三个 tab：所有设备（完全独立）
+        # 第三个 tab：应用定位（将 LeftHand 根骨骼附加到左手 Vive Tracker）
+        self._cali_apply_tab_manager.setup_cali_apply_tab(self._tab_widget)
+
+        # 第四个 tab：所有设备（完全独立）
         self._all_devices_tab_manager.setup_all_devices_tab(self._tab_widget)
 
         self._install_tab_debug_hooks()
@@ -1258,6 +1269,8 @@ class ViveTrackerWidget(QWidget):
         """
         self._tracking_enabled = False
         self._calibration_active = False
+        self._left_hand_last_tracker_display_position_xyz = None
+        self._right_hand_last_tracker_display_position_xyz = None
         
         # 不控制tab页面的enable/disable，保持两个tab始终完整可用
         
@@ -1722,6 +1735,54 @@ class ViveTrackerWidget(QWidget):
                 quat_calibration_y=self._right_data.quat_calibration_y, quat_calibration_z=self._right_data.quat_calibration_z,
                 valid=True,
             )
+
+    def enable_left_hand_root_follow_tracker(self, enabled: bool) -> bool:
+        """设置左手骨架是否整体跟随左手 Vive Tracker。"""
+        if enabled and self.get_left_hand_tracker_display_position_xyz() is None:
+            return False
+        self._left_hand_root_follow_tracker = enabled
+        if not enabled:
+            self._left_hand_last_tracker_display_position_xyz = None
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def is_left_hand_root_follow_tracker_enabled(self) -> bool:
+        """返回左手骨架是否整体跟随左手 Vive Tracker。"""
+        return self._left_hand_root_follow_tracker
+
+    def get_left_hand_tracker_display_position_xyz(self) -> tuple[float, float, float] | None:
+        """返回左手 Vive Tracker 当前用于显示的最终位置。"""
+        tracker_data = self.get_left_tracker_data()
+        if tracker_data is not None:
+            position_xyz = self.compose_tracker_data_display_position_xyz(tracker_data)
+            self._left_hand_last_tracker_display_position_xyz = position_xyz
+            return position_xyz
+        return self._left_hand_last_tracker_display_position_xyz
+
+    def enable_right_hand_root_follow_tracker(self, enabled: bool) -> bool:
+        """设置右手骨架是否整体跟随右手 Vive Tracker。"""
+        if enabled and self.get_right_hand_tracker_display_position_xyz() is None:
+            return False
+        self._right_hand_root_follow_tracker = enabled
+        if not enabled:
+            self._right_hand_last_tracker_display_position_xyz = None
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def is_right_hand_root_follow_tracker_enabled(self) -> bool:
+        """返回右手骨架是否整体跟随右手 Vive Tracker。"""
+        return self._right_hand_root_follow_tracker
+
+    def get_right_hand_tracker_display_position_xyz(self) -> tuple[float, float, float] | None:
+        """返回右手 Vive Tracker 当前用于显示的最终位置。"""
+        tracker_data = self.get_right_tracker_data()
+        if tracker_data is not None:
+            position_xyz = self.compose_tracker_data_display_position_xyz(tracker_data)
+            self._right_hand_last_tracker_display_position_xyz = position_xyz
+            return position_xyz
+        return self._right_hand_last_tracker_display_position_xyz
 
     def is_tracking_enabled(self) -> bool:
         """是否处于追踪开启状态。
