@@ -35,7 +35,7 @@ from triad_openvr.lighthouse_manager import LighthouseManager, get_global_lighth
 
 # 导入独立的追踪信息、标定和设备列表面板
 from vive_tracker_info import ViveTrackerInfoWidget, InfoTabManager
-from vive_tracker_cali import ViveTrackerCaliWidget, CaliTabManager
+from vive_tracker_cali_widget import ViveTrackerCaliWidget, CaliTabManager
 from vive_tracker_all_devices import AllDevicesTabManager
 
 

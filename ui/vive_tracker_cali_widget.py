@@ -682,3 +682,44 @@ class CalibrationWidget(QWidget):
             print(f"[CalibDebug] 日志添加失败: {e}")
             import traceback
             traceback.print_exc()
+
+
+class ViveTrackerCaliWidget(CalibrationWidget):
+    """定位标定面板组件（CalibrationWidget 的包装）。"""
+
+    def __init__(self, vive_tracker_widget=None, parent=None):
+        super().__init__(vive_tracker_widget=vive_tracker_widget, parent=parent)
+
+
+class CaliTabManager:
+    """标定 tab 管理器。"""
+
+    def __init__(self, vive_tracker_widget):
+        self._vive_tracker_widget = vive_tracker_widget
+        self._calibration_widget = None
+        self._calibration_tab_index = None
+
+    def setup_calibration_tab(self, tab_widget):
+        """设置标定 tab。"""
+        self._calibration_widget = ViveTrackerCaliWidget(vive_tracker_widget=self._vive_tracker_widget)
+        self._calibration_tab_index = tab_widget.addTab(self._calibration_widget, "定位标定")
+        tab_widget.setTabEnabled(self._calibration_tab_index, True)
+        return self._calibration_widget
+
+    def enable_calibration_tab(self, tab_widget):
+        """启用标定 tab 内部控件。"""
+        if self._calibration_widget is not None:
+            self._calibration_widget.set_tracking_controls_enabled(True)
+
+    def disable_calibration_tab(self, tab_widget):
+        """禁用标定 tab 内部控件。"""
+        if self._calibration_widget is not None:
+            self._calibration_widget.set_tracking_controls_enabled(False)
+
+    def get_calibration_widget(self):
+        """获取标定 widget。"""
+        return self._calibration_widget
+
+    def get_calibration_tab_index(self):
+        """获取标定 tab 索引。"""
+        return self._calibration_tab_index

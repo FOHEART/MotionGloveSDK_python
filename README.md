@@ -645,6 +645,12 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ### Vive 追踪坐标系说明
 
+跳过Room Setup 因为我们使用的无头显模式。
+
+![Vive Tracker 坐标系](triad_openvr/images/room_setup.png)
+
+### Vive 追踪坐标系说明
+
 ViveTracker 设备遵循 OpenVR 全局坐标系统。坐标原点位于 SteamVR 运行时建立的追踪空间中心。
 
 **坐标系方向：**

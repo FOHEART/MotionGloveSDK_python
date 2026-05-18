@@ -7,9 +7,55 @@
 - 不依赖追踪开启状态，也不与其他 tab 页面联动
 """
 
+import sys
+from pathlib import Path
 from datetime import datetime
 
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QFile, QIODevice
+
+
+def _find_all_devices_ui_file() -> Path:
+    """查找 vive_tracker_all_devices.ui 文件的路径。"""
+    candidates = [
+        Path(__file__).parent / "vive_tracker_all_devices.ui",
+        Path(__file__).parent.parent / "ui" / "vive_tracker_all_devices.ui",
+        Path.cwd() / "ui" / "vive_tracker_all_devices.ui",
+    ]
+    
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(2, Path(meipass) / "ui" / "vive_tracker_all_devices.ui")
+        candidates.insert(3, Path(meipass) / "_internal" / "ui" / "vive_tracker_all_devices.ui")
+    
+    try:
+        exe_dir = Path(sys.executable).parent
+        candidates.insert(len(candidates) - 1, exe_dir / "ui" / "vive_tracker_all_devices.ui")
+        candidates.insert(len(candidates) - 1, exe_dir / "_internal" / "ui" / "vive_tracker_all_devices.ui")
+    except Exception:
+        pass
+    
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                return candidate
+        except Exception:
+            continue
+    
+    # 搜索所有 ui 目录
+    search_roots = [Path(__file__).parent, Path(__file__).parent.parent, Path.cwd()]
+    if meipass:
+        search_roots.insert(0, Path(meipass))
+    
+    for root in search_roots:
+        try:
+            for p in root.rglob("vive_tracker_all_devices.ui"):
+                return p
+        except Exception:
+            continue
+    
+    return candidates[0]
 
 
 class ViveTrackerAllDevicesWidget(QWidget):
@@ -24,22 +70,37 @@ class ViveTrackerAllDevicesWidget(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        """从 UI 文件加载界面。"""
+        loader = QUiLoader()
+        ui_file = QFile(str(_find_all_devices_ui_file()))
+        
+        if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
+            raise RuntimeError(f"无法打开 UI 文件：{_find_all_devices_ui_file()}")
+        
+        self._ui = loader.load(ui_file)
+        ui_file.close()
+        
+        if self._ui is None:
+            raise RuntimeError(f"QUiLoader 加载失败：{_find_all_devices_ui_file()}")
+        
+        # 将加载的 UI 添加到当前 widget
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-
-        self._refresh_button = QPushButton("检测当前所有设备")
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._ui)
+        
+        # 获取 UI 中的控件
+        self._refresh_button: QPushButton = self.findChild(QPushButton, "refreshButton")
+        self._output_text: QTextEdit = self.findChild(QTextEdit, "outputText")
+        self._copy_button: QPushButton = self.findChild(QPushButton, "copyButton")
+        
+        # 验证所有必要的控件存在
+        assert self._refresh_button is not None, "UI 控件未找到：refreshButton"
+        assert self._output_text is not None, "UI 控件未找到：outputText"
+        assert self._copy_button is not None, "UI 控件未找到：copyButton"
+        
+        # 连接信号
         self._refresh_button.clicked.connect(self._on_refresh_clicked)
-        layout.addWidget(self._refresh_button)
-
-        self._output_text = QTextEdit()
-        self._output_text.setReadOnly(True)
-        self._output_text.setPlaceholderText("点击上方按钮后，这里会显示当前检测到的所有 Vive Tracker / Lighthouse / HMD / Controller 详细信息。")
-        layout.addWidget(self._output_text)
-
-        self._copy_button = QPushButton("复制")
         self._copy_button.clicked.connect(self._on_copy_clicked)
-        layout.addWidget(self._copy_button)
 
     def _safe_call(self, func, default="不可用"):
         try:
