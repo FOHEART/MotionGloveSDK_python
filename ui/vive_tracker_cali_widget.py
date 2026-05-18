@@ -10,10 +10,11 @@
 
 import sys
 import builtins
+import math
 from pathlib import Path
 from datetime import datetime
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit, QGroupBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit, QGroupBox, QCheckBox
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
 from PySide6.QtGui import QTextCursor, QCursor
@@ -90,6 +91,7 @@ class CalibrationWidget(QWidget):
         self._vive_tracker_widget = vive_tracker_widget  # 对 ViveTrackerWidget 的引用
         self._bias_value_label: QLabel | None = None
         self._info_group: QGroupBox | None = None
+        self._position_rotation_checkbox: QCheckBox | None = None
         
         # 左手信息标签（10Hz 刷新）
         self._left_hand_position_label: QLabel | None = None
@@ -126,6 +128,7 @@ class CalibrationWidget(QWidget):
         bias_xyz: tuple[float, float, float] | None,
         calibration_quat_wxyz: tuple[float, float, float, float],
         quat_additional_wxyz: tuple[float, float, float, float] | None = None,
+        quat_location_bias_wxyz: tuple[float, float, float, float] | None = None,
     ) -> str:
         """构建标定信息显示文本。
         
@@ -133,9 +136,10 @@ class CalibrationWidget(QWidget):
             bias_xyz: 位置偏差 (x, y, z)，单位米。若为 None，显示为 "-"
             calibration_quat_wxyz: 校准四元数 (w, x, y, z)
             quat_additional_wxyz: 附加旋转四元数 (w, x, y, z)，若为 None 则不显示
+            quat_location_bias_wxyz: 位置偏移四元数 (w, x, y, z)，若为 None 则不显示
         
         Returns:
-            str: 包含位置偏差、校准四元数和附加旋转的格式化文本
+            str: 包含位置偏差、校准四元数、附加旋转和位置偏移四元数的格式化文本
         """
         if bias_xyz is None:
             bias_line = "位置偏差：-"
@@ -147,8 +151,22 @@ class CalibrationWidget(QWidget):
         if quat_additional_wxyz is not None:
             additional_line = f"附加旋转: {self._format_quaternion_wxyz(quat_additional_wxyz)}"
             lines.append(additional_line)
+        if quat_location_bias_wxyz is not None:
+            location_bias_line = f"位置偏移四元数: {self._format_quaternion_wxyz(quat_location_bias_wxyz)}"
+            lines.append(location_bias_line)
         
         return "\n".join(lines)
+
+    @staticmethod
+    def _build_y_axis_quaternion_wxyz(y_axis_degree: float) -> tuple[float, float, float, float]:
+        """根据绕 Y 轴的角度构造四元数。"""
+        half_radian = math.radians(y_axis_degree) * 0.5
+        return (
+            math.cos(half_radian),
+            0.0,
+            math.sin(half_radian),
+            0.0,
+        )
 
     @staticmethod
     def _format_euler_zxy_text(euler_xyz_degree: tuple[float, float, float]) -> str:
@@ -338,6 +356,7 @@ class CalibrationWidget(QWidget):
         # 获取 UI 中的控件。优先从 self 递归查找，避免后续依赖 _ui 生命周期。
         self._calibration_btn: QPushButton = self.findChild(QPushButton, "calibrationButton")
         self._cancel_calibration_btn: QPushButton = self.findChild(QPushButton, "cancelCalibrationButton")
+        self._position_rotation_checkbox = self.findChild(QCheckBox, "positionRotationCheckBox")
         self._status_label: QLabel = self.findChild(QLabel, "statusLabel")
         self._time_label: QLabel = self.findChild(QLabel, "timeLabel")
         self._log_text: QTextEdit = self.findChild(QTextEdit, "logText")
@@ -351,6 +370,7 @@ class CalibrationWidget(QWidget):
         print(f"[CalibDebug] 控件查询结果:")
         print(f"  calibrationButton: {self._calibration_btn}")
         print(f"  cancelCalibrationButton: {self._cancel_calibration_btn}")
+        print(f"  positionRotationCheckBox: {self._position_rotation_checkbox}")
         print(f"  statusLabel: {self._status_label}")
         print(f"  timeLabel: {self._time_label}")
         print(f"  logText: {self._log_text}")
@@ -373,12 +393,18 @@ class CalibrationWidget(QWidget):
         # 验证所有必要的控件存在
         assert self._calibration_btn is not None, "UI 控件未找到：calibrationButton"
         assert self._cancel_calibration_btn is not None, "UI 控件未找到：cancelCalibrationButton"
+        assert self._position_rotation_checkbox is not None, "UI 控件未找到：positionRotationCheckBox"
         assert self._status_label is not None, "UI 控件未找到：statusLabel"
         assert self._time_label is not None, "UI 控件未找到：timeLabel"
         assert self._log_text is not None, "UI 控件未找到：logText"
         assert self._left_hand_position_label is not None, "UI 控件未找到：leftHandPositionLabel"
         assert self._left_hand_rotation_label is not None, "UI 控件未找到：leftHandRotationLabel"
         assert self._left_hand_quat_label is not None, "UI 控件未找到：leftHandQuatLabel"
+
+        if self._vive_tracker_widget is not None:
+            self._position_rotation_checkbox.setChecked(
+                self._vive_tracker_widget.is_position_calibration_rotation_enabled()
+            )
 
         self._left_hand_rotation_label.setContextMenuPolicy(Qt.CustomContextMenu)
         self._left_hand_rotation_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
@@ -408,6 +434,7 @@ class CalibrationWidget(QWidget):
         self._bind_destroyed_debug("ui", self._ui)
         self._bind_destroyed_debug("calibrationButton", self._calibration_btn)
         self._bind_destroyed_debug("cancelCalibrationButton", self._cancel_calibration_btn)
+        self._bind_destroyed_debug("positionRotationCheckBox", self._position_rotation_checkbox)
         self._bind_destroyed_debug("statusLabel", self._status_label)
         self._bind_destroyed_debug("timeLabel", self._time_label)
         self._bind_destroyed_debug("logText", self._log_text)
@@ -421,6 +448,7 @@ class CalibrationWidget(QWidget):
         # 连接信号
         self._calibration_btn.clicked.connect(self._on_calibration_clicked)
         self._cancel_calibration_btn.clicked.connect(self._on_cancel_calibration_clicked)
+        self._position_rotation_checkbox.toggled.connect(self._on_position_rotation_checkbox_toggled)
         
         # 启动左手信息更新定时器（10Hz）
         self._left_hand_info_timer.start()
@@ -438,6 +466,8 @@ class CalibrationWidget(QWidget):
         try:
             self._calibration_btn.setEnabled(enabled)
             self._cancel_calibration_btn.setEnabled(enabled)
+            if self._position_rotation_checkbox is not None:
+                self._position_rotation_checkbox.setEnabled(enabled)
             if not enabled and not self._calibration_in_progress:
                 try:
                     self._ensure_bias_value_label().setText(
@@ -451,6 +481,13 @@ class CalibrationWidget(QWidget):
                     )
         except RuntimeError as e:
             print(f"[CalibDebug] set_tracking_controls_enabled 失败: {e}")
+
+    def _on_position_rotation_checkbox_toggled(self, checked: bool) -> None:
+        """切换是否对位置应用 quat_calibration 旋转。"""
+        if self._vive_tracker_widget is None:
+            return
+        self._vive_tracker_widget.set_position_calibration_rotation_enabled(checked)
+        print(f"[CalibDebug] 位置标定旋转开关: enabled={checked}")
 
     def _is_ui_valid(self) -> bool:
         """检查 UI 是否仍然有效（对象未被删除）。
@@ -683,6 +720,7 @@ class CalibrationWidget(QWidget):
                     left_data.quat_origin_y,
                     left_data.quat_origin_z,
                 )
+                location_bias_quat_wxyz = self._build_y_axis_quaternion_wxyz(left_data.pitch)
                 calibration_quat_wxyz = raw_quat_wxyz
                 calibrated_current_quat_wxyz = self._vive_tracker_widget.compose_display_quaternion_wxyz(
                     (
@@ -703,6 +741,16 @@ class CalibrationWidget(QWidget):
                 left_data.quat_calibration_x = calibration_quat_wxyz[1]
                 left_data.quat_calibration_y = calibration_quat_wxyz[2]
                 left_data.quat_calibration_z = calibration_quat_wxyz[3]
+                left_data.quat_location_bias_w = location_bias_quat_wxyz[0]
+                left_data.quat_location_bias_x = location_bias_quat_wxyz[1]
+                left_data.quat_location_bias_y = location_bias_quat_wxyz[2]
+                left_data.quat_location_bias_z = location_bias_quat_wxyz[3]
+
+                right_data = self._vive_tracker_widget._right_data
+                right_data.quat_location_bias_w = location_bias_quat_wxyz[0]
+                right_data.quat_location_bias_x = location_bias_quat_wxyz[1]
+                right_data.quat_location_bias_y = location_bias_quat_wxyz[2]
+                right_data.quat_location_bias_z = location_bias_quat_wxyz[3]
                 self._vive_tracker_widget.set_calibration_active(True)
                 
                 # 获取所有 lighthouse，应用相同的偏差
@@ -718,8 +766,10 @@ class CalibrationWidget(QWidget):
             calibration_msg = (
                 f"[{timestamp}] ✅ 标定完成\n"
                 f"  左手 Tracker 原始位置: X={pos_x:.4f}m, Y={pos_y:.4f}m, Z={pos_z:.4f}m\n"
+                f"  左手 Tracker Y 轴欧拉角: {left_data.yaw:.4f}°\n"
                 f"  左手 Tracker 原始四元数: {self._format_quaternion_wxyz(raw_quat_wxyz)}\n"
                 f"  标定四元数: {self._format_quaternion_wxyz(calibration_quat_wxyz)}\n"
+                f"  位置偏移四元数: {self._format_quaternion_wxyz(location_bias_quat_wxyz)}\n"
                 f"  标定后当前四元数: {self._format_quaternion_wxyz(calibrated_current_quat_wxyz)}\n"
                 f"  应用的位置偏差: X={bias_x:.4f}m, Y={bias_y:.4f}m, Z={bias_z:.4f}m\n"
                 f"  已应用到: 左手 Tracker + {len(all_lighthouses)} 个 Lighthouse\n"
@@ -754,6 +804,7 @@ class CalibrationWidget(QWidget):
                         left_data.quat_additional_y,
                         left_data.quat_additional_z,
                     ),
+                    location_bias_quat_wxyz,
                 )
                 
                 print(f"[CalibDebug] 设置 biasValueLabel 为: {bias_info}")
@@ -851,7 +902,17 @@ class CalibrationWidget(QWidget):
                 bias_label = self._ensure_bias_value_label()
                 
                 # 重置为初始状态
-                reset_info = self._build_calibration_info_text(None, (1.0, 0.0, 0.0, 0.0))
+                reset_info = self._build_calibration_info_text(
+                    None,
+                    (1.0, 0.0, 0.0, 0.0),
+                    None,
+                    (
+                        left_data.quat_location_bias_w,
+                        left_data.quat_location_bias_x,
+                        left_data.quat_location_bias_y,
+                        left_data.quat_location_bias_z,
+                    ),
+                )
                 
                 print(f"[CalibDebug] 设置 biasValueLabel 为: {reset_info}")
                 bias_label.setText(reset_info)
@@ -951,10 +1012,8 @@ class CalibrationWidget(QWidget):
                         print("[CalibDebug] _update_left_hand_info: left_data.valid is False, skip UI update")
                     return
 
-                # 计算标定后的位置（原始位置 + 偏差）
-                final_x = left_data.pos_origin_x_m + left_data.pos_bias_x_m
-                final_y = left_data.pos_origin_y_m + left_data.pos_bias_y_m
-                final_z = left_data.pos_origin_z_m + left_data.pos_bias_z_m
+                # 计算标定后的位置（原始位置 + 偏差，并按需应用 quat_calibration 旋转）
+                final_x, final_y, final_z = self._vive_tracker_widget.compose_tracker_data_display_position_xyz(left_data)
 
                 calibrated_quat = self._vive_tracker_widget.compose_tracker_data_display_quaternion_wxyz(left_data)
                 euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
