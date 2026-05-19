@@ -299,6 +299,7 @@ def _build_qt_app():
             self._frame_lock = threading.Lock()
             self._axes_visible = True
             self._ground_visible = True
+            self._lighthouse_visible = False
             self._left_hand_visible = True   # 左手可见性标志
             self._right_hand_visible = True  # 右手可见性标志
             self._rb_press_pos = None   # 记录右键按下时的位置，用于判断是否发生了拖拽
@@ -703,7 +704,7 @@ def _build_qt_app():
                     # 创建并添加本地坐标轴（X轴红色，Y轴绿色，Z轴蓝色）
                     # 轴长度：75mm，轴粗细：3mm（对应显示粗细约为6 pixel）
                     try:
-                        axes_actor = build_local_axes_actor(length_mm=75, shaft_radius_mm=3)
+                        axes_actor = build_local_axes_actor(length_mm=55, shaft_radius_mm=3)
                         renderer.AddActor(axes_actor)
                         self._right_panel.vive_tracker.store_axes_actor(side, axes_actor)
                         print(f"[MainWindow] ✓ {side} 手 Tracker 本地坐标轴已加载（75mm 长度，3mm 粗细）")
@@ -868,6 +869,27 @@ def _build_qt_app():
             if not enabled:
                 self._clear_lighthouse_actors()
 
+        def _refresh_lighthouse_visibility(self):
+            """根据当前开关状态刷新 LightHouse 模型显示。"""
+            if not self._lighthouse_visible:
+                self._clear_lighthouse_actors()
+                return
+
+            if self._right_panel is None or not hasattr(self._right_panel, 'vive_tracker'):
+                return
+
+            vive_widget = self._right_panel.vive_tracker
+            if not vive_widget.is_tracking_enabled():
+                return
+
+            try:
+                lighthouse_states = vive_widget._collect_lighthouse_states()
+            except Exception as e:
+                print(f"[MainWindow] ✗ 刷新 LightHouse 显示失败：{e}")
+                return
+
+            self._on_lighthouse_pose_update(lighthouse_states)
+
         def _clear_lighthouse_actors(self):
             """移除所有 LightHouse actor。"""
             if not self._lighthouse_actors:
@@ -892,6 +914,10 @@ def _build_qt_app():
                 return
             vive_widget = self._right_panel.vive_tracker
             if not vive_widget.is_tracking_enabled():
+                self._clear_lighthouse_actors()
+                return
+            if not self._lighthouse_visible:
+                self._clear_lighthouse_actors()
                 return
 
             desired_ids = set()
@@ -1273,6 +1299,9 @@ def _build_qt_app():
             mesh_label = self.tr("隐藏模型面数") if self._mesh_stats_visible else self.tr("显示模型面数")
             mesh_action = menu.addAction(mesh_label)
 
+            lighthouse_label = self.tr("隐藏LightHouse") if self._lighthouse_visible else self.tr("显示LightHouse")
+            lighthouse_action = menu.addAction(lighthouse_label)
+
             menu.addSeparator()
             
             # 新增：左右手显示/隐藏
@@ -1313,6 +1342,10 @@ def _build_qt_app():
                 # 新增：处理面数统计显示/隐藏
                 self._mesh_stats_visible = not self._mesh_stats_visible
                 self._mesh_stats_actor.SetVisibility(self._mesh_stats_visible)
+                rw.Render()
+            elif action is lighthouse_action:
+                self._lighthouse_visible = not self._lighthouse_visible
+                self._refresh_lighthouse_visibility()
                 rw.Render()
             elif action is left_hand_action:
                 # 处理左手显示/隐藏（骨骼索引 21-41）

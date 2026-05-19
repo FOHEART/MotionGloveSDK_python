@@ -1332,7 +1332,6 @@ class ViveTrackerWidget(QWidget):
 
     def _tracking_loop(self):
         """后台追踪线程，60Hz 数据收集。"""
-        import math
         interval = 1.0 / 60.0  # 60Hz
         
         first_run = True
@@ -1348,11 +1347,16 @@ class ViveTrackerWidget(QWidget):
                 
                 left_device = self._devices.get("left")
                 right_device = self._devices.get("right")
-                
-                # 每帧开始时重置 valid 标志为 False，只有成功读取数据时才设置为 True
-                with self._data_lock:
-                    self._left_data.valid = False
-                    self._right_data.valid = False
+
+                left_valid = False
+                left_position = None
+                left_euler = None
+                left_quat_wxyz = (1.0, 0.0, 0.0, 0.0)
+
+                right_valid = False
+                right_position = None
+                right_euler = None
+                right_quat_wxyz = (1.0, 0.0, 0.0, 0.0)
                 
                 # 读取左手数据
                 if left_device is not None:
@@ -1361,39 +1365,19 @@ class ViveTrackerWidget(QWidget):
                         
                         if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
-                            with self._data_lock:
-                                self._left_data.pos_origin_x_m = x
-                                self._left_data.pos_origin_y_m = y
-                                self._left_data.pos_origin_z_m = z
-                                self._left_data.yaw = yaw
-                                self._left_data.pitch = pitch
-                                self._left_data.roll = roll
-                                
-                                # 尝试读取四元数
-                                try:
-                                    pose_quat = left_device.get_pose_quaternion()
-                                    if pose_quat is not None and len(pose_quat) == 7:
-                                        # pose_quat = [x, y, z, qw, qx, qy, qz]
-                                        x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                        self._left_data.quat_origin_w = qw
-                                        self._left_data.quat_origin_x = qx
-                                        self._left_data.quat_origin_y = qy
-                                        self._left_data.quat_origin_z = qz
-                                    else:
-                                        self._left_data.quat_origin_w = 1.0
-                                        self._left_data.quat_origin_x = 0.0
-                                        self._left_data.quat_origin_y = 0.0
-                                        self._left_data.quat_origin_z = 0.0
-                                except Exception as e:
-                                    if first_run:
-                                        print(f"[Left] get_pose_quaternion() error: {e}")
-                                    self._left_data.quat_origin_w = 1.0
-                                    self._left_data.quat_origin_x = 0.0
-                                    self._left_data.quat_origin_y = 0.0
-                                    self._left_data.quat_origin_z = 0.0
-                                
-                                # 标记数据有效
-                                self._left_data.valid = True
+                            left_position = (x, y, z)
+                            left_euler = (yaw, pitch, roll)
+
+                            try:
+                                pose_quat = left_device.get_pose_quaternion()
+                                if pose_quat is not None and len(pose_quat) == 7:
+                                    _x_q, _y_q, _z_q, qw, qx, qy, qz = pose_quat
+                                    left_quat_wxyz = (qw, qx, qy, qz)
+                            except Exception as e:
+                                if first_run:
+                                    print(f"[Left] get_pose_quaternion() error: {e}")
+
+                            left_valid = True
                         elif first_run:
                             print(f"[Left] get_pose_euler() returned None")
                     except Exception as e:
@@ -1407,44 +1391,51 @@ class ViveTrackerWidget(QWidget):
                         
                         if pose_euler is not None:
                             x, y, z, yaw, pitch, roll = pose_euler
-                            with self._data_lock:
-                                self._right_data.pos_origin_x_m = x
-                                self._right_data.pos_origin_y_m = y
-                                self._right_data.pos_origin_z_m = z
-                                self._right_data.yaw = yaw
-                                self._right_data.pitch = pitch
-                                self._right_data.roll = roll
-                                
-                                # 尝试读取四元数
-                                try:
-                                    pose_quat = right_device.get_pose_quaternion()
-                                    if pose_quat is not None and len(pose_quat) == 7:
-                                        # pose_quat = [x, y, z, qw, qx, qy, qz]
-                                        x_q, y_q, z_q, qw, qx, qy, qz = pose_quat
-                                        self._right_data.quat_origin_w = qw
-                                        self._right_data.quat_origin_x = qx
-                                        self._right_data.quat_origin_y = qy
-                                        self._right_data.quat_origin_z = qz
-                                    else:
-                                        self._right_data.quat_origin_w = 1.0
-                                        self._right_data.quat_origin_x = 0.0
-                                        self._right_data.quat_origin_y = 0.0
-                                        self._right_data.quat_origin_z = 0.0
-                                except Exception as e:
-                                    if first_run:
-                                        print(f"[Right] get_pose_quaternion() error: {e}")
-                                    self._right_data.quat_origin_w = 1.0
-                                    self._right_data.quat_origin_x = 0.0
-                                    self._right_data.quat_origin_y = 0.0
-                                    self._right_data.quat_origin_z = 0.0
-                                
-                                # 标记数据有效
-                                self._right_data.valid = True
+                            right_position = (x, y, z)
+                            right_euler = (yaw, pitch, roll)
+
+                            try:
+                                pose_quat = right_device.get_pose_quaternion()
+                                if pose_quat is not None and len(pose_quat) == 7:
+                                    _x_q, _y_q, _z_q, qw, qx, qy, qz = pose_quat
+                                    right_quat_wxyz = (qw, qx, qy, qz)
+                            except Exception as e:
+                                if first_run:
+                                    print(f"[Right] get_pose_quaternion() error: {e}")
+
+                            right_valid = True
                         elif first_run:
                             print(f"[Right] get_pose_euler() returned None")
                     except Exception as e:
                         if first_run:
                             print(f"[Right] Error: {e}")
+
+                with self._data_lock:
+                    if left_valid and left_position is not None and left_euler is not None:
+                        self._left_data.pos_origin_x_m = left_position[0]
+                        self._left_data.pos_origin_y_m = left_position[1]
+                        self._left_data.pos_origin_z_m = left_position[2]
+                        self._left_data.yaw = left_euler[0]
+                        self._left_data.pitch = left_euler[1]
+                        self._left_data.roll = left_euler[2]
+                        self._left_data.quat_origin_w = left_quat_wxyz[0]
+                        self._left_data.quat_origin_x = left_quat_wxyz[1]
+                        self._left_data.quat_origin_y = left_quat_wxyz[2]
+                        self._left_data.quat_origin_z = left_quat_wxyz[3]
+                    self._left_data.valid = left_valid
+
+                    if right_valid and right_position is not None and right_euler is not None:
+                        self._right_data.pos_origin_x_m = right_position[0]
+                        self._right_data.pos_origin_y_m = right_position[1]
+                        self._right_data.pos_origin_z_m = right_position[2]
+                        self._right_data.yaw = right_euler[0]
+                        self._right_data.pitch = right_euler[1]
+                        self._right_data.roll = right_euler[2]
+                        self._right_data.quat_origin_w = right_quat_wxyz[0]
+                        self._right_data.quat_origin_x = right_quat_wxyz[1]
+                        self._right_data.quat_origin_y = right_quat_wxyz[2]
+                        self._right_data.quat_origin_z = right_quat_wxyz[3]
+                    self._right_data.valid = right_valid
                 
                 first_run = False
                 time.sleep(interval)

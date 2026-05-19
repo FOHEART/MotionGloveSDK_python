@@ -13,7 +13,7 @@ import builtins
 import math
 from pathlib import Path
 from datetime import datetime
-
+from typing import TypeVar, cast
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit, QGroupBox, QCheckBox
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt
@@ -26,6 +26,7 @@ from src.xsqeconverter import quat_to_euler_degree
 
 CALIBRATION_DEBUG_PRINTS = True
 _EULER_ORDER_ZXY = 4
+_WidgetT = TypeVar("_WidgetT", bound=QWidget)
 
 
 def print(*args, **kwargs):
@@ -277,8 +278,13 @@ class CalibrationWidget(QWidget):
 
         print(f"[CalibDebug] ---- snapshot end: {stage} ----")
 
-    def _find_child_from_self(self, widget_type, object_name: str):
-        """优先从 self 查找子控件，避免依赖可能失效的 _ui 引用。
+    def _find_child_from_self(
+        self,
+        widget_type: type[_WidgetT],
+        object_name: str,
+        group_name: str | None = None,
+    ) -> _WidgetT | None:
+        """仅从当前标定页 UI 树中查找控件，避免命中其它 tab 的同名控件。
         
         Args:
             widget_type: 要查找的 QWidget 类型
@@ -287,22 +293,28 @@ class CalibrationWidget(QWidget):
         Returns:
             QWidget 或其子类实例，若未找到则返回 None
         """
+        if not isValid(self):
+            return None
+
+        if group_name is not None:
+            try:
+                group = self.findChild(QGroupBox, group_name)
+            except RuntimeError as exc:
+                print(f"[CalibDebug] self.findChild({group_name}) 失败: {exc}")
+                group = None
+            if not isinstance(group, QGroupBox):
+                return None
+            try:
+                return cast(_WidgetT | None, group.findChild(widget_type, object_name))
+            except RuntimeError as exc:
+                print(f"[CalibDebug] {group_name}.findChild({object_name}) 失败: {exc}")
+                return None
+
         try:
-            child = self.findChild(widget_type, object_name)
+            return cast(_WidgetT | None, self.findChild(widget_type, object_name))
         except RuntimeError as exc:
             print(f"[CalibDebug] self.findChild({object_name}) 失败: {exc}")
-            child = None
-
-        if child is not None:
-            return child
-
-        if getattr(self, "_ui", None) is not None and isValid(self._ui):
-            try:
-                return self._ui.findChild(widget_type, object_name)
-            except RuntimeError as exc:
-                print(f"[CalibDebug] _ui.findChild({object_name}) 失败: {exc}")
-
-        return None
+            return None
 
     def _ensure_bias_value_label(self) -> QLabel:
         """确保用于显示位置偏差的专用标签存在且可用。
@@ -327,7 +339,7 @@ class CalibrationWidget(QWidget):
         if existing_label is not None:
             self._bias_value_label = existing_label
             self._debug_widget_state("resolved_bias_value_label", self._bias_value_label)
-            return self._bias_value_label
+            return existing_label
 
         info_layout = self._info_group.layout()
         if info_layout is None:
@@ -339,8 +351,11 @@ class CalibrationWidget(QWidget):
         )
         self._bias_value_label.setObjectName("biasValueLabel")
         self._bias_value_label.setWordWrap(True)
-        self._bias_value_label.setFont(self._status_label.font())
-        info_layout.insertWidget(0, self._bias_value_label)
+        self._bias_value_label.setFont(self._status_label.font() if self._status_label is not None else self.font())
+        if isinstance(info_layout, QVBoxLayout):
+            info_layout.insertWidget(0, self._bias_value_label)
+        else:
+            info_layout.addWidget(self._bias_value_label)
         self._bias_value_label.setVisible(True)
         self._bind_destroyed_debug("biasValueLabel", self._bias_value_label)
         self._debug_widget_state("created_bias_value_label", self._bias_value_label)
@@ -357,7 +372,8 @@ class CalibrationWidget(QWidget):
 
         right_group = self._find_child_from_self(QGroupBox, "rightHandInfoGroup")
         if right_group is None:
-            main_layout = self._ui.layout() if getattr(self, "_ui", None) is not None else None
+            root_panel = cast(QWidget | None, self.findChild(QWidget, "CalibrationPanel"))
+            main_layout = root_panel.layout() if root_panel is not None else None
             if main_layout is None:
                 main_layout = self.layout()
             if main_layout is None:
@@ -389,11 +405,14 @@ class CalibrationWidget(QWidget):
                     if item is not None and item.widget() is log_group:
                         insert_index = index
                         break
-            main_layout.insertWidget(insert_index, right_group)
+            if isinstance(main_layout, QVBoxLayout):
+                main_layout.insertWidget(insert_index, right_group)
+            else:
+                main_layout.addWidget(right_group)
 
-        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel")
-        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel")
-        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel")
+        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel", "rightHandInfoGroup")
+        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel", "rightHandInfoGroup")
+        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel", "rightHandInfoGroup")
 
         if (
             self._right_hand_position_label is None
@@ -431,22 +450,22 @@ class CalibrationWidget(QWidget):
         layout.addWidget(self._ui)
         
         # 获取 UI 中的控件。优先从 self 递归查找，避免后续依赖 _ui 生命周期。
-        self._calibration_btn: QPushButton = self.findChild(QPushButton, "calibrationButton")
-        self._cancel_calibration_btn: QPushButton = self.findChild(QPushButton, "cancelCalibrationButton")
-        self._position_rotation_checkbox = self.findChild(QCheckBox, "positionRotationCheckBox")
-        self._status_label: QLabel = self.findChild(QLabel, "statusLabel")
-        self._time_label: QLabel = self.findChild(QLabel, "timeLabel")
-        self._log_text: QTextEdit = self.findChild(QTextEdit, "logText")
+        self._calibration_btn = self._find_child_from_self(QPushButton, "calibrationButton")
+        self._cancel_calibration_btn = self._find_child_from_self(QPushButton, "cancelCalibrationButton")
+        self._position_rotation_checkbox = self._find_child_from_self(QCheckBox, "positionRotationCheckBox")
+        self._status_label = self._find_child_from_self(QLabel, "statusLabel", "infoGroup")
+        self._time_label = self._find_child_from_self(QLabel, "timeLabel", "infoGroup")
+        self._log_text = self._find_child_from_self(QTextEdit, "logText")
         
         # 获取左手信息标签
-        self._left_hand_position_label = self.findChild(QLabel, "leftHandPositionLabel")
-        self._left_hand_rotation_label = self.findChild(QLabel, "leftHandRotationLabel")
-        self._left_hand_quat_label = self.findChild(QLabel, "leftHandQuatLabel")
+        self._left_hand_position_label = self._find_child_from_self(QLabel, "leftHandPositionLabel", "leftHandInfoGroup")
+        self._left_hand_rotation_label = self._find_child_from_self(QLabel, "leftHandRotationLabel", "leftHandInfoGroup")
+        self._left_hand_quat_label = self._find_child_from_self(QLabel, "leftHandQuatLabel", "leftHandInfoGroup")
         
         # 获取右手信息标签
-        self._right_hand_position_label = self.findChild(QLabel, "rightHandPositionLabel")
-        self._right_hand_rotation_label = self.findChild(QLabel, "rightHandRotationLabel")
-        self._right_hand_quat_label = self.findChild(QLabel, "rightHandQuatLabel")
+        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel", "rightHandInfoGroup")
+        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel", "rightHandInfoGroup")
+        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel", "rightHandInfoGroup")
         self._ensure_right_hand_info_widgets()
         
         # 调试：打印找到的控件
@@ -457,21 +476,6 @@ class CalibrationWidget(QWidget):
         print(f"  statusLabel: {self._status_label}")
         print(f"  timeLabel: {self._time_label}")
         print(f"  logText: {self._log_text}")
-        
-        # 如果通过 findChild 没有找到标签，尝试通过 infoGroup 来查找
-        if self._status_label is None:
-            print("[CalibDebug] statusLabel 直接查询失败，尝试通过 infoGroup 查询...")
-            info_group = self.findChild(QGroupBox, "infoGroup")
-            if info_group:
-                self._status_label = info_group.findChild(QLabel, "statusLabel")
-                print(f"[CalibDebug] 通过 infoGroup 查询结果: {self._status_label}")
-        
-        if self._time_label is None:
-            print("[CalibDebug] timeLabel 直接查询失败，尝试通过 infoGroup 查询...")
-            info_group = self.findChild(QGroupBox, "infoGroup")
-            if info_group:
-                self._time_label = info_group.findChild(QLabel, "timeLabel")
-                print(f"[CalibDebug] 通过 infoGroup 查询结果: {self._time_label}")
         
         # 验证所有必要的控件存在
         assert self._calibration_btn is not None, "UI 控件未找到：calibrationButton"
@@ -492,22 +496,22 @@ class CalibrationWidget(QWidget):
                 self._vive_tracker_widget.is_position_calibration_rotation_enabled()
             )
 
-        self._left_hand_rotation_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._left_hand_rotation_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._left_hand_rotation_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
-        self._left_hand_quat_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._left_hand_quat_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._left_hand_quat_label.customContextMenuRequested.connect(self._on_left_hand_attitude_context_menu)
         
         # 为右手标签设置右键菜单
-        self._right_hand_rotation_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._right_hand_rotation_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._right_hand_rotation_label.customContextMenuRequested.connect(self._on_right_hand_attitude_context_menu)
-        self._right_hand_quat_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._right_hand_quat_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._right_hand_quat_label.customContextMenuRequested.connect(self._on_right_hand_attitude_context_menu)
         
         # 强制确保标签可见（解决隐藏问题）
         print("[CalibDebug] 强制设置标签可见性...")
         
         # 检查并显示父容器
-        info_group = self.findChild(QGroupBox, "infoGroup")
+        info_group = self._find_child_from_self(QGroupBox, "infoGroup")
         if info_group:
             print(f"[CalibDebug] infoGroup 可见性: {info_group.isVisible()}")
             info_group.setVisible(True)
@@ -518,7 +522,7 @@ class CalibrationWidget(QWidget):
         
         self._status_label.setVisible(False)
         self._time_label.setVisible(False)
-        self._info_group = self.findChild(QGroupBox, "infoGroup")
+        self._info_group = self._find_child_from_self(QGroupBox, "infoGroup")
         self._ensure_bias_value_label()
         print(f"[CalibDebug] statusLabel 可见: {self._status_label.isVisible()}")
         print(f"[CalibDebug] timeLabel 可见: {self._time_label.isVisible()}")
@@ -567,8 +571,10 @@ class CalibrationWidget(QWidget):
             enabled: True 表示启用按钮，False 表示禁用按钮
         """
         try:
-            self._calibration_btn.setEnabled(enabled)
-            self._cancel_calibration_btn.setEnabled(enabled)
+            if self._calibration_btn is not None:
+                self._calibration_btn.setEnabled(enabled)
+            if self._cancel_calibration_btn is not None:
+                self._cancel_calibration_btn.setEnabled(enabled)
             if self._position_rotation_checkbox is not None:
                 self._position_rotation_checkbox.setEnabled(enabled)
             if not enabled and not self._calibration_in_progress:
@@ -593,23 +599,19 @@ class CalibrationWidget(QWidget):
         print(f"[CalibDebug] 位置标定旋转开关: enabled={checked}")
 
     def _is_ui_valid(self) -> bool:
-        """检查 UI 是否仍然有效（对象未被删除）。
+        """检查标定页本体是否仍然有效。
         
         Returns:
-            bool: True 表示 UI 对象有效，False 表示已被删除
+            bool: True 表示标定页对象有效，False 表示已被删除
         """
-        if self._ui is None:
-            return False
-        if not isValid(self._ui):
-            print("[CalibDebug] ⚠️ self._ui 已被删除")
-            self._ui = None
+        if not isValid(self):
+            print("[CalibDebug] ⚠️ CalibrationWidget 已被删除")
             return False
         try:
-            _ = self._ui.parent()
+            _ = self.parent()
             return True
         except RuntimeError:
-            print("[CalibDebug] ⚠️ self._ui 已被删除")
-            self._ui = None
+            print("[CalibDebug] ⚠️ CalibrationWidget 已被删除")
             return False
 
     def _resolve_log_text(self) -> QTextEdit:
@@ -656,7 +658,7 @@ class CalibrationWidget(QWidget):
                 self._status_label = None
         
         print("[CalibDebug] 重新查询 statusLabel...")
-        self._status_label = self._find_child_from_self(QLabel, "statusLabel")
+        self._status_label = self._find_child_from_self(QLabel, "statusLabel", "infoGroup")
         if self._status_label is None:
             print("[CalibDebug] ❌ statusLabel 未找到！")
             self._debug_snapshot("resolve_status_label_failed")
@@ -685,7 +687,7 @@ class CalibrationWidget(QWidget):
                 self._time_label = None
         
         print("[CalibDebug] 重新查询 timeLabel...")
-        self._time_label = self._find_child_from_self(QLabel, "timeLabel")
+        self._time_label = self._find_child_from_self(QLabel, "timeLabel", "infoGroup")
         if self._time_label is None:
             print("[CalibDebug] ❌ timeLabel 未找到！")
             self._debug_snapshot("resolve_time_label_failed")
@@ -702,7 +704,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] leftHandPositionLabel 已失效，重新查询")
             self._left_hand_position_label = None
 
-        self._left_hand_position_label = self._find_child_from_self(QLabel, "leftHandPositionLabel")
+        self._left_hand_position_label = self._find_child_from_self(QLabel, "leftHandPositionLabel", "leftHandInfoGroup")
         if self._left_hand_position_label is None:
             self._debug_snapshot("resolve_left_hand_position_label_failed")
             raise RuntimeError("无法找到 leftHandPositionLabel 控件")
@@ -717,7 +719,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] leftHandRotationLabel 已失效，重新查询")
             self._left_hand_rotation_label = None
 
-        self._left_hand_rotation_label = self._find_child_from_self(QLabel, "leftHandRotationLabel")
+        self._left_hand_rotation_label = self._find_child_from_self(QLabel, "leftHandRotationLabel", "leftHandInfoGroup")
         if self._left_hand_rotation_label is None:
             self._debug_snapshot("resolve_left_hand_rotation_label_failed")
             raise RuntimeError("无法找到 leftHandRotationLabel 控件")
@@ -732,7 +734,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] leftHandQuatLabel 已失效，重新查询")
             self._left_hand_quat_label = None
 
-        self._left_hand_quat_label = self._find_child_from_self(QLabel, "leftHandQuatLabel")
+        self._left_hand_quat_label = self._find_child_from_self(QLabel, "leftHandQuatLabel", "leftHandInfoGroup")
         if self._left_hand_quat_label is None:
             self._debug_snapshot("resolve_left_hand_quat_label_failed")
             raise RuntimeError("无法找到 leftHandQuatLabel 控件")
@@ -751,7 +753,7 @@ class CalibrationWidget(QWidget):
         resolve_label,
         cache_attr_name: str,
         text: str,
-    ) -> QLabel:
+    ) -> QLabel | None:
         """设置标签文本；若 Qt 底层对象已销毁，则重新查找后重试一次。"""
         label = resolve_label()
         try:
@@ -760,9 +762,13 @@ class CalibrationWidget(QWidget):
         except RuntimeError as exc:
             print(f"[CalibDebug] {cache_attr_name} setText 失败，准备重试: {exc}")
             setattr(self, cache_attr_name, None)
-            label = resolve_label()
-            label.setText(text)
-            return label
+            try:
+                label = resolve_label()
+                label.setText(text)
+                return label
+            except Exception as retry_exc:
+                print(f"[CalibDebug] {cache_attr_name} 重试后仍失败，本轮跳过更新: {retry_exc}")
+                return None
 
     def _on_left_hand_attitude_context_menu(self, pos) -> None:
         """左手姿态行右键菜单，切换四元数/欧拉角显示。"""
@@ -787,7 +793,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] rightHandPositionLabel 已失效，重新查询")
             self._right_hand_position_label = None
 
-        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel")
+        self._right_hand_position_label = self._find_child_from_self(QLabel, "rightHandPositionLabel", "rightHandInfoGroup")
         if self._right_hand_position_label is None:
             self._debug_snapshot("resolve_right_hand_position_label_failed")
             raise RuntimeError("无法找到 rightHandPositionLabel 控件")
@@ -802,7 +808,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] rightHandRotationLabel 已失效，重新查询")
             self._right_hand_rotation_label = None
 
-        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel")
+        self._right_hand_rotation_label = self._find_child_from_self(QLabel, "rightHandRotationLabel", "rightHandInfoGroup")
         if self._right_hand_rotation_label is None:
             self._debug_snapshot("resolve_right_hand_rotation_label_failed")
             raise RuntimeError("无法找到 rightHandRotationLabel 控件")
@@ -817,7 +823,7 @@ class CalibrationWidget(QWidget):
             print("[CalibDebug] rightHandQuatLabel 已失效，重新查询")
             self._right_hand_quat_label = None
 
-        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel")
+        self._right_hand_quat_label = self._find_child_from_self(QLabel, "rightHandQuatLabel", "rightHandInfoGroup")
         if self._right_hand_quat_label is None:
             self._debug_snapshot("resolve_right_hand_quat_label_failed")
             raise RuntimeError("无法找到 rightHandQuatLabel 控件")
@@ -1146,9 +1152,9 @@ class CalibrationWidget(QWidget):
             if was_read_only:
                 log_text.setReadOnly(False)
             
-            log_text.moveCursor(QTextCursor.End)
+            log_text.moveCursor(QTextCursor.MoveOperation.End)
             log_text.insertPlainText(f"{message}\n")
-            log_text.moveCursor(QTextCursor.End)
+            log_text.moveCursor(QTextCursor.MoveOperation.End)
             
             # 恢复只读模式
             if was_read_only:
@@ -1174,6 +1180,8 @@ class CalibrationWidget(QWidget):
         """
         if self._vive_tracker_widget is None:
             print("[CalibDebug] _update_left_hand_info: vive_tracker_widget is None")
+            return
+        if not self._is_ui_valid():
             return
         
         try:
@@ -1201,7 +1209,8 @@ class CalibrationWidget(QWidget):
                 final_x, final_y, final_z = self._vive_tracker_widget.compose_tracker_data_display_position_xyz(left_data)
 
                 calibrated_quat = self._vive_tracker_widget.compose_tracker_data_display_quaternion_wxyz(left_data)
-                euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
+                euler_values = quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY)
+                euler_degree = (euler_values[0], euler_values[1], euler_values[2])
             
             # 更新位置标签
             pos_text = f"位置：X={final_x:8.4f}m  Y={final_y:8.4f}m  Z={final_z:8.4f}m"
@@ -1238,6 +1247,8 @@ class CalibrationWidget(QWidget):
         if self._vive_tracker_widget is None:
             print("[CalibDebug] _update_right_hand_info: vive_tracker_widget is None")
             return
+        if not self._is_ui_valid():
+            return
         
         try:
             self._right_hand_info_tick += 1
@@ -1264,7 +1275,8 @@ class CalibrationWidget(QWidget):
                 final_x, final_y, final_z = self._vive_tracker_widget.compose_tracker_data_display_position_xyz(right_data)
 
                 calibrated_quat = self._vive_tracker_widget.compose_tracker_data_display_quaternion_wxyz(right_data)
-                euler_degree = tuple(quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY))
+                euler_values = quat_to_euler_degree(list(calibrated_quat), _EULER_ORDER_ZXY)
+                euler_degree = (euler_values[0], euler_values[1], euler_values[2])
             
             # 更新位置标签
             pos_text = f"位置：X={final_x:8.4f}m  Y={final_y:8.4f}m  Z={final_z:8.4f}m"
