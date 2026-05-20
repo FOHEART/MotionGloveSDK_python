@@ -13,7 +13,7 @@ from typing import cast
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QSlider
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, QIODevice
+from PySide6.QtCore import QFile, QIODevice, QTimer
 from shiboken6 import isValid
 
 
@@ -64,6 +64,10 @@ class ViveTrackerCaliApplyWidget(QWidget):
     def __init__(self, parent=None, vive_tracker_widget=None):
         super().__init__(parent)
         self._vive_tracker_widget = vive_tracker_widget
+        self._auto_attach_pending = {"left": False, "right": False}
+        self._auto_attach_retry_timer = QTimer(self)
+        self._auto_attach_retry_timer.setInterval(100)
+        self._auto_attach_retry_timer.timeout.connect(self._process_pending_auto_attach_apply)
         self._apply_button = None
         self._cancel_button = None
         self._apply_right_button = None
@@ -215,6 +219,26 @@ class ViveTrackerCaliApplyWidget(QWidget):
         if self._cancel_button is None:
             raise RuntimeError("无法找到 cancelApplyLocationButton 控件")
         return self._cancel_button
+
+    def _resolve_apply_right_button(self) -> QPushButton:
+        """安全获取右手应用定位按钮。"""
+        if self._apply_right_button is not None and isValid(self._apply_right_button):
+            return self._apply_right_button
+
+        self._apply_right_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "applyRightLocationButton"))
+        if self._apply_right_button is None:
+            raise RuntimeError("无法找到 applyRightLocationButton 控件")
+        return self._apply_right_button
+
+    def _resolve_cancel_right_button(self) -> QPushButton:
+        """安全获取右手取消应用定位按钮。"""
+        if self._cancel_right_button is not None and isValid(self._cancel_right_button):
+            return self._cancel_right_button
+
+        self._cancel_right_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "cancelApplyRightLocationButton"))
+        if self._cancel_right_button is None:
+            raise RuntimeError("无法找到 cancelApplyRightLocationButton 控件")
+        return self._cancel_right_button
 
     def _resolve_left_attach_axis_button(self) -> QPushButton:
         """安全获取左手附加点切换按钮。"""
@@ -424,47 +448,188 @@ class ViveTrackerCaliApplyWidget(QWidget):
             self._right_attach_axis_z_rotation_value_label,
         )
 
-    def _on_apply_clicked(self):
-        """启用左手骨架整体跟随左手 Vive Tracker。"""
+    def _set_left_apply_location_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
+        """设置左手应用定位状态。"""
         if self._vive_tracker_widget is None:
             print("[CaliApply] ViveTrackerWidget 不可用，无法应用定位")
-            return
+            return False
 
-        success = self._vive_tracker_widget.enable_left_hand_root_follow_tracker(True)
-        if success:
-            print("[CaliApply] 已启用：左手骨架将整体平移到左手 Vive Tracker 基准点")
-        else:
-            print("[CaliApply] 左手 Vive Tracker 当前无有效数据，未启用应用定位")
+        if enabled:
+            if self._vive_tracker_widget.is_left_hand_root_follow_tracker_enabled():
+                return True
 
-    def _on_cancel_clicked(self):
-        """取消应用定位，恢复原始左手骨架位置。"""
-        if self._vive_tracker_widget is None:
-            print("[CaliApply] ViveTrackerWidget 不可用，无法取消应用定位")
-            return
+            success = self._vive_tracker_widget.enable_left_hand_root_follow_tracker(True)
+            if success:
+                print("[CaliApply] 已启用：左手骨架将整体平移到左手 Vive Tracker 基准点")
+            elif not suppress_enable_failure:
+                print("[CaliApply] 左手 Vive Tracker 当前无有效数据，未启用应用定位")
+            return success
 
         self._vive_tracker_widget.enable_left_hand_root_follow_tracker(False)
         print("[CaliApply] 已取消：左手骨架恢复使用原始位置")
+        return True
 
-    def _on_apply_right_clicked(self):
-        """启用右手骨架整体跟随右手 Vive Tracker。"""
+    def _set_right_apply_location_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
+        """设置右手应用定位状态。"""
         if self._vive_tracker_widget is None:
             print("[CaliApply] ViveTrackerWidget 不可用，无法应用右手定位")
-            return
+            return False
 
-        success = self._vive_tracker_widget.enable_right_hand_root_follow_tracker(True)
-        if success:
-            print("[CaliApply] 已启用：右手骨架将整体平移到右手 Vive Tracker 基准点")
-        else:
-            print("[CaliApply] 右手 Vive Tracker 当前无有效数据，未启用右手应用定位")
+        if enabled:
+            if self._vive_tracker_widget.is_right_hand_root_follow_tracker_enabled():
+                return True
 
-    def _on_cancel_right_clicked(self):
-        """取消右手应用定位，恢复原始右手骨架位置。"""
-        if self._vive_tracker_widget is None:
-            print("[CaliApply] ViveTrackerWidget 不可用，无法取消右手应用定位")
-            return
+            success = self._vive_tracker_widget.enable_right_hand_root_follow_tracker(True)
+            if success:
+                print("[CaliApply] 已启用：右手骨架将整体平移到右手 Vive Tracker 基准点")
+            elif not suppress_enable_failure:
+                print("[CaliApply] 右手 Vive Tracker 当前无有效数据，未启用右手应用定位")
+            return success
 
         self._vive_tracker_widget.enable_right_hand_root_follow_tracker(False)
         print("[CaliApply] 已取消：右手骨架恢复使用原始位置")
+        return True
+
+    def _set_left_attach_axis_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
+        """设置左手附加点状态。"""
+        if self._vive_tracker_widget is None:
+            print("[CaliApply] ViveTrackerWidget 不可用，无法切换左手附加点")
+            return False
+
+        if enabled:
+            if self._vive_tracker_widget.has_left_tracker_attach_axis():
+                self.sync_left_attach_axis_button_text()
+                return True
+
+            created = self._vive_tracker_widget.create_left_tracker_attach_axis()
+            if created:
+                self.sync_left_attach_axis_button_text()
+                print("[CaliApply] 已附加左手附加点")
+            elif not suppress_enable_failure:
+                print("[CaliApply] 左手附加点创建失败")
+            return created
+
+        if not self._vive_tracker_widget.has_left_tracker_attach_axis():
+            self.sync_left_attach_axis_button_text()
+            return True
+
+        removed = self._vive_tracker_widget.remove_left_tracker_attach_axis()
+        if removed:
+            self.sync_left_attach_axis_button_text()
+            print("[CaliApply] 已删除左手附加点")
+            return True
+
+        print("[CaliApply] 左手附加点当前不存在")
+        self.sync_left_attach_axis_button_text()
+        return False
+
+    def _set_right_attach_axis_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
+        """设置右手附加点状态。"""
+        if self._vive_tracker_widget is None:
+            print("[CaliApply] ViveTrackerWidget 不可用，无法切换右手附加点")
+            return False
+
+        if enabled:
+            if self._vive_tracker_widget.has_right_tracker_attach_axis():
+                self.sync_right_attach_axis_button_text()
+                return True
+
+            created = self._vive_tracker_widget.create_right_tracker_attach_axis()
+            if created:
+                self.sync_right_attach_axis_button_text()
+                print("[CaliApply] 已附加右手附加点")
+            elif not suppress_enable_failure:
+                print("[CaliApply] 右手附加点创建失败")
+            return created
+
+        if not self._vive_tracker_widget.has_right_tracker_attach_axis():
+            self.sync_right_attach_axis_button_text()
+            return True
+
+        removed = self._vive_tracker_widget.remove_right_tracker_attach_axis()
+        if removed:
+            self.sync_right_attach_axis_button_text()
+            print("[CaliApply] 已删除右手附加点")
+            return True
+
+        print("[CaliApply] 右手附加点当前不存在")
+        self.sync_right_attach_axis_button_text()
+        return False
+
+    def handle_tracking_state_changed(self, enabled: bool) -> None:
+        """处理追踪启停引发的自动附加点/应用定位流程。"""
+        if enabled:
+            self._begin_auto_attach_apply_workflow()
+            return
+
+        self._stop_auto_attach_apply_workflow()
+
+    def _begin_auto_attach_apply_workflow(self) -> None:
+        """在追踪启动后开始自动附加点与应用定位流程。"""
+        self._auto_attach_pending["left"] = True
+        self._auto_attach_pending["right"] = True
+        self._process_pending_auto_attach_apply()
+        if any(self._auto_attach_pending.values()) and not self._auto_attach_retry_timer.isActive():
+            self._auto_attach_retry_timer.start()
+
+    def _stop_auto_attach_apply_workflow(self) -> None:
+        """在追踪停止后清理自动附加点与应用定位状态。"""
+        if self._auto_attach_retry_timer.isActive():
+            self._auto_attach_retry_timer.stop()
+        self._auto_attach_pending["left"] = False
+        self._auto_attach_pending["right"] = False
+
+        self._set_left_apply_location_enabled(False)
+        self._set_right_apply_location_enabled(False)
+        self._set_left_attach_axis_enabled(False)
+        self._set_right_attach_axis_enabled(False)
+        self.sync_left_attach_axis_button_text()
+        self.sync_right_attach_axis_button_text()
+
+    def _process_pending_auto_attach_apply(self) -> None:
+        """按侧处理待完成的自动附加点与应用定位流程。"""
+        if self._vive_tracker_widget is None or not self._vive_tracker_widget.is_tracking_enabled():
+            if self._auto_attach_retry_timer.isActive():
+                self._auto_attach_retry_timer.stop()
+            return
+
+        for side in ("left", "right"):
+            if not self._auto_attach_pending[side]:
+                continue
+
+            if side == "left":
+                attach_ready = self._set_left_attach_axis_enabled(True, suppress_enable_failure=True)
+                if not attach_ready:
+                    continue
+                apply_ready = self._set_left_apply_location_enabled(True, suppress_enable_failure=True)
+            else:
+                attach_ready = self._set_right_attach_axis_enabled(True, suppress_enable_failure=True)
+                if not attach_ready:
+                    continue
+                apply_ready = self._set_right_apply_location_enabled(True, suppress_enable_failure=True)
+
+            if apply_ready:
+                self._auto_attach_pending[side] = False
+                print(f"[CaliApply] 已自动完成{ '左手' if side == 'left' else '右手' }附加点与应用定位")
+
+        if not any(self._auto_attach_pending.values()) and self._auto_attach_retry_timer.isActive():
+            self._auto_attach_retry_timer.stop()
+
+    def _on_apply_clicked(self):
+        """启用左手骨架整体跟随左手 Vive Tracker。"""
+        self._set_left_apply_location_enabled(True)
+
+    def _on_cancel_clicked(self):
+        """取消应用定位，恢复原始左手骨架位置。"""
+        self._set_left_apply_location_enabled(False)
+
+    def _on_apply_right_clicked(self):
+        """启用右手骨架整体跟随右手 Vive Tracker。"""
+        self._set_right_apply_location_enabled(True)
+
+    def _on_cancel_right_clicked(self):
+        """取消右手应用定位，恢复原始右手骨架位置。"""
+        self._set_right_apply_location_enabled(False)
 
     def sync_left_attach_axis_button_text(self):
         """同步左手附加点按钮文本。"""
@@ -564,21 +729,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
             print("[CaliApply] ViveTrackerWidget 不可用，无法切换左手附加点")
             return
 
-        if self._vive_tracker_widget.has_left_tracker_attach_axis():
-            removed = self._vive_tracker_widget.remove_left_tracker_attach_axis()
-            if removed:
-                self.sync_left_attach_axis_button_text()
-                print("[CaliApply] 已删除左手附加点")
-            else:
-                print("[CaliApply] 左手附加点当前不存在")
-            return
-
-        created = self._vive_tracker_widget.create_left_tracker_attach_axis()
-        if created:
-            self.sync_left_attach_axis_button_text()
-            print("[CaliApply] 已附加左手附加点")
-        else:
-            print("[CaliApply] 左手附加点创建失败")
+        self._set_left_attach_axis_enabled(not self._vive_tracker_widget.has_left_tracker_attach_axis())
 
     def _on_right_attach_axis_clicked(self):
         """创建或删除右手附加点坐标轴。"""
@@ -586,21 +737,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
             print("[CaliApply] ViveTrackerWidget 不可用，无法切换右手附加点")
             return
 
-        if self._vive_tracker_widget.has_right_tracker_attach_axis():
-            removed = self._vive_tracker_widget.remove_right_tracker_attach_axis()
-            if removed:
-                self.sync_right_attach_axis_button_text()
-                print("[CaliApply] 已删除右手附加点")
-            else:
-                print("[CaliApply] 右手附加点当前不存在")
-            return
-
-        created = self._vive_tracker_widget.create_right_tracker_attach_axis()
-        if created:
-            self.sync_right_attach_axis_button_text()
-            print("[CaliApply] 已附加右手附加点")
-        else:
-            print("[CaliApply] 右手附加点创建失败")
+        self._set_right_attach_axis_enabled(not self._vive_tracker_widget.has_right_tracker_attach_axis())
 
     def _on_set_left_attach_axis_offset_clicked(self):
         """应用左手附加点偏移量设置。"""

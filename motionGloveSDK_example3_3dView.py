@@ -951,6 +951,15 @@ def _build_qt_app():
 
         def _on_vive_tracking_state_changed(self, enabled: bool):
             """ViveTracker 追踪状态变更回调。"""
+            if self._right_panel is not None:
+                vive_widget = getattr(self._right_panel, "vive_tracker", None)
+                if vive_widget is not None:
+                    cali_apply_manager = getattr(vive_widget, "_cali_apply_tab_manager", None)
+                    if cali_apply_manager is not None:
+                        cali_apply_widget = cali_apply_manager.get_cali_apply_widget()
+                        if cali_apply_widget is not None and hasattr(cali_apply_widget, 'handle_tracking_state_changed'):
+                            cali_apply_widget.handle_tracking_state_changed(enabled)
+
             if not enabled:
                 self._unload_all_tracker_models()
                 self._clear_lighthouse_actors()
