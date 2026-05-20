@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLineEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QSlider
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice
 from shiboken6 import isValid
@@ -73,11 +73,23 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._left_attach_axis_y_edit = None
         self._left_attach_axis_z_edit = None
         self._left_attach_axis_set_button = None
+        self._left_attach_axis_x_rotation_slider = None
+        self._left_attach_axis_y_rotation_slider = None
+        self._left_attach_axis_z_rotation_slider = None
+        self._left_attach_axis_x_rotation_value_label = None
+        self._left_attach_axis_y_rotation_value_label = None
+        self._left_attach_axis_z_rotation_value_label = None
         self._right_attach_axis_button = None
         self._right_attach_axis_x_edit = None
         self._right_attach_axis_y_edit = None
         self._right_attach_axis_z_edit = None
         self._right_attach_axis_set_button = None
+        self._right_attach_axis_x_rotation_slider = None
+        self._right_attach_axis_y_rotation_slider = None
+        self._right_attach_axis_z_rotation_slider = None
+        self._right_attach_axis_x_rotation_value_label = None
+        self._right_attach_axis_y_rotation_value_label = None
+        self._right_attach_axis_z_rotation_value_label = None
         self._init_ui()
 
     def _find_ui_child(self, widget_type, object_name: str):
@@ -114,11 +126,23 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._left_attach_axis_y_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "leftAttachAxisYEdit"))
         self._left_attach_axis_z_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "leftAttachAxisZEdit"))
         self._left_attach_axis_set_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "leftAttachAxisSetButton"))
+        self._left_attach_axis_x_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisXRotationSlider"))
+        self._left_attach_axis_y_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisYRotationSlider"))
+        self._left_attach_axis_z_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisZRotationSlider"))
+        self._left_attach_axis_x_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisXRotationValueLabel"))
+        self._left_attach_axis_y_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisYRotationValueLabel"))
+        self._left_attach_axis_z_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisZRotationValueLabel"))
         self._right_attach_axis_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "rightAttachAxisButton"))
         self._right_attach_axis_x_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "rightAttachAxisXEdit"))
         self._right_attach_axis_y_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "rightAttachAxisYEdit"))
         self._right_attach_axis_z_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "rightAttachAxisZEdit"))
         self._right_attach_axis_set_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "rightAttachAxisSetButton"))
+        self._right_attach_axis_x_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisXRotationSlider"))
+        self._right_attach_axis_y_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisYRotationSlider"))
+        self._right_attach_axis_z_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisZRotationSlider"))
+        self._right_attach_axis_x_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisXRotationValueLabel"))
+        self._right_attach_axis_y_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisYRotationValueLabel"))
+        self._right_attach_axis_z_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisZRotationValueLabel"))
         assert self._apply_button is not None, "UI 控件未找到：applyLocationButton"
         assert self._cancel_button is not None, "UI 控件未找到：cancelApplyLocationButton"
         assert self._apply_right_button is not None, "UI 控件未找到：applyRightLocationButton"
@@ -128,21 +152,41 @@ class ViveTrackerCaliApplyWidget(QWidget):
         assert self._left_attach_axis_y_edit is not None, "UI 控件未找到：leftAttachAxisYEdit"
         assert self._left_attach_axis_z_edit is not None, "UI 控件未找到：leftAttachAxisZEdit"
         assert self._left_attach_axis_set_button is not None, "UI 控件未找到：leftAttachAxisSetButton"
+        assert self._left_attach_axis_x_rotation_slider is not None, "UI 控件未找到：leftAttachAxisXRotationSlider"
+        assert self._left_attach_axis_y_rotation_slider is not None, "UI 控件未找到：leftAttachAxisYRotationSlider"
+        assert self._left_attach_axis_z_rotation_slider is not None, "UI 控件未找到：leftAttachAxisZRotationSlider"
+        assert self._left_attach_axis_x_rotation_value_label is not None, "UI 控件未找到：leftAttachAxisXRotationValueLabel"
+        assert self._left_attach_axis_y_rotation_value_label is not None, "UI 控件未找到：leftAttachAxisYRotationValueLabel"
+        assert self._left_attach_axis_z_rotation_value_label is not None, "UI 控件未找到：leftAttachAxisZRotationValueLabel"
         assert self._right_attach_axis_button is not None, "UI 控件未找到：rightAttachAxisButton"
         assert self._right_attach_axis_x_edit is not None, "UI 控件未找到：rightAttachAxisXEdit"
         assert self._right_attach_axis_y_edit is not None, "UI 控件未找到：rightAttachAxisYEdit"
         assert self._right_attach_axis_z_edit is not None, "UI 控件未找到：rightAttachAxisZEdit"
         assert self._right_attach_axis_set_button is not None, "UI 控件未找到：rightAttachAxisSetButton"
+        assert self._right_attach_axis_x_rotation_slider is not None, "UI 控件未找到：rightAttachAxisXRotationSlider"
+        assert self._right_attach_axis_y_rotation_slider is not None, "UI 控件未找到：rightAttachAxisYRotationSlider"
+        assert self._right_attach_axis_z_rotation_slider is not None, "UI 控件未找到：rightAttachAxisZRotationSlider"
+        assert self._right_attach_axis_x_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisXRotationValueLabel"
+        assert self._right_attach_axis_y_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisYRotationValueLabel"
+        assert self._right_attach_axis_z_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisZRotationValueLabel"
         self._apply_button.clicked.connect(self._on_apply_clicked)
         self._cancel_button.clicked.connect(self._on_cancel_clicked)
         self._apply_right_button.clicked.connect(self._on_apply_right_clicked)
         self._cancel_right_button.clicked.connect(self._on_cancel_right_clicked)
         self._left_attach_axis_button.clicked.connect(self._on_left_attach_axis_clicked)
         self._left_attach_axis_set_button.clicked.connect(self._on_set_left_attach_axis_offset_clicked)
+        self._left_attach_axis_x_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
+        self._left_attach_axis_y_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
+        self._left_attach_axis_z_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
         self._right_attach_axis_button.clicked.connect(self._on_right_attach_axis_clicked)
         self._right_attach_axis_set_button.clicked.connect(self._on_set_right_attach_axis_offset_clicked)
+        self._right_attach_axis_x_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
+        self._right_attach_axis_y_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
+        self._right_attach_axis_z_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
         self.sync_left_attach_axis_offset_values()
+        self.sync_left_attach_axis_rotation_values()
         self.sync_right_attach_axis_offset_values()
+        self.sync_right_attach_axis_rotation_values()
         self.sync_left_attach_axis_button_text()
         self.sync_right_attach_axis_button_text()
 
@@ -214,6 +258,62 @@ class ViveTrackerCaliApplyWidget(QWidget):
             raise RuntimeError("无法找到 leftAttachAxisSetButton 控件")
         return self._left_attach_axis_set_button
 
+    def _resolve_left_attach_axis_rotation_sliders(self) -> tuple[QSlider, QSlider, QSlider]:
+        """安全获取左手附加点 XYZ 旋转滑条。"""
+        if (
+            self._left_attach_axis_x_rotation_slider is not None and isValid(self._left_attach_axis_x_rotation_slider)
+            and self._left_attach_axis_y_rotation_slider is not None and isValid(self._left_attach_axis_y_rotation_slider)
+            and self._left_attach_axis_z_rotation_slider is not None and isValid(self._left_attach_axis_z_rotation_slider)
+        ):
+            return (
+                self._left_attach_axis_x_rotation_slider,
+                self._left_attach_axis_y_rotation_slider,
+                self._left_attach_axis_z_rotation_slider,
+            )
+
+        self._left_attach_axis_x_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisXRotationSlider"))
+        self._left_attach_axis_y_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisYRotationSlider"))
+        self._left_attach_axis_z_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "leftAttachAxisZRotationSlider"))
+        if self._left_attach_axis_x_rotation_slider is None:
+            raise RuntimeError("无法找到 leftAttachAxisXRotationSlider 控件")
+        if self._left_attach_axis_y_rotation_slider is None:
+            raise RuntimeError("无法找到 leftAttachAxisYRotationSlider 控件")
+        if self._left_attach_axis_z_rotation_slider is None:
+            raise RuntimeError("无法找到 leftAttachAxisZRotationSlider 控件")
+        return (
+            self._left_attach_axis_x_rotation_slider,
+            self._left_attach_axis_y_rotation_slider,
+            self._left_attach_axis_z_rotation_slider,
+        )
+
+    def _resolve_left_attach_axis_rotation_value_labels(self) -> tuple[QLabel, QLabel, QLabel]:
+        """安全获取左手附加点 XYZ 旋转数值标签。"""
+        if (
+            self._left_attach_axis_x_rotation_value_label is not None and isValid(self._left_attach_axis_x_rotation_value_label)
+            and self._left_attach_axis_y_rotation_value_label is not None and isValid(self._left_attach_axis_y_rotation_value_label)
+            and self._left_attach_axis_z_rotation_value_label is not None and isValid(self._left_attach_axis_z_rotation_value_label)
+        ):
+            return (
+                self._left_attach_axis_x_rotation_value_label,
+                self._left_attach_axis_y_rotation_value_label,
+                self._left_attach_axis_z_rotation_value_label,
+            )
+
+        self._left_attach_axis_x_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisXRotationValueLabel"))
+        self._left_attach_axis_y_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisYRotationValueLabel"))
+        self._left_attach_axis_z_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "leftAttachAxisZRotationValueLabel"))
+        if self._left_attach_axis_x_rotation_value_label is None:
+            raise RuntimeError("无法找到 leftAttachAxisXRotationValueLabel 控件")
+        if self._left_attach_axis_y_rotation_value_label is None:
+            raise RuntimeError("无法找到 leftAttachAxisYRotationValueLabel 控件")
+        if self._left_attach_axis_z_rotation_value_label is None:
+            raise RuntimeError("无法找到 leftAttachAxisZRotationValueLabel 控件")
+        return (
+            self._left_attach_axis_x_rotation_value_label,
+            self._left_attach_axis_y_rotation_value_label,
+            self._left_attach_axis_z_rotation_value_label,
+        )
+
     def _resolve_right_attach_axis_button(self) -> QPushButton:
         """安全获取右手附加点切换按钮。"""
         if self._right_attach_axis_button is not None and isValid(self._right_attach_axis_button):
@@ -261,6 +361,62 @@ class ViveTrackerCaliApplyWidget(QWidget):
         if self._right_attach_axis_set_button is None:
             raise RuntimeError("无法找到 rightAttachAxisSetButton 控件")
         return self._right_attach_axis_set_button
+
+    def _resolve_right_attach_axis_rotation_sliders(self) -> tuple[QSlider, QSlider, QSlider]:
+        """安全获取右手附加点 XYZ 旋转滑条。"""
+        if (
+            self._right_attach_axis_x_rotation_slider is not None and isValid(self._right_attach_axis_x_rotation_slider)
+            and self._right_attach_axis_y_rotation_slider is not None and isValid(self._right_attach_axis_y_rotation_slider)
+            and self._right_attach_axis_z_rotation_slider is not None and isValid(self._right_attach_axis_z_rotation_slider)
+        ):
+            return (
+                self._right_attach_axis_x_rotation_slider,
+                self._right_attach_axis_y_rotation_slider,
+                self._right_attach_axis_z_rotation_slider,
+            )
+
+        self._right_attach_axis_x_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisXRotationSlider"))
+        self._right_attach_axis_y_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisYRotationSlider"))
+        self._right_attach_axis_z_rotation_slider = cast(QSlider | None, self._find_ui_child(QSlider, "rightAttachAxisZRotationSlider"))
+        if self._right_attach_axis_x_rotation_slider is None:
+            raise RuntimeError("无法找到 rightAttachAxisXRotationSlider 控件")
+        if self._right_attach_axis_y_rotation_slider is None:
+            raise RuntimeError("无法找到 rightAttachAxisYRotationSlider 控件")
+        if self._right_attach_axis_z_rotation_slider is None:
+            raise RuntimeError("无法找到 rightAttachAxisZRotationSlider 控件")
+        return (
+            self._right_attach_axis_x_rotation_slider,
+            self._right_attach_axis_y_rotation_slider,
+            self._right_attach_axis_z_rotation_slider,
+        )
+
+    def _resolve_right_attach_axis_rotation_value_labels(self) -> tuple[QLabel, QLabel, QLabel]:
+        """安全获取右手附加点 XYZ 旋转数值标签。"""
+        if (
+            self._right_attach_axis_x_rotation_value_label is not None and isValid(self._right_attach_axis_x_rotation_value_label)
+            and self._right_attach_axis_y_rotation_value_label is not None and isValid(self._right_attach_axis_y_rotation_value_label)
+            and self._right_attach_axis_z_rotation_value_label is not None and isValid(self._right_attach_axis_z_rotation_value_label)
+        ):
+            return (
+                self._right_attach_axis_x_rotation_value_label,
+                self._right_attach_axis_y_rotation_value_label,
+                self._right_attach_axis_z_rotation_value_label,
+            )
+
+        self._right_attach_axis_x_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisXRotationValueLabel"))
+        self._right_attach_axis_y_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisYRotationValueLabel"))
+        self._right_attach_axis_z_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisZRotationValueLabel"))
+        if self._right_attach_axis_x_rotation_value_label is None:
+            raise RuntimeError("无法找到 rightAttachAxisXRotationValueLabel 控件")
+        if self._right_attach_axis_y_rotation_value_label is None:
+            raise RuntimeError("无法找到 rightAttachAxisYRotationValueLabel 控件")
+        if self._right_attach_axis_z_rotation_value_label is None:
+            raise RuntimeError("无法找到 rightAttachAxisZRotationValueLabel 控件")
+        return (
+            self._right_attach_axis_x_rotation_value_label,
+            self._right_attach_axis_y_rotation_value_label,
+            self._right_attach_axis_z_rotation_value_label,
+        )
 
     def _on_apply_clicked(self):
         """启用左手骨架整体跟随左手 Vive Tracker。"""
@@ -332,13 +488,35 @@ class ViveTrackerCaliApplyWidget(QWidget):
         """同步左手附加点偏移量到输入框。"""
         left_attach_axis_x_edit, left_attach_axis_y_edit, left_attach_axis_z_edit = self._resolve_left_attach_axis_edits()
 
-        offset_xyz = (0.0, 0.0, 0.2)
+        offset_xyz = (0.0, 0.05, 0.03)
         if self._vive_tracker_widget is not None:
             offset_xyz = self._vive_tracker_widget.get_left_tracker_attach_axis_offset_xyz()
 
         left_attach_axis_x_edit.setText(f"{offset_xyz[0]:.4f}")
         left_attach_axis_y_edit.setText(f"{offset_xyz[1]:.4f}")
         left_attach_axis_z_edit.setText(f"{offset_xyz[2]:.4f}")
+
+    def sync_left_attach_axis_rotation_values(self):
+        """同步左手附加点局部旋转到滑条和数值标签。"""
+        x_slider, y_slider, z_slider = self._resolve_left_attach_axis_rotation_sliders()
+        x_label, y_label, z_label = self._resolve_left_attach_axis_rotation_value_labels()
+
+        rotation_xyz_deg = (0.0, 0.0, 0.0)
+        if self._vive_tracker_widget is not None:
+            rotation_xyz_deg = self._vive_tracker_widget.get_left_tracker_attach_axis_local_rotation_xyz_degrees()
+
+        for slider, value in (
+            (x_slider, rotation_xyz_deg[0]),
+            (y_slider, rotation_xyz_deg[1]),
+            (z_slider, rotation_xyz_deg[2]),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(int(round(value)) % 361)
+            slider.blockSignals(False)
+
+        x_label.setText(f"{x_slider.value()}°")
+        y_label.setText(f"{y_slider.value()}°")
+        z_label.setText(f"{z_slider.value()}°")
 
     def sync_right_attach_axis_offset_values(self):
         """同步右手附加点偏移量到输入框。"""
@@ -351,6 +529,28 @@ class ViveTrackerCaliApplyWidget(QWidget):
         right_attach_axis_x_edit.setText(f"{offset_xyz[0]:.4f}")
         right_attach_axis_y_edit.setText(f"{offset_xyz[1]:.4f}")
         right_attach_axis_z_edit.setText(f"{offset_xyz[2]:.4f}")
+
+    def sync_right_attach_axis_rotation_values(self):
+        """同步右手附加点局部旋转到滑条和数值标签。"""
+        x_slider, y_slider, z_slider = self._resolve_right_attach_axis_rotation_sliders()
+        x_label, y_label, z_label = self._resolve_right_attach_axis_rotation_value_labels()
+
+        rotation_xyz_deg = (0.0, 0.0, 0.0)
+        if self._vive_tracker_widget is not None:
+            rotation_xyz_deg = self._vive_tracker_widget.get_right_tracker_attach_axis_local_rotation_xyz_degrees()
+
+        for slider, value in (
+            (x_slider, rotation_xyz_deg[0]),
+            (y_slider, rotation_xyz_deg[1]),
+            (z_slider, rotation_xyz_deg[2]),
+        ):
+            slider.blockSignals(True)
+            slider.setValue(int(round(value)) % 361)
+            slider.blockSignals(False)
+
+        x_label.setText(f"{x_slider.value()}°")
+        y_label.setText(f"{y_slider.value()}°")
+        z_label.setText(f"{z_slider.value()}°")
 
     def _on_left_attach_axis_clicked(self):
         """创建或删除左手附加点坐标轴。"""
@@ -435,6 +635,46 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._vive_tracker_widget.set_right_tracker_attach_axis_offset_xyz((x, y, z))
         self.sync_right_attach_axis_offset_values()
         print(f"[CaliApply] 右手附加点偏移量已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
+
+    def _on_left_attach_axis_rotation_value_changed(self, _value: int):
+        """实时更新左手附加点局部旋转。"""
+        x_slider, y_slider, z_slider = self._resolve_left_attach_axis_rotation_sliders()
+        x_label, y_label, z_label = self._resolve_left_attach_axis_rotation_value_labels()
+
+        x_label.setText(f"{x_slider.value()}°")
+        y_label.setText(f"{y_slider.value()}°")
+        z_label.setText(f"{z_slider.value()}°")
+
+        if self._vive_tracker_widget is None:
+            return
+
+        self._vive_tracker_widget.set_left_tracker_attach_axis_local_rotation_xyz_degrees(
+            (
+                float(x_slider.value()),
+                float(y_slider.value()),
+                float(z_slider.value()),
+            )
+        )
+
+    def _on_right_attach_axis_rotation_value_changed(self, _value: int):
+        """实时更新右手附加点局部旋转。"""
+        x_slider, y_slider, z_slider = self._resolve_right_attach_axis_rotation_sliders()
+        x_label, y_label, z_label = self._resolve_right_attach_axis_rotation_value_labels()
+
+        x_label.setText(f"{x_slider.value()}°")
+        y_label.setText(f"{y_slider.value()}°")
+        z_label.setText(f"{z_slider.value()}°")
+
+        if self._vive_tracker_widget is None:
+            return
+
+        self._vive_tracker_widget.set_right_tracker_attach_axis_local_rotation_xyz_degrees(
+            (
+                float(x_slider.value()),
+                float(y_slider.value()),
+                float(z_slider.value()),
+            )
+        )
 
 
 class CaliApplyTabManager:

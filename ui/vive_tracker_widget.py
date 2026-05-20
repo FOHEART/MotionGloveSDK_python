@@ -44,6 +44,7 @@ from python_draw3d.vive_tracker_attachAxis import (
     build_vive_tracker_attach_axis_actor,
     compose_vive_tracker_attach_axis_pose,
     apply_pose_to_prop_assembly,
+    quaternion_from_euler_xyz_degrees_wxyz,
 )
 
 
@@ -166,9 +167,11 @@ class ViveTrackerWidget(QWidget):
         self._left_tracker_attach_axis_actor = None
         self._left_tracker_attach_axis_enabled = False
         self._left_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
+        self._left_tracker_attach_axis_local_rotation_xyz_degrees = (0.0, 0.0, 0.0)
         self._right_tracker_attach_axis_actor = None
         self._right_tracker_attach_axis_enabled = False
         self._right_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
+        self._right_tracker_attach_axis_local_rotation_xyz_degrees = (0.0, 0.0, 0.0)
         self._lighthouse_model_actors = {}  # {lighthouse_name: LighthouseModelActor}
         
         # ── VTK 对象缓存（避免每帧新建） ────────────────────
@@ -1065,9 +1068,17 @@ class ViveTrackerWidget(QWidget):
         """返回左手附加点的本地偏移量。"""
         return self._left_tracker_attach_axis_offset_xyz
 
+    def get_left_tracker_attach_axis_local_rotation_xyz_degrees(self) -> tuple[float, float, float]:
+        """返回左手附加点的本地 XYZ 旋转角度。"""
+        return self._left_tracker_attach_axis_local_rotation_xyz_degrees
+
     def get_right_tracker_attach_axis_offset_xyz(self) -> tuple[float, float, float]:
         """返回右手附加点的本地偏移量。"""
         return self._right_tracker_attach_axis_offset_xyz
+
+    def get_right_tracker_attach_axis_local_rotation_xyz_degrees(self) -> tuple[float, float, float]:
+        """返回右手附加点的本地 XYZ 旋转角度。"""
+        return self._right_tracker_attach_axis_local_rotation_xyz_degrees
 
     def set_left_tracker_attach_axis_offset_xyz(self, offset_xyz: tuple[float, float, float]) -> None:
         """设置左手附加点的本地偏移量。"""
@@ -1093,6 +1104,44 @@ class ViveTrackerWidget(QWidget):
         if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_left_attach_axis_offset_values"):
             cali_apply_widget.sync_left_attach_axis_offset_values()
 
+    def get_left_tracker_attach_axis_local_rotation_quaternion_wxyz(self) -> tuple[float, float, float, float]:
+        """返回左手附加点本地 XYZ 旋转对应的四元数。"""
+        rotation_xyz = self._left_tracker_attach_axis_local_rotation_xyz_degrees
+        return quaternion_from_euler_xyz_degrees_wxyz(
+            rotation_xyz[0],
+            rotation_xyz[1],
+            rotation_xyz[2],
+        )
+
+    def set_left_tracker_attach_axis_local_rotation_xyz_degrees(
+        self,
+        rotation_xyz_degrees: tuple[float, float, float],
+    ) -> None:
+        """设置左手附加点的本地 XYZ 旋转角度。"""
+        self._left_tracker_attach_axis_local_rotation_xyz_degrees = (
+            max(0.0, min(360.0, float(rotation_xyz_degrees[0]))),
+            max(0.0, min(360.0, float(rotation_xyz_degrees[1]))),
+            max(0.0, min(360.0, float(rotation_xyz_degrees[2]))),
+        )
+        self._last_left_attach_axis_pose = None
+
+        tracker_position: tuple[float, float, float] | None = None
+        tracker_quat: tuple[float, float, float, float] | None = None
+        with self._data_lock:
+            has_valid_pose = self._left_data.valid
+            if has_valid_pose:
+                tracker_position = self.compose_tracker_data_display_position_xyz(self._left_data)
+                tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._left_data)
+
+        if self._left_tracker_attach_axis_actor is not None and tracker_position is not None and tracker_quat is not None:
+            self._update_left_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+        elif self._render_request_callback is not None:
+            self._render_request_callback()
+
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_left_attach_axis_rotation_values"):
+            cali_apply_widget.sync_left_attach_axis_rotation_values()
+
     def set_right_tracker_attach_axis_offset_xyz(self, offset_xyz: tuple[float, float, float]) -> None:
         """设置右手附加点的本地偏移量。"""
         self._right_tracker_attach_axis_offset_xyz = (
@@ -1116,6 +1165,44 @@ class ViveTrackerWidget(QWidget):
         cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
         if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_right_attach_axis_offset_values"):
             cali_apply_widget.sync_right_attach_axis_offset_values()
+
+    def get_right_tracker_attach_axis_local_rotation_quaternion_wxyz(self) -> tuple[float, float, float, float]:
+        """返回右手附加点本地 XYZ 旋转对应的四元数。"""
+        rotation_xyz = self._right_tracker_attach_axis_local_rotation_xyz_degrees
+        return quaternion_from_euler_xyz_degrees_wxyz(
+            rotation_xyz[0],
+            rotation_xyz[1],
+            rotation_xyz[2],
+        )
+
+    def set_right_tracker_attach_axis_local_rotation_xyz_degrees(
+        self,
+        rotation_xyz_degrees: tuple[float, float, float],
+    ) -> None:
+        """设置右手附加点的本地 XYZ 旋转角度。"""
+        self._right_tracker_attach_axis_local_rotation_xyz_degrees = (
+            max(0.0, min(360.0, float(rotation_xyz_degrees[0]))),
+            max(0.0, min(360.0, float(rotation_xyz_degrees[1]))),
+            max(0.0, min(360.0, float(rotation_xyz_degrees[2]))),
+        )
+        self._last_right_attach_axis_pose = None
+
+        tracker_position: tuple[float, float, float] | None = None
+        tracker_quat: tuple[float, float, float, float] | None = None
+        with self._data_lock:
+            has_valid_pose = self._right_data.valid
+            if has_valid_pose:
+                tracker_position = self.compose_tracker_data_display_position_xyz(self._right_data)
+                tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._right_data)
+
+        if self._right_tracker_attach_axis_actor is not None and tracker_position is not None and tracker_quat is not None:
+            self._update_right_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+        elif self._render_request_callback is not None:
+            self._render_request_callback()
+
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_right_attach_axis_rotation_values"):
+            cali_apply_widget.sync_right_attach_axis_rotation_values()
 
     def create_left_tracker_attach_axis(self) -> bool:
         """创建左手 Vive Tracker 附加点坐标轴。"""
@@ -1225,11 +1312,37 @@ class ViveTrackerWidget(QWidget):
         if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_left_attach_axis_button_text"):
             cali_apply_widget.sync_left_attach_axis_button_text()
 
+    def _compose_left_tracker_attach_axis_pose(
+        self,
+        tracker_position_xyz: tuple[float, float, float],
+        tracker_quat_wxyz: tuple[float, float, float, float],
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
+        """组合左手附加点最终姿态。"""
+        return compose_vive_tracker_attach_axis_pose(
+            tracker_position_xyz,
+            tracker_quat_wxyz,
+            self._left_tracker_attach_axis_offset_xyz,
+            self.get_left_tracker_attach_axis_local_rotation_quaternion_wxyz(),
+        )
+
     def _sync_right_tracker_attach_axis_button_state(self) -> None:
         """同步应用定位页中右手附加点按钮的文本。"""
         cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
         if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_right_attach_axis_button_text"):
             cali_apply_widget.sync_right_attach_axis_button_text()
+
+    def _compose_right_tracker_attach_axis_pose(
+        self,
+        tracker_position_xyz: tuple[float, float, float],
+        tracker_quat_wxyz: tuple[float, float, float, float],
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
+        """组合右手附加点最终姿态。"""
+        return compose_vive_tracker_attach_axis_pose(
+            tracker_position_xyz,
+            tracker_quat_wxyz,
+            self._right_tracker_attach_axis_offset_xyz,
+            self.get_right_tracker_attach_axis_local_rotation_quaternion_wxyz(),
+        )
 
     def _update_left_tracker_attach_axis_pose(
         self,
@@ -1241,10 +1354,9 @@ class ViveTrackerWidget(QWidget):
         if not self._left_tracker_attach_axis_enabled or self._left_tracker_attach_axis_actor is None:
             return
 
-        attach_position_xyz, attach_quat_wxyz = compose_vive_tracker_attach_axis_pose(
+        attach_position_xyz, attach_quat_wxyz = self._compose_left_tracker_attach_axis_pose(
             tracker_position_xyz,
             tracker_quat_wxyz,
-            self._left_tracker_attach_axis_offset_xyz,
         )
         current_pose = (attach_position_xyz, attach_quat_wxyz)
 
@@ -1273,10 +1385,9 @@ class ViveTrackerWidget(QWidget):
         if not self._right_tracker_attach_axis_enabled or self._right_tracker_attach_axis_actor is None:
             return
 
-        attach_position_xyz, attach_quat_wxyz = compose_vive_tracker_attach_axis_pose(
+        attach_position_xyz, attach_quat_wxyz = self._compose_right_tracker_attach_axis_pose(
             tracker_position_xyz,
             tracker_quat_wxyz,
-            self._right_tracker_attach_axis_offset_xyz,
         )
         current_pose = (attach_position_xyz, attach_quat_wxyz)
 
@@ -2063,6 +2174,22 @@ class ViveTrackerWidget(QWidget):
             return position_xyz
         return self._left_hand_last_tracker_display_position_xyz
 
+    def get_left_tracker_attach_axis_pose(
+        self,
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]] | None:
+        """返回左手附加点当前世界坐标系的位置和四元数。"""
+        tracker_data = self.get_left_tracker_data()
+        if tracker_data is not None:
+            tracker_position_xyz = self.compose_tracker_data_display_position_xyz(tracker_data)
+            tracker_quat_wxyz = self.compose_tracker_data_display_quaternion_wxyz(tracker_data)
+            return self._compose_left_tracker_attach_axis_pose(
+                tracker_position_xyz,
+                tracker_quat_wxyz,
+            )
+        if self._last_left_attach_axis_pose is not None:
+            return self._last_left_attach_axis_pose
+        return None
+
     def enable_right_hand_root_follow_tracker(self, enabled: bool) -> bool:
         """设置右手骨架是否整体跟随右手 Vive Tracker。"""
         if enabled and self.get_right_hand_tracker_display_position_xyz() is None:
@@ -2086,6 +2213,22 @@ class ViveTrackerWidget(QWidget):
             self._right_hand_last_tracker_display_position_xyz = position_xyz
             return position_xyz
         return self._right_hand_last_tracker_display_position_xyz
+
+    def get_right_tracker_attach_axis_pose(
+        self,
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]] | None:
+        """返回右手附加点当前世界坐标系的位置和四元数。"""
+        tracker_data = self.get_right_tracker_data()
+        if tracker_data is not None:
+            tracker_position_xyz = self.compose_tracker_data_display_position_xyz(tracker_data)
+            tracker_quat_wxyz = self.compose_tracker_data_display_quaternion_wxyz(tracker_data)
+            return self._compose_right_tracker_attach_axis_pose(
+                tracker_position_xyz,
+                tracker_quat_wxyz,
+            )
+        if self._last_right_attach_axis_pose is not None:
+            return self._last_right_attach_axis_pose
+        return None
 
     def is_tracking_enabled(self) -> bool:
         """是否处于追踪开启状态。

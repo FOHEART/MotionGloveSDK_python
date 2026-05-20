@@ -122,6 +122,99 @@
             </item>
            </layout>
           </item>
+            <item>
+             <layout class="QHBoxLayout" name="leftAttachAxisXRotationLayout">
+            <item>
+             <widget class="QLabel" name="leftAttachAxisXRotationLabel">
+              <property name="text">
+               <string>X旋转(°)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="leftAttachAxisXRotationSlider">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>360</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="leftAttachAxisXRotationValueLabel">
+              <property name="text">
+               <string>0°</string>
+              </property>
+             </widget>
+            </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="leftAttachAxisYRotationLayout">
+            <item>
+             <widget class="QLabel" name="leftAttachAxisYRotationLabel">
+              <property name="text">
+               <string>Y旋转(°)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="leftAttachAxisYRotationSlider">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>360</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="leftAttachAxisYRotationValueLabel">
+              <property name="text">
+               <string>0°</string>
+              </property>
+             </widget>
+            </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="leftAttachAxisZRotationLayout">
+            <item>
+             <widget class="QLabel" name="leftAttachAxisZRotationLabel">
+              <property name="text">
+               <string>Z旋转(°)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="leftAttachAxisZRotationSlider">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>360</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="leftAttachAxisZRotationValueLabel">
+              <property name="text">
+               <string>0°</string>
+              </property>
+             </widget>
+            </item>
+             </layout>
+            </item>
       </layout>
      </widget>
     </item>
@@ -177,6 +270,99 @@
        </item>
       </layout>
        </item>
+         <item>
+          <layout class="QHBoxLayout" name="rightAttachAxisXRotationLayout">
+           <item>
+            <widget class="QLabel" name="rightAttachAxisXRotationLabel">
+             <property name="text">
+              <string>X旋转(°)</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSlider" name="rightAttachAxisXRotationSlider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>360</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="rightAttachAxisXRotationValueLabel">
+             <property name="text">
+              <string>0°</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="rightAttachAxisYRotationLayout">
+           <item>
+            <widget class="QLabel" name="rightAttachAxisYRotationLabel">
+             <property name="text">
+              <string>Y旋转(°)</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSlider" name="rightAttachAxisYRotationSlider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>360</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="rightAttachAxisYRotationValueLabel">
+             <property name="text">
+              <string>0°</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="rightAttachAxisZRotationLayout">
+           <item>
+            <widget class="QLabel" name="rightAttachAxisZRotationLabel">
+             <property name="text">
+              <string>Z旋转(°)</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSlider" name="rightAttachAxisZRotationSlider">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>360</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="rightAttachAxisZRotationValueLabel">
+             <property name="text">
+              <string>0°</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
       </layout>
      </widget>
     </item>

@@ -1,11 +1,13 @@
 """Vive Tracker attach-axis helper."""
 
+import math
+
 import vtk
 
 from vtk_axes import build_local_axes_actor
 
 
-DEFAULT_ATTACH_AXIS_OFFSET_XYZ = (0.0, 0.0, 0.2)
+DEFAULT_ATTACH_AXIS_OFFSET_XYZ = (0.0, 0.05, 0.03)
 DEFAULT_ATTACH_AXIS_LENGTH_MM = 20.0
 DEFAULT_ATTACH_AXIS_SHAFT_RADIUS_MM = 1.5
 
@@ -44,6 +46,45 @@ def multiply_quaternion_wxyz(
     )
 
 
+def quaternion_from_axis_angle_wxyz(
+    axis_xyz: tuple[float, float, float],
+    angle_degrees: float,
+) -> tuple[float, float, float, float]:
+    """Build a quaternion from an axis-angle pair in wxyz order."""
+    ax, ay, az = axis_xyz
+    axis_norm = (ax * ax + ay * ay + az * az) ** 0.5
+    if axis_norm <= 1e-8:
+        return (1.0, 0.0, 0.0, 0.0)
+
+    half_angle_radians = math.radians(angle_degrees) * 0.5
+    sin_half_angle = math.sin(half_angle_radians)
+    return normalize_quaternion_wxyz(
+        (
+            math.cos(half_angle_radians),
+            ax / axis_norm * sin_half_angle,
+            ay / axis_norm * sin_half_angle,
+            az / axis_norm * sin_half_angle,
+        )
+    )
+
+
+def quaternion_from_euler_xyz_degrees_wxyz(
+    x_degrees: float,
+    y_degrees: float,
+    z_degrees: float,
+) -> tuple[float, float, float, float]:
+    """Build a quaternion from fixed XYZ Euler degrees in wxyz order."""
+    quat_x = quaternion_from_axis_angle_wxyz((1.0, 0.0, 0.0), x_degrees)
+    quat_y = quaternion_from_axis_angle_wxyz((0.0, 1.0, 0.0), y_degrees)
+    quat_z = quaternion_from_axis_angle_wxyz((0.0, 0.0, 1.0), z_degrees)
+    return normalize_quaternion_wxyz(
+        multiply_quaternion_wxyz(
+            multiply_quaternion_wxyz(quat_z, quat_y),
+            quat_x,
+        )
+    )
+
+
 def invert_quaternion_wxyz(
     quat_wxyz: tuple[float, float, float, float],
 ) -> tuple[float, float, float, float]:
@@ -74,16 +115,25 @@ def compose_vive_tracker_attach_axis_pose(
     tracker_position_xyz: tuple[float, float, float],
     tracker_quat_wxyz: tuple[float, float, float, float],
     local_offset_xyz: tuple[float, float, float] = DEFAULT_ATTACH_AXIS_OFFSET_XYZ,
+    local_rotation_quat_wxyz: tuple[float, float, float, float] | None = None,
 ) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
     """Compose the attach-axis world pose from tracker world pose and local offset."""
-    normalized_quat = normalize_quaternion_wxyz(tracker_quat_wxyz)
-    rotated_offset_xyz = rotate_vector_by_quaternion_wxyz(local_offset_xyz, normalized_quat)
+    tracker_orientation_wxyz = normalize_quaternion_wxyz(tracker_quat_wxyz)
+    final_orientation_wxyz = tracker_orientation_wxyz
+    if local_rotation_quat_wxyz is not None:
+        final_orientation_wxyz = normalize_quaternion_wxyz(
+            multiply_quaternion_wxyz(tracker_orientation_wxyz, local_rotation_quat_wxyz)
+        )
+
+    # The attach point stays on the tracker-defined offset location; the optional
+    # local rotation changes only the attach-axis' own orientation.
+    rotated_offset_xyz = rotate_vector_by_quaternion_wxyz(local_offset_xyz, tracker_orientation_wxyz)
     attach_position_xyz = (
         tracker_position_xyz[0] + rotated_offset_xyz[0],
         tracker_position_xyz[1] + rotated_offset_xyz[1],
         tracker_position_xyz[2] + rotated_offset_xyz[2],
     )
-    return attach_position_xyz, normalized_quat
+    return attach_position_xyz, final_orientation_wxyz
 
 
 def apply_pose_to_prop_assembly(

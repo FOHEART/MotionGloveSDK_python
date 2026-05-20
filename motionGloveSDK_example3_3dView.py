@@ -241,6 +241,30 @@ def _quat_rotate_vec3(q, v):
     )
 
 
+def _normalize_quat_wxyz(q):
+    qw, qx, qy, qz = q
+    norm = math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz)
+    if norm <= 1e-9:
+        return (1.0, 0.0, 0.0, 0.0)
+    return (qw / norm, qx / norm, qy / norm, qz / norm)
+
+
+def _invert_quat_wxyz(q):
+    qw, qx, qy, qz = _normalize_quat_wxyz(q)
+    return (qw, -qx, -qy, -qz)
+
+
+def _multiply_quat_wxyz(lhs, rhs):
+    lw, lx, ly, lz = lhs
+    rw, rx, ry, rz = rhs
+    return (
+        lw * rw - lx * rx - ly * ry - lz * rz,
+        lw * rx + lx * rw + ly * rz - lz * ry,
+        lw * ry - lx * rz + ly * rw + lz * rx,
+        lw * rz + lx * ry - ly * rx + lz * rw,
+    )
+
+
 
 
 
@@ -316,7 +340,9 @@ def _build_qt_app():
             self._cached_positions: list[list[float] | tuple[float, float, float] | None] | None = None
             self._cached_global_quats: list[tuple[float, float, float, float] | None] | None = None
             self._last_left_follow_tracker_position: tuple[float, float, float] | None = None
+            self._last_left_follow_tracker_quaternion: tuple[float, float, float, float] | None = None
             self._last_right_follow_tracker_position: tuple[float, float, float] | None = None
+            self._last_right_follow_tracker_quaternion: tuple[float, float, float, float] | None = None
             self._last_left_panel_refresh_time = 0.0
             self._last_bone_viewer_refresh_time = 0.0
 
@@ -593,52 +619,110 @@ def _build_qt_app():
                 and abs(lhs[2] - rhs[2]) < epsilon
             )
 
-        def _apply_hand_tracker_follow(self, positions, side: str):
+        @staticmethod
+        def _quat_close(lhs, rhs, epsilon=1e-6):
+            if lhs is None or rhs is None:
+                return False
+            return (
+                abs(lhs[0] - rhs[0]) < epsilon
+                and abs(lhs[1] - rhs[1]) < epsilon
+                and abs(lhs[2] - rhs[2]) < epsilon
+                and abs(lhs[3] - rhs[3]) < epsilon
+            )
+
+        def _apply_hand_tracker_follow(self, positions, global_quats, side: str):
             vive_widget = self._right_panel.vive_tracker if self._right_panel is not None else None
             if vive_widget is None:
                 return False
 
             if side == "left":
                 enabled = vive_widget.is_left_hand_root_follow_tracker_enabled()
-                tracker_position = vive_widget.get_left_hand_tracker_display_position_xyz()
+                attach_axis_pose = vive_widget.get_left_tracker_attach_axis_pose()
                 root_index = BoneIndex.LeftHand
                 start_index = BoneIndex.LeftHand
                 end_index = KHHS42_SKELETON_COUNT
                 if not enabled:
                     self._last_left_follow_tracker_position = None
+                    self._last_left_follow_tracker_quaternion = None
                     return False
             else:
                 enabled = vive_widget.is_right_hand_root_follow_tracker_enabled()
-                tracker_position = vive_widget.get_right_hand_tracker_display_position_xyz()
+                attach_axis_pose = vive_widget.get_right_tracker_attach_axis_pose()
                 root_index = BoneIndex.RightHand
                 start_index = BoneIndex.RightHand
                 end_index = BoneIndex.LeftHand
                 if not enabled:
                     self._last_right_follow_tracker_position = None
+                    self._last_right_follow_tracker_quaternion = None
                     return False
 
             root_position = positions[root_index]
-            if tracker_position is None or root_position is None:
+            if root_position is None:
                 return False
 
-            offset_xyz = (
-                tracker_position[0] - root_position[0],
-                tracker_position[1] - root_position[1],
-                tracker_position[2] - root_position[2],
+            if side == "left":
+                root_quat = global_quats[root_index]
+                if attach_axis_pose is None or root_quat is None:
+                    return False
+                attach_axis_position, attach_axis_quat = attach_axis_pose
+                delta_quat = _normalize_quat_wxyz(
+                    _multiply_quat_wxyz(attach_axis_quat, _invert_quat_wxyz(root_quat))
+                )
+                for bone_idx in range(start_index, end_index):
+                    pos = positions[bone_idx]
+                    if pos is not None:
+                        local_offset = (
+                            pos[0] - root_position[0],
+                            pos[1] - root_position[1],
+                            pos[2] - root_position[2],
+                        )
+                        rotated_offset = _quat_rotate_vec3(delta_quat, local_offset)
+                        positions[bone_idx] = [
+                            attach_axis_position[0] + rotated_offset[0],
+                            attach_axis_position[1] + rotated_offset[1],
+                            attach_axis_position[2] + rotated_offset[2],
+                        ]
+
+                    quat_wxyz = global_quats[bone_idx]
+                    if quat_wxyz is not None:
+                        global_quats[bone_idx] = _normalize_quat_wxyz(
+                            _multiply_quat_wxyz(delta_quat, quat_wxyz)
+                        )
+
+                self._last_left_follow_tracker_position = attach_axis_position
+                self._last_left_follow_tracker_quaternion = attach_axis_quat
+                return True
+
+            root_quat = global_quats[root_index]
+            if attach_axis_pose is None or root_quat is None:
+                return False
+            attach_axis_position, attach_axis_quat = attach_axis_pose
+            delta_quat = _normalize_quat_wxyz(
+                _multiply_quat_wxyz(attach_axis_quat, _invert_quat_wxyz(root_quat))
             )
             for bone_idx in range(start_index, end_index):
                 pos = positions[bone_idx]
-                if pos is None:
-                    continue
-                positions[bone_idx] = [
-                    pos[0] + offset_xyz[0],
-                    pos[1] + offset_xyz[1],
-                    pos[2] + offset_xyz[2],
-                ]
-            if side == "left":
-                self._last_left_follow_tracker_position = tracker_position
-            else:
-                self._last_right_follow_tracker_position = tracker_position
+                if pos is not None:
+                    local_offset = (
+                        pos[0] - root_position[0],
+                        pos[1] - root_position[1],
+                        pos[2] - root_position[2],
+                    )
+                    rotated_offset = _quat_rotate_vec3(delta_quat, local_offset)
+                    positions[bone_idx] = [
+                        attach_axis_position[0] + rotated_offset[0],
+                        attach_axis_position[1] + rotated_offset[1],
+                        attach_axis_position[2] + rotated_offset[2],
+                    ]
+
+                quat_wxyz = global_quats[bone_idx]
+                if quat_wxyz is not None:
+                    global_quats[bone_idx] = _normalize_quat_wxyz(
+                        _multiply_quat_wxyz(delta_quat, quat_wxyz)
+                    )
+
+            self._last_right_follow_tracker_position = attach_axis_position
+            self._last_right_follow_tracker_quaternion = attach_axis_quat
             return True
 
         def _update_hand_scene(self, positions, global_quats, side: str):
@@ -1156,8 +1240,8 @@ def _build_qt_app():
 
                 self._cached_positions = self._clone_positions(positions)
                 self._cached_global_quats = list(global_quats)
-                self._apply_hand_tracker_follow(positions, "left")
-                self._apply_hand_tracker_follow(positions, "right")
+                self._apply_hand_tracker_follow(positions, global_quats, "left")
+                self._apply_hand_tracker_follow(positions, global_quats, "right")
 
                 for i, ja in enumerate(self._joint_actors):
                     pos = positions[i]
@@ -1215,27 +1299,33 @@ def _build_qt_app():
                 ):
                     left_changed = False
                     right_changed = False
-                    left_tracker_position = vive_widget.get_left_hand_tracker_display_position_xyz()
+                    left_attach_axis_pose = vive_widget.get_left_tracker_attach_axis_pose()
                     if (
                         vive_widget.is_left_hand_root_follow_tracker_enabled()
-                        and left_tracker_position is not None
-                        and not self._vec3_close(left_tracker_position, self._last_left_follow_tracker_position)
+                        and left_attach_axis_pose is not None
+                        and (
+                            not self._vec3_close(left_attach_axis_pose[0], self._last_left_follow_tracker_position)
+                            or not self._quat_close(left_attach_axis_pose[1], self._last_left_follow_tracker_quaternion)
+                        )
                     ):
                         left_changed = True
 
-                    right_tracker_position = vive_widget.get_right_hand_tracker_display_position_xyz()
+                    right_attach_axis_pose = vive_widget.get_right_tracker_attach_axis_pose()
                     if (
                         vive_widget.is_right_hand_root_follow_tracker_enabled()
-                        and right_tracker_position is not None
-                        and not self._vec3_close(right_tracker_position, self._last_right_follow_tracker_position)
+                        and right_attach_axis_pose is not None
+                        and (
+                            not self._vec3_close(right_attach_axis_pose[0], self._last_right_follow_tracker_position)
+                            or not self._quat_close(right_attach_axis_pose[1], self._last_right_follow_tracker_quaternion)
+                        )
                     ):
                         right_changed = True
 
                     if left_changed or right_changed:
                         positions = self._clone_positions(self._cached_positions)
                         global_quats = list(self._cached_global_quats)
-                        self._apply_hand_tracker_follow(positions, "left")
-                        self._apply_hand_tracker_follow(positions, "right")
+                        self._apply_hand_tracker_follow(positions, global_quats, "left")
+                        self._apply_hand_tracker_follow(positions, global_quats, "right")
                         if left_changed:
                             self._update_hand_scene(positions, global_quats, "left")
                         if right_changed:
