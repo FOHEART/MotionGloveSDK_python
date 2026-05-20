@@ -176,13 +176,19 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._left_attach_axis_button.clicked.connect(self._on_left_attach_axis_clicked)
         self._left_attach_axis_set_button.clicked.connect(self._on_set_left_attach_axis_offset_clicked)
         self._left_attach_axis_x_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
+        self._left_attach_axis_x_rotation_slider.sliderReleased.connect(self._on_left_attach_axis_rotation_slider_released)
         self._left_attach_axis_y_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
+        self._left_attach_axis_y_rotation_slider.sliderReleased.connect(self._on_left_attach_axis_rotation_slider_released)
         self._left_attach_axis_z_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
+        self._left_attach_axis_z_rotation_slider.sliderReleased.connect(self._on_left_attach_axis_rotation_slider_released)
         self._right_attach_axis_button.clicked.connect(self._on_right_attach_axis_clicked)
         self._right_attach_axis_set_button.clicked.connect(self._on_set_right_attach_axis_offset_clicked)
         self._right_attach_axis_x_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
+        self._right_attach_axis_x_rotation_slider.sliderReleased.connect(self._on_right_attach_axis_rotation_slider_released)
         self._right_attach_axis_y_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
+        self._right_attach_axis_y_rotation_slider.sliderReleased.connect(self._on_right_attach_axis_rotation_slider_released)
         self._right_attach_axis_z_rotation_slider.valueChanged.connect(self._on_right_attach_axis_rotation_value_changed)
+        self._right_attach_axis_z_rotation_slider.sliderReleased.connect(self._on_right_attach_axis_rotation_slider_released)
         self.sync_left_attach_axis_offset_values()
         self.sync_left_attach_axis_rotation_values()
         self.sync_right_attach_axis_offset_values()
@@ -613,6 +619,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
             return
 
         self._vive_tracker_widget.set_left_tracker_attach_axis_offset_xyz((x, y, z))
+        self._save_attach_axis_config()
         self.sync_left_attach_axis_offset_values()
         print(f"[CaliApply] 左手附加点偏移量已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
 
@@ -633,6 +640,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
             return
 
         self._vive_tracker_widget.set_right_tracker_attach_axis_offset_xyz((x, y, z))
+        self._save_attach_axis_config()
         self.sync_right_attach_axis_offset_values()
         print(f"[CaliApply] 右手附加点偏移量已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
 
@@ -656,6 +664,10 @@ class ViveTrackerCaliApplyWidget(QWidget):
             )
         )
 
+    def _on_left_attach_axis_rotation_slider_released(self):
+        """左手旋转滑条释放时保存配置。"""
+        self._save_attach_axis_config()
+
     def _on_right_attach_axis_rotation_value_changed(self, _value: int):
         """实时更新右手附加点局部旋转。"""
         x_slider, y_slider, z_slider = self._resolve_right_attach_axis_rotation_sliders()
@@ -675,6 +687,40 @@ class ViveTrackerCaliApplyWidget(QWidget):
                 float(z_slider.value()),
             )
         )
+
+    def _on_right_attach_axis_rotation_slider_released(self):
+        """右手旋转滑条释放时保存配置。"""
+        self._save_attach_axis_config()
+
+
+    def _save_attach_axis_config(self):
+        """保存左右手附加点配置到 config.json。"""
+        if self._vive_tracker_widget is None:
+            return
+        try:
+            from src.config_io import read_config, write_config
+            cfg = read_config()
+            if "vive_tracker_attach_axis" not in cfg:
+                cfg["vive_tracker_attach_axis"] = {}
+            
+            left_offset = self._vive_tracker_widget.get_left_tracker_attach_axis_offset_xyz()
+            left_rotation = self._vive_tracker_widget.get_left_tracker_attach_axis_local_rotation_xyz_degrees()
+            right_offset = self._vive_tracker_widget.get_right_tracker_attach_axis_offset_xyz()
+            right_rotation = self._vive_tracker_widget.get_right_tracker_attach_axis_local_rotation_xyz_degrees()
+            
+            cfg["vive_tracker_attach_axis"]["left"] = {
+                "offset_xyz": list(left_offset),
+                "rotation_xyz_degrees": list(left_rotation),
+            }
+            cfg["vive_tracker_attach_axis"]["right"] = {
+                "offset_xyz": list(right_offset),
+                "rotation_xyz_degrees": list(right_rotation),
+            }
+            
+            write_config(cfg)
+            print("[CaliApply] 附加点配置已保存到 config.json")
+        except Exception as e:
+            print(f"[CaliApply] 保存附加点配置失败：{e}")
 
 
 class CaliApplyTabManager:

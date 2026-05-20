@@ -41,6 +41,10 @@ from vive_tracker_caliApply import CaliApplyTabManager
 from vive_tracker_all_devices import AllDevicesTabManager
 from python_draw3d.vive_tracker_attachAxis import (
     DEFAULT_ATTACH_AXIS_OFFSET_XYZ,
+    DEFAULT_LEFT_ATTACH_AXIS_OFFSET_XYZ,
+    DEFAULT_LEFT_ATTACH_AXIS_ROTATION_XYZ_DEGREES,
+    DEFAULT_RIGHT_ATTACH_AXIS_OFFSET_XYZ,
+    DEFAULT_RIGHT_ATTACH_AXIS_ROTATION_XYZ_DEGREES,
     build_vive_tracker_attach_axis_actor,
     compose_vive_tracker_attach_axis_pose,
     apply_pose_to_prop_assembly,
@@ -165,13 +169,26 @@ class ViveTrackerWidget(QWidget):
         self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
         self._tracker_axes_actors = {}   # {"left": vtkPropAssembly, "right": vtkPropAssembly}
         self._left_tracker_attach_axis_actor = None
+        # 从配置文件读取左手附加点设置
+        try:
+            from src.config_io import read_config
+            cfg = read_config()
+            left_cfg = cfg.get("vive_tracker_attach_axis", {}).get("left", {})
+            right_cfg = cfg.get("vive_tracker_attach_axis", {}).get("right", {})
+            self._left_tracker_attach_axis_offset_xyz = tuple(left_cfg.get("offset_xyz", DEFAULT_LEFT_ATTACH_AXIS_OFFSET_XYZ))
+            self._left_tracker_attach_axis_local_rotation_xyz_degrees = tuple(left_cfg.get("rotation_xyz_degrees", DEFAULT_LEFT_ATTACH_AXIS_ROTATION_XYZ_DEGREES))
+            self._right_tracker_attach_axis_offset_xyz = tuple(right_cfg.get("offset_xyz", DEFAULT_RIGHT_ATTACH_AXIS_OFFSET_XYZ))
+            self._right_tracker_attach_axis_local_rotation_xyz_degrees = tuple(right_cfg.get("rotation_xyz_degrees", DEFAULT_RIGHT_ATTACH_AXIS_ROTATION_XYZ_DEGREES))
+        except Exception:
+            # 配置读取失败，使用默认值
+            self._left_tracker_attach_axis_offset_xyz = DEFAULT_LEFT_ATTACH_AXIS_OFFSET_XYZ
+            self._left_tracker_attach_axis_local_rotation_xyz_degrees = DEFAULT_LEFT_ATTACH_AXIS_ROTATION_XYZ_DEGREES
+            self._right_tracker_attach_axis_offset_xyz = DEFAULT_RIGHT_ATTACH_AXIS_OFFSET_XYZ
+            self._right_tracker_attach_axis_local_rotation_xyz_degrees = DEFAULT_RIGHT_ATTACH_AXIS_ROTATION_XYZ_DEGREES
+
         self._left_tracker_attach_axis_enabled = False
-        self._left_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
-        self._left_tracker_attach_axis_local_rotation_xyz_degrees = (0.0, 0.0, 0.0)
         self._right_tracker_attach_axis_actor = None
         self._right_tracker_attach_axis_enabled = False
-        self._right_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
-        self._right_tracker_attach_axis_local_rotation_xyz_degrees = (0.0, 0.0, 0.0)
         self._lighthouse_model_actors = {}  # {lighthouse_name: LighthouseModelActor}
         
         # ── VTK 对象缓存（避免每帧新建） ────────────────────
