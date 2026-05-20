@@ -47,7 +47,7 @@
      <item>
       <widget class="QPushButton" name="startTrackingButton">
        <property name="text">
-        <string>开启追踪</string>
+                <string>开始追踪</string>
        </property>
       </widget>
      </item>

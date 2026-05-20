@@ -695,6 +695,7 @@ def _build_qt_app():
                 return
             
             try:
+                self._on_tracker_model_unload(side, renderer)
                 actor = create_tracker_actor(f"{side.capitalize()}HandTracker")
                 if actor is not None:
                     renderer.AddActor(actor.get_actor())
@@ -867,6 +868,7 @@ def _build_qt_app():
         def _on_vive_tracking_state_changed(self, enabled: bool):
             """ViveTracker 追踪状态变更回调。"""
             if not enabled:
+                self._unload_all_tracker_models()
                 self._clear_lighthouse_actors()
 
         def _refresh_lighthouse_visibility(self):

@@ -11,6 +11,7 @@ ViveTracker 追踪信息面板组件
 
 import sys
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QPushButton, QTextEdit, QLineEdit
 from PySide6.QtUiTools import QUiLoader
@@ -62,6 +63,13 @@ def _find_info_ui_file() -> Path:
 
 class ViveTrackerInfoWidget(QWidget):
     """追踪信息显示面板组件。"""
+
+    def _ensure_attitude_labels_visible(self) -> None:
+        """固定显示欧拉角和四元数标签，不做互斥隐藏。"""
+        cast(QLabel, self._left_rotation_label).setVisible(True)
+        cast(QLabel, self._left_quat_label).setVisible(True)
+        cast(QLabel, self._right_rotation_label).setVisible(True)
+        cast(QLabel, self._right_quat_label).setVisible(True)
     
     def __init__(self, parent=None):
         """初始化追踪信息面板。
@@ -157,9 +165,7 @@ class ViveTrackerInfoWidget(QWidget):
         self._set_groupbox_online_status(self._left_group, False)
         self._set_groupbox_online_status(self._right_group, False)
         
-        # 默认隐藏四元数标签
-        self._left_quat_label.setVisible(False)
-        self._right_quat_label.setVisible(False)
+        self._ensure_attitude_labels_visible()
         
         # 为 GroupBox 设置右键菜单
         self._left_group.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -286,12 +292,10 @@ class ViveTrackerInfoWidget(QWidget):
         
         if action == euler_action:
             self._left_show_quat = False
-            self._left_rotation_label.setVisible(True)
-            self._left_quat_label.setVisible(False)
         elif action == quat_action:
             self._left_show_quat = True
-            self._left_rotation_label.setVisible(False)
-            self._left_quat_label.setVisible(True)
+
+        self._ensure_attitude_labels_visible()
     
     def _on_right_group_context_menu(self, pos):
         """右手 GroupBox 的右键菜单。"""
@@ -304,12 +308,10 @@ class ViveTrackerInfoWidget(QWidget):
         
         if action == euler_action:
             self._right_show_quat = False
-            self._right_rotation_label.setVisible(True)
-            self._right_quat_label.setVisible(False)
         elif action == quat_action:
             self._right_show_quat = True
-            self._right_rotation_label.setVisible(False)
-            self._right_quat_label.setVisible(True)
+
+        self._ensure_attitude_labels_visible()
     
     def _set_groupbox_online_status(self, groupbox: QGroupBox, is_online: bool):
         """根据在线状态设置 GroupBox 标题背景色。
@@ -335,10 +337,24 @@ class ViveTrackerInfoWidget(QWidget):
     def get_ui(self):
         """获取加载的 UI 对象。"""
         return self._ui
+
+    def _resolve_start_tracking_button(self):
+        """获取仍然有效的开始/停止追踪按钮。"""
+        try:
+            if self._start_tracking_btn is not None:
+                self._start_tracking_btn.objectName()
+                return self._start_tracking_btn
+        except RuntimeError:
+            self._start_tracking_btn = None
+
+        self._start_tracking_btn = self.findChild(QPushButton, "startTrackingButton")
+        if self._start_tracking_btn is None:
+            raise RuntimeError("UI 控件不可用：startTrackingButton")
+        return self._start_tracking_btn
     
     def get_start_tracking_button(self):
         """获取开始追踪按钮。"""
-        return self._start_tracking_btn
+        return self._resolve_start_tracking_button()
     
     def get_connection_status_text(self):
         """获取连接状态文本编辑框。"""

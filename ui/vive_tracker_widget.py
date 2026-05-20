@@ -197,18 +197,9 @@ class ViveTrackerWidget(QWidget):
 
     def _init_ui(self):
         """从 UI 文件加载界面，并添加标定 tab。"""
-        loader = QUiLoader()
-        ui_file = QFile(str(_find_ui_file()))
-        
-        if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
-            raise RuntimeError(f"无法打开 UI 文件：{_find_ui_file()}")
-        
-        self._ui = loader.load(ui_file)
-        ui_file.close()
-        
-        if self._ui is None:
-            raise RuntimeError(f"QUiLoader 加载失败：{_find_ui_file()}")
-        
+        # 当前面板只持有一套真实显示的 tab UI，避免额外加载未显示的孤立控件树。
+        self._ui = None
+
         # 创建主布局和 TabWidget
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -218,23 +209,21 @@ class ViveTrackerWidget(QWidget):
         layout.addWidget(self._tab_widget)
         
         # 第一个 tab：追踪信息（由 InfoTabManager 管理）
-        self._info_tab_manager.setup_info_tab(self._tab_widget)
+        self._info_widget = self._info_tab_manager.setup_info_tab(self._tab_widget)
         
         # 第二个 tab：定位标定（由 CaliTabManager 管理）
-        self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
+        self._calibration_widget = self._cali_tab_manager.setup_calibration_tab(self._tab_widget)
 
         # 第三个 tab：应用定位（将 LeftHand 根骨骼附加到左手 Vive Tracker）
-        self._cali_apply_tab_manager.setup_cali_apply_tab(self._tab_widget)
+        self._cali_apply_widget = self._cali_apply_tab_manager.setup_cali_apply_tab(self._tab_widget)
 
         # 第四个 tab：所有设备（完全独立）
-        self._all_devices_tab_manager.setup_all_devices_tab(self._tab_widget)
+        self._all_devices_widget = self._all_devices_tab_manager.setup_all_devices_tab(self._tab_widget)
 
         self._install_tab_debug_hooks()
         
         # 从 InfoTabManager 获取 UI 中的控件（保持向后兼容性）
-        info_widget = self._info_tab_manager.get_info_widget()
-        # 从 InfoTabManager 获取 UI 中的控件
-        info_widget = self._info_tab_manager.get_info_widget()
+        info_widget = self._info_widget
         self._left_config_label: QLabel = info_widget.get_config_labels()["left"]
         self._right_config_label: QLabel = info_widget.get_config_labels()["right"]
         self._left_position_label: QLabel = info_widget.get_position_labels()["left"]
@@ -253,6 +242,9 @@ class ViveTrackerWidget(QWidget):
         
         # 连接信号
         self._start_tracking_btn.clicked.connect(self._on_start_tracking_clicked)
+        self._sync_start_tracking_button_text()
+        self._debug_log_tracking_button_state("init_ui_after_connect")
+        self._sync_tab_refresh_flags(self._tab_widget.currentIndex())
 
     def _install_tab_debug_hooks(self):
         """安装 tab 切换调试日志。"""
@@ -297,6 +289,64 @@ class ViveTrackerWidget(QWidget):
         except RuntimeError:
             return f"{widget.__class__.__name__}(deleted)"
 
+    def _debug_log_tracking_button_state(self, reason: str):
+        """打印开始/停止追踪按钮状态，辅助排查文本未刷新的问题。"""
+        button = None
+        info_widget = getattr(self, "_info_widget", None)
+        if info_widget is not None:
+            try:
+                button = info_widget.get_start_tracking_button()
+                self._start_tracking_btn = button
+            except RuntimeError:
+                button = getattr(self, "_start_tracking_btn", None)
+        info_widget = getattr(self, "_info_widget", None)
+        try:
+            info_button = info_widget.get_start_tracking_button() if info_widget is not None else None
+        except RuntimeError:
+            info_button = None
+        current_tab_index = self._tab_widget.currentIndex() if self._tab_widget is not None else -1
+        current_tab_text = self._tab_widget.tabText(current_tab_index) if self._tab_widget is not None and current_tab_index >= 0 else "<none>"
+
+        def _button_state(label, widget):
+            if widget is None:
+                return f"{label}=None"
+            try:
+                return (
+                    f"{label}=id={id(widget)} text={widget.text()} visible={widget.isVisible()} "
+                    f"enabled={widget.isEnabled()} parent={self._describe_widget_brief(widget.parentWidget())}"
+                )
+            except RuntimeError:
+                return f"{label}=deleted"
+
+        print(
+            "[TrackingButtonDebug] "
+            f"reason={reason} tracking_enabled={self._tracking_enabled} "
+            f"current_tab={current_tab_index}:{current_tab_text} "
+            f"{_button_state('self_btn', button)} "
+            f"{_button_state('info_btn', info_button)}"
+        )
+
+    def _resolve_start_tracking_button(self):
+        """获取当前仍然有效的开始/停止追踪按钮。"""
+        self._refresh_info_tab_widget_refs()
+        return self._start_tracking_btn
+
+    def _refresh_info_tab_widget_refs(self):
+        """刷新追踪信息页控件引用，避免使用已被 Qt 删除的旧对象。"""
+        info_widget = self._info_widget
+        self._left_config_label = info_widget.get_config_labels()["left"]
+        self._right_config_label = info_widget.get_config_labels()["right"]
+        self._left_position_label = info_widget.get_position_labels()["left"]
+        self._right_position_label = info_widget.get_position_labels()["right"]
+        self._left_rotation_label = info_widget.get_rotation_labels()["left"]
+        self._right_rotation_label = info_widget.get_rotation_labels()["right"]
+        self._left_quat_label = info_widget.get_quat_labels()["left"]
+        self._right_quat_label = info_widget.get_quat_labels()["right"]
+        self._left_group = info_widget.get_groups()["left"]
+        self._right_group = info_widget.get_groups()["right"]
+        self._start_tracking_btn = info_widget.get_start_tracking_button()
+        return info_widget
+
     def _debug_dump_tab_state(self, reason: str):
         """打印当前 tab 状态，辅助定位切换异常。"""
         if not self._TAB_DEBUG_ENABLED:
@@ -323,14 +373,12 @@ class ViveTrackerWidget(QWidget):
                 f"pageParent={page_parent} page={self._describe_widget_brief(page)}"
             )
 
-        info_widget = self._info_tab_manager.get_info_widget()
-        if info_widget is not None:
-            print(f"[TabDebug] infoWidget={self._describe_widget_brief(info_widget)}")
-            print(f"[TabDebug] infoWidget.ui={self._describe_widget_brief(info_widget.get_ui())}")
+        if self._info_widget is not None:
+            print(f"[TabDebug] infoWidget={self._describe_widget_brief(self._info_widget)}")
+            print(f"[TabDebug] infoWidget.ui={self._describe_widget_brief(self._info_widget.get_ui())}")
 
-        calibration_widget = self._cali_tab_manager.get_calibration_widget()
-        if calibration_widget is not None:
-            print(f"[TabDebug] calibrationWidget={self._describe_widget_brief(calibration_widget)}")
+        if self._calibration_widget is not None:
+            print(f"[TabDebug] calibrationWidget={self._describe_widget_brief(self._calibration_widget)}")
 
     def _on_tab_bar_clicked(self, index: int):
         """记录 tabBar 点击。"""
@@ -342,7 +390,14 @@ class ViveTrackerWidget(QWidget):
 
     def _on_tab_widget_current_changed(self, index: int):
         """记录 QTabWidget 当前页变化。"""
+        self._sync_tab_refresh_flags(index)
         self._debug_dump_tab_state(f"tabWidget.currentChanged index={index}")
+
+    def _sync_tab_refresh_flags(self, current_index: int) -> None:
+        """同步各 tab 页面是否允许执行前台 UI 刷新。"""
+        calibration_index = self._cali_tab_manager.get_calibration_tab_index()
+        if self._calibration_widget is not None and calibration_index is not None:
+            self._calibration_widget.set_front_refresh_enabled(current_index == calibration_index)
 
     def eventFilter(self, watched, event):
         """拦截 tab 相关事件，辅助定位点击失效问题。"""
@@ -372,73 +427,18 @@ class ViveTrackerWidget(QWidget):
         return super().eventFilter(watched, event)
 
     def _init_bias_controls(self):
-        """初始化位置偏差控件（从 UI 文件加载）。
-        
-        从 UI 文件中查找左右手的位置偏差输入控件（XYZ三个轴）以及设置按钮，
-        并连接相应的信号槽。
-        
-        Raises:
-            AssertionError: 当必需的 UI 控件未找到时
-        """
-        # 从 UI 中查找左手偏差控件
-        self._left_bias_x_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasXEdit")
-        self._left_bias_y_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasYEdit")
-        self._left_bias_z_edit: QLineEdit = self._ui.findChild(QLineEdit, "leftBiasZEdit")
-        left_bias_set_btn: QPushButton = self._ui.findChild(QPushButton, "leftBiasSetBtn")
-        
-        # 从 UI 中查找右手偏差控件
-        self._right_bias_x_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasXEdit")
-        self._right_bias_y_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasYEdit")
-        self._right_bias_z_edit: QLineEdit = self._ui.findChild(QLineEdit, "rightBiasZEdit")
-        right_bias_set_btn: QPushButton = self._ui.findChild(QPushButton, "rightBiasSetBtn")
-        
-        # 验证所有偏差控件已找到
-        assert self._left_bias_x_edit is not None, "UI 控件未找到：leftBiasXEdit"
-        assert self._left_bias_y_edit is not None, "UI 控件未找到：leftBiasYEdit"
-        assert self._left_bias_z_edit is not None, "UI 控件未找到：leftBiasZEdit"
-        assert left_bias_set_btn is not None, "UI 控件未找到：leftBiasSetBtn"
-        assert self._right_bias_x_edit is not None, "UI 控件未找到：rightBiasXEdit"
-        assert self._right_bias_y_edit is not None, "UI 控件未找到：rightBiasYEdit"
-        assert self._right_bias_z_edit is not None, "UI 控件未找到：rightBiasZEdit"
-        assert right_bias_set_btn is not None, "UI 控件未找到：rightBiasSetBtn"
-        
-        # 连接信号
-        left_bias_set_btn.clicked.connect(self._on_set_left_bias)
-        right_bias_set_btn.clicked.connect(self._on_set_right_bias)
+        """兼容旧接口：当前 widget 不再维护隐藏的偏差控件树。"""
+        return
 
     def _on_set_left_bias(self):
-        """处理设置左手偏差按钮点击事件。"""
-        try:
-            x = float(self._left_bias_x_edit.text())
-            y = float(self._left_bias_y_edit.text())
-            z = float(self._left_bias_z_edit.text())
-
-            self._tracker_cali_manager.set_position_bias_xyz((x, y, z))
-            
-            print(f"[PosBias] 左手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
-            
-            # 触发场景更新
-            if self._renderer is not None and self._mark_scene_dirty is not None:
-                self._mark_scene_dirty()
-        except ValueError as e:
-            print(f"[PosBias] 左手偏差设置失败：无效的数值 - {e}")
+        """兼容旧接口：转发到持久化的追踪信息页。"""
+        if self._info_widget is not None:
+            self._info_widget._on_set_left_bias()
 
     def _on_set_right_bias(self):
-        """处理设置右手偏差按钮点击事件。"""
-        try:
-            x = float(self._right_bias_x_edit.text())
-            y = float(self._right_bias_y_edit.text())
-            z = float(self._right_bias_z_edit.text())
-
-            self._tracker_cali_manager.set_position_bias_xyz((x, y, z))
-            
-            print(f"[PosBias] 右手偏差已设置：X={x:.4f}m, Y={y:.4f}m, Z={z:.4f}m")
-            
-            # 触发场景更新
-            if self._renderer is not None and self._mark_scene_dirty is not None:
-                self._mark_scene_dirty()
-        except ValueError as e:
-            print(f"[PosBias] 右手偏差设置失败：无效的数值 - {e}")
+        """兼容旧接口：转发到持久化的追踪信息页。"""
+        if self._info_widget is not None:
+            self._info_widget._on_set_right_bias()
 
     def _set_steamvr_status(self, running: bool):
         """更新 SteamVR 状态标签。使用 InfoTabManager 处理。
@@ -490,12 +490,10 @@ class ViveTrackerWidget(QWidget):
         
         if action == euler_action:
             self._left_show_quat = False
-            self._left_rotation_label.setVisible(True)
-            self._left_quat_label.setVisible(False)
         elif action == quat_action:
             self._left_show_quat = True
-            self._left_rotation_label.setVisible(False)
-            self._left_quat_label.setVisible(True)
+        self._left_rotation_label.setVisible(True)
+        self._left_quat_label.setVisible(True)
 
     def _on_right_group_context_menu(self, pos):
         """右手 GroupBox 的右键菜单（欧拉角/四元数显示切换）。
@@ -512,12 +510,10 @@ class ViveTrackerWidget(QWidget):
         
         if action == euler_action:
             self._right_show_quat = False
-            self._right_rotation_label.setVisible(True)
-            self._right_quat_label.setVisible(False)
         elif action == quat_action:
             self._right_show_quat = True
-            self._right_rotation_label.setVisible(False)
-            self._right_quat_label.setVisible(True)
+        self._right_rotation_label.setVisible(True)
+        self._right_quat_label.setVisible(True)
 
     def _format_config(self, config: dict) -> str:
         """将配置字典格式化为显示文本。"""
@@ -566,7 +562,7 @@ class ViveTrackerWidget(QWidget):
                 self._left_online_state = is_online
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 左手 Tracker {status_str}")
-                self._info_tab_manager.get_info_widget().set_groupbox_online_status("left", is_online)
+                self._info_widget.set_groupbox_online_status("left", is_online)
                 
                 # 处理模型加载/卸载
                 if is_online and self._renderer is not None and self._model_load_callback is not None:
@@ -584,7 +580,7 @@ class ViveTrackerWidget(QWidget):
                 self._right_online_state = is_online
                 status_str = "上线" if is_online else "离线"
                 print(f"[TrackerStatus] 右手 Tracker {status_str}")
-                self._info_tab_manager.get_info_widget().set_groupbox_online_status("right", is_online)
+                self._info_widget.set_groupbox_online_status("right", is_online)
                 
                 # 处理模型加载/卸载
                 if is_online and self._renderer is not None and self._model_load_callback is not None:
@@ -1123,12 +1119,27 @@ class ViveTrackerWidget(QWidget):
                 except Exception as e:
                     print(f"[UnloadTrackers] 卸载 {side} 手模型失败：{e}")
 
+    def _sync_start_tracking_button_text(self):
+        """根据当前追踪状态同步按钮文案。"""
+        self._debug_log_tracking_button_state("sync_before")
+        self._resolve_start_tracking_button().setText("停止追踪" if self._tracking_enabled else "开始追踪")
+        self._debug_log_tracking_button_state("sync_after")
+
     def _on_start_tracking_clicked(self):
         """处理 "开启追踪" 按钮点击。"""
+        self._debug_log_tracking_button_state("click_entry")
         if not self._tracking_enabled:
-            self._start_tracking()
+            start_success = self._start_tracking()
+            if start_success:
+                self._debug_log_tracking_button_state("click_start_success_before_sync")
+                self._sync_start_tracking_button_text()
+            else:
+                self._resolve_start_tracking_button().setText("开始追踪")
+                self._debug_log_tracking_button_state("click_start_failed")
         else:
+            self._debug_log_tracking_button_state("click_stop_before_stop_tracking")
             self._stop_tracking()
+            self._debug_log_tracking_button_state("click_stop_after_stop_tracking")
 
     def _start_tracking(self):
         """启动追踪。
@@ -1146,7 +1157,8 @@ class ViveTrackerWidget(QWidget):
             error_text = f"<font color='red'><b>OpenVR 初始化失败</b></font><br>{e}"
             self._left_config_label.setText(error_text)
             self._right_config_label.setText(error_text)
-            return
+            print(f"[StartTracking] 启动失败：OpenVR 初始化异常: {e}")
+            return False
 
         # 根据配置查找设备
         self._devices = {}
@@ -1182,6 +1194,10 @@ class ViveTrackerWidget(QWidget):
         
         debug_text = "\n".join(debug_lines)
         self._info_tab_manager.set_connection_status_text(debug_text)
+        print(
+            f"[StartTracking] 扫描完成：matched_left={'left' in self._devices} "
+            f"matched_right={'right' in self._devices} total_matched={len(self._devices)}"
+        )
         
         if not self._devices:
             # 检查是否缺少配置
@@ -1192,7 +1208,8 @@ class ViveTrackerWidget(QWidget):
             
             self._info_tab_manager.set_connection_status_text(debug_text + error_text)
             self._openvr_system = None
-            return
+            print("[StartTracking] 启动失败：未找到任何匹配的追踪器")
+            return False
 
         # 启动后台数据收集线程
         self._tracking_enabled = True
@@ -1214,9 +1231,9 @@ class ViveTrackerWidget(QWidget):
                 self._tracking_state_changed_callback(True)
             except Exception as e:
                 print(f"[ViveTrackerWidget] 追踪状态回调失败（start）：{e}")
-        
-        # 更新按钮文本
-        self._start_tracking_btn.setText("停止追踪")
+
+        self._debug_log_tracking_button_state("start_tracking_success_before_return")
+        return True
 
     def _rescan_devices(self):
         """重新扫描系统中的设备，查找新连接的传感器。"""
@@ -1267,6 +1284,8 @@ class ViveTrackerWidget(QWidget):
         重置 UI 显示，卸载已加载的 VR 模型，并恢复各种状态。
         触发追踪状态改变回调。
         """
+        print("[StopTracking] entry")
+        self._debug_log_tracking_button_state("stop_tracking_entry")
         self._tracking_enabled = False
         self._calibration_active = False
         self._left_hand_last_tracker_display_position_xyz = None
@@ -1276,20 +1295,27 @@ class ViveTrackerWidget(QWidget):
         
         self._update_timer.stop()
         self._lighthouse_update_timer.stop()
+        print("[StopTracking] timers_stopped")
         
         if self._tracking_thread is not None:
+            print(f"[StopTracking] joining_thread alive_before={self._tracking_thread.is_alive()}")
             self._thread_stop_event.set()
             self._tracking_thread.join(timeout=1)
+            print(f"[StopTracking] joined_thread alive_after={self._tracking_thread.is_alive()}")
             self._tracking_thread = None
         
         self._openvr_system = None
         self._devices = {}
+        print("[StopTracking] openvr_cleared")
 
         if self._tracking_state_changed_callback is not None:
             try:
                 self._tracking_state_changed_callback(False)
+                print("[StopTracking] state_changed_callback_done")
             except Exception as e:
                 print(f"[ViveTrackerWidget] 追踪状态回调失败（stop）：{e}")
+
+        self._refresh_info_tab_widget_refs()
         
         # 重置显示
         self._left_position_label.setText("位置：X= 0.0000m  Y= 0.0000m  Z= 0.0000m")
@@ -1320,15 +1346,18 @@ class ViveTrackerWidget(QWidget):
         self._left_show_quat = False
         self._right_show_quat = False
         self._left_rotation_label.setVisible(True)
-        self._left_quat_label.setVisible(False)
+        self._left_quat_label.setVisible(True)
         self._right_rotation_label.setVisible(True)
-        self._right_quat_label.setVisible(False)
+        self._right_quat_label.setVisible(True)
+        print("[StopTracking] ui_reset_done")
         
-        # 更新按钮文本
-        self._start_tracking_btn.setText("开始追踪")
+        self._debug_log_tracking_button_state("stop_tracking_before_sync")
+        self._sync_start_tracking_button_text()
+        self._debug_log_tracking_button_state("stop_tracking_after_sync")
         
         # 卸载所有 VR 追踪器模型
         self._unload_all_tracker_models()
+        print("[StopTracking] unload_models_done")
 
     def _tracking_loop(self):
         """后台追踪线程，60Hz 数据收集。"""
