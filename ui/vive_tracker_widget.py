@@ -39,6 +39,12 @@ from vive_tracker_info_widget import ViveTrackerInfoWidget, InfoTabManager
 from vive_tracker_cali_widget import ViveTrackerCaliWidget, CaliTabManager
 from vive_tracker_caliApply import CaliApplyTabManager
 from vive_tracker_all_devices import AllDevicesTabManager
+from python_draw3d.vive_tracker_attachAxis import (
+    DEFAULT_ATTACH_AXIS_OFFSET_XYZ,
+    build_vive_tracker_attach_axis_actor,
+    compose_vive_tracker_attach_axis_pose,
+    apply_pose_to_prop_assembly,
+)
 
 
 def _find_ui_file() -> Path:
@@ -157,6 +163,12 @@ class ViveTrackerWidget(QWidget):
         # 模型对象引用（用于跟踪已加载的模型）
         self._tracker_model_actors = {}  # {"left": VRTrackerModelActor, "right": VRTrackerModelActor}
         self._tracker_axes_actors = {}   # {"left": vtkPropAssembly, "right": vtkPropAssembly}
+        self._left_tracker_attach_axis_actor = None
+        self._left_tracker_attach_axis_enabled = False
+        self._left_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
+        self._right_tracker_attach_axis_actor = None
+        self._right_tracker_attach_axis_enabled = False
+        self._right_tracker_attach_axis_offset_xyz = DEFAULT_ATTACH_AXIS_OFFSET_XYZ
         self._lighthouse_model_actors = {}  # {lighthouse_name: LighthouseModelActor}
         
         # ── VTK 对象缓存（避免每帧新建） ────────────────────
@@ -164,6 +176,18 @@ class ViveTrackerWidget(QWidget):
         self._axes_matrix_cache = {}     # {"left": vtkMatrix4x4, "right": vtkMatrix4x4}
         # 记录最后一次坐标轴更新的位置和四元数，用于变化检测
         self._last_axes_pose = {}        # {"left": (pos, quat), "right": (pos, quat)}
+        self._left_attach_axis_transform_cache = None
+        self._left_attach_axis_matrix_cache = None
+        self._last_left_attach_axis_pose: tuple[
+            tuple[float, float, float],
+            tuple[float, float, float, float],
+        ] | None = None
+        self._right_attach_axis_transform_cache = None
+        self._right_attach_axis_matrix_cache = None
+        self._last_right_attach_axis_pose: tuple[
+            tuple[float, float, float],
+            tuple[float, float, float, float],
+        ] | None = None
         
         # 追踪信息tab管理器
         self._info_tab_manager = InfoTabManager(self)
@@ -571,6 +595,7 @@ class ViveTrackerWidget(QWidget):
                     except Exception as e:
                         print(f"[ModelCallback] 加载左手模型失败：{e}")
                 elif not is_online and self._renderer is not None and self._model_unload_callback is not None:
+                    self.remove_left_tracker_attach_axis()
                     try:
                         self._model_unload_callback("left", self._renderer)
                     except Exception as e:
@@ -589,6 +614,7 @@ class ViveTrackerWidget(QWidget):
                     except Exception as e:
                         print(f"[ModelCallback] 加载右手模型失败：{e}")
                 elif not is_online and self._renderer is not None and self._model_unload_callback is not None:
+                    self.remove_right_tracker_attach_axis()
                     try:
                         self._model_unload_callback("right", self._renderer)
                     except Exception as e:
@@ -634,11 +660,13 @@ class ViveTrackerWidget(QWidget):
             position_xyz: 位置 (x, y, z)，单位：米
             quat_wxyz: 四元数 (w, x, y, z)
         """
-        if side not in self._tracker_model_actors:
-            return
-        
-        actor = self._tracker_model_actors[side]
-        if actor is None:
+        actor = self._tracker_model_actors.get(side)
+        axes_actor = self._tracker_axes_actors.get(side)
+        has_attach_axis = (
+            (side == "left" and self._left_tracker_attach_axis_actor is not None)
+            or (side == "right" and self._right_tracker_attach_axis_actor is not None)
+        )
+        if actor is None and axes_actor is None and not has_attach_axis:
             return
         
         try:
@@ -661,10 +689,10 @@ class ViveTrackerWidget(QWidget):
             qx, qy, qz, qw = quat_wxyz[1], quat_wxyz[2], quat_wxyz[3], quat_wxyz[0]
             
             # 更新追踪器 3D 模型的位置和旋转（使用带偏差的最终位置）
-            actor.set_position_and_rotation(final_position, (qx, qy, qz, qw))
+            if actor is not None:
+                actor.set_position_and_rotation(final_position, (qx, qy, qz, qw))
             
             # 同时更新坐标轴的位置和旋转
-            axes_actor = self._tracker_axes_actors.get(side)
             if axes_actor is not None:
                 try:
                     # ── 变化检测：检查位置和旋转是否改变 ────────────────
@@ -765,6 +793,17 @@ class ViveTrackerWidget(QWidget):
                     
                 except Exception as e:
                     print(f"[ModelPose] ⚠ {side} 手坐标轴更新警告：{e}")
+
+            if side == "left" and self._left_tracker_attach_axis_actor is not None:
+                try:
+                    self._update_left_tracker_attach_axis_pose(final_position, quat_wxyz)
+                except Exception as e:
+                    print(f"[ModelPose] ⚠ 左手附加点坐标轴更新警告：{e}")
+            elif side == "right" and self._right_tracker_attach_axis_actor is not None:
+                try:
+                    self._update_right_tracker_attach_axis_pose(final_position, quat_wxyz)
+                except Exception as e:
+                    print(f"[ModelPose] ⚠ 右手附加点坐标轴更新警告：{e}")
                         
         except Exception as e:
             print(f"[ModelPose] 更新 {side} 模型位置失败：{e}")
@@ -1013,6 +1052,248 @@ class ViveTrackerWidget(QWidget):
             axes_actor: vtkPropAssembly 实例
         """
         self._tracker_axes_actors[side] = axes_actor
+
+    def has_left_tracker_attach_axis(self) -> bool:
+        """返回左手附加点坐标轴是否已创建。"""
+        return self._left_tracker_attach_axis_actor is not None
+
+    def has_right_tracker_attach_axis(self) -> bool:
+        """返回右手附加点坐标轴是否已创建。"""
+        return self._right_tracker_attach_axis_actor is not None
+
+    def get_left_tracker_attach_axis_offset_xyz(self) -> tuple[float, float, float]:
+        """返回左手附加点的本地偏移量。"""
+        return self._left_tracker_attach_axis_offset_xyz
+
+    def get_right_tracker_attach_axis_offset_xyz(self) -> tuple[float, float, float]:
+        """返回右手附加点的本地偏移量。"""
+        return self._right_tracker_attach_axis_offset_xyz
+
+    def set_left_tracker_attach_axis_offset_xyz(self, offset_xyz: tuple[float, float, float]) -> None:
+        """设置左手附加点的本地偏移量。"""
+        self._left_tracker_attach_axis_offset_xyz = (
+            float(offset_xyz[0]),
+            float(offset_xyz[1]),
+            float(offset_xyz[2]),
+        )
+        self._last_left_attach_axis_pose = None
+
+        tracker_position: tuple[float, float, float] | None = None
+        tracker_quat: tuple[float, float, float, float] | None = None
+        with self._data_lock:
+            has_valid_pose = self._left_data.valid
+            if has_valid_pose:
+                tracker_position = self.compose_tracker_data_display_position_xyz(self._left_data)
+                tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._left_data)
+
+        if self._left_tracker_attach_axis_actor is not None and tracker_position is not None and tracker_quat is not None:
+            self._update_left_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_left_attach_axis_offset_values"):
+            cali_apply_widget.sync_left_attach_axis_offset_values()
+
+    def set_right_tracker_attach_axis_offset_xyz(self, offset_xyz: tuple[float, float, float]) -> None:
+        """设置右手附加点的本地偏移量。"""
+        self._right_tracker_attach_axis_offset_xyz = (
+            float(offset_xyz[0]),
+            float(offset_xyz[1]),
+            float(offset_xyz[2]),
+        )
+        self._last_right_attach_axis_pose = None
+
+        tracker_position: tuple[float, float, float] | None = None
+        tracker_quat: tuple[float, float, float, float] | None = None
+        with self._data_lock:
+            has_valid_pose = self._right_data.valid
+            if has_valid_pose:
+                tracker_position = self.compose_tracker_data_display_position_xyz(self._right_data)
+                tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._right_data)
+
+        if self._right_tracker_attach_axis_actor is not None and tracker_position is not None and tracker_quat is not None:
+            self._update_right_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_right_attach_axis_offset_values"):
+            cali_apply_widget.sync_right_attach_axis_offset_values()
+
+    def create_left_tracker_attach_axis(self) -> bool:
+        """创建左手 Vive Tracker 附加点坐标轴。"""
+        if self._renderer is None:
+            print("[AttachAxis] VTK 渲染器不可用，无法创建左手附加点")
+            return False
+
+        with self._data_lock:
+            if not self._left_data.valid:
+                print("[AttachAxis] 左手 Vive Tracker 当前无有效数据，未创建附加点")
+                return False
+            tracker_position = self.compose_tracker_data_display_position_xyz(self._left_data)
+            tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._left_data)
+
+        if self._left_tracker_attach_axis_actor is None:
+            actor = build_vive_tracker_attach_axis_actor()
+            self._renderer.AddActor(actor)
+            self._left_tracker_attach_axis_actor = actor
+
+        self._left_tracker_attach_axis_enabled = True
+        self._update_left_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+        self._sync_left_tracker_attach_axis_button_state()
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def create_right_tracker_attach_axis(self) -> bool:
+        """创建右手 Vive Tracker 附加点坐标轴。"""
+        if self._renderer is None:
+            print("[AttachAxis] VTK 渲染器不可用，无法创建右手附加点")
+            return False
+
+        with self._data_lock:
+            if not self._right_data.valid:
+                print("[AttachAxis] 右手 Vive Tracker 当前无有效数据，未创建附加点")
+                return False
+            tracker_position = self.compose_tracker_data_display_position_xyz(self._right_data)
+            tracker_quat = self.compose_tracker_data_display_quaternion_wxyz(self._right_data)
+
+        if self._right_tracker_attach_axis_actor is None:
+            actor = build_vive_tracker_attach_axis_actor()
+            self._renderer.AddActor(actor)
+            self._right_tracker_attach_axis_actor = actor
+
+        self._right_tracker_attach_axis_enabled = True
+        self._update_right_tracker_attach_axis_pose(tracker_position, tracker_quat, force=True)
+        self._sync_right_tracker_attach_axis_button_state()
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def remove_left_tracker_attach_axis(self) -> bool:
+        """移除左手 Vive Tracker 附加点坐标轴。"""
+        actor = self._left_tracker_attach_axis_actor
+        if actor is None:
+            self._left_tracker_attach_axis_enabled = False
+            self._sync_left_tracker_attach_axis_button_state()
+            return False
+
+        if self._renderer is not None:
+            try:
+                self._renderer.RemoveActor(actor)
+            except Exception as e:
+                print(f"[AttachAxis] 移除左手附加点失败：{e}")
+
+        self._left_tracker_attach_axis_actor = None
+        self._left_tracker_attach_axis_enabled = False
+        self._left_attach_axis_transform_cache = None
+        self._left_attach_axis_matrix_cache = None
+        self._last_left_attach_axis_pose = None
+        self._sync_left_tracker_attach_axis_button_state()
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def remove_right_tracker_attach_axis(self) -> bool:
+        """移除右手 Vive Tracker 附加点坐标轴。"""
+        actor = self._right_tracker_attach_axis_actor
+        if actor is None:
+            self._right_tracker_attach_axis_enabled = False
+            self._sync_right_tracker_attach_axis_button_state()
+            return False
+
+        if self._renderer is not None:
+            try:
+                self._renderer.RemoveActor(actor)
+            except Exception as e:
+                print(f"[AttachAxis] 移除右手附加点失败：{e}")
+
+        self._right_tracker_attach_axis_actor = None
+        self._right_tracker_attach_axis_enabled = False
+        self._right_attach_axis_transform_cache = None
+        self._right_attach_axis_matrix_cache = None
+        self._last_right_attach_axis_pose = None
+        self._sync_right_tracker_attach_axis_button_state()
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+        return True
+
+    def _sync_left_tracker_attach_axis_button_state(self) -> None:
+        """同步应用定位页中左手附加点按钮的文本。"""
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_left_attach_axis_button_text"):
+            cali_apply_widget.sync_left_attach_axis_button_text()
+
+    def _sync_right_tracker_attach_axis_button_state(self) -> None:
+        """同步应用定位页中右手附加点按钮的文本。"""
+        cali_apply_widget = self._cali_apply_tab_manager.get_cali_apply_widget()
+        if cali_apply_widget is not None and hasattr(cali_apply_widget, "sync_right_attach_axis_button_text"):
+            cali_apply_widget.sync_right_attach_axis_button_text()
+
+    def _update_left_tracker_attach_axis_pose(
+        self,
+        tracker_position_xyz: tuple[float, float, float],
+        tracker_quat_wxyz: tuple[float, float, float, float],
+        force: bool = False,
+    ) -> None:
+        """更新左手附加点坐标轴的位置和姿态。"""
+        if not self._left_tracker_attach_axis_enabled or self._left_tracker_attach_axis_actor is None:
+            return
+
+        attach_position_xyz, attach_quat_wxyz = compose_vive_tracker_attach_axis_pose(
+            tracker_position_xyz,
+            tracker_quat_wxyz,
+            self._left_tracker_attach_axis_offset_xyz,
+        )
+        current_pose = (attach_position_xyz, attach_quat_wxyz)
+
+        if not force and self._last_left_attach_axis_pose == current_pose:
+            return
+
+        self._last_left_attach_axis_pose = current_pose
+        self._left_attach_axis_matrix_cache, self._left_attach_axis_transform_cache = apply_pose_to_prop_assembly(
+            self._left_tracker_attach_axis_actor,
+            attach_position_xyz,
+            attach_quat_wxyz,
+            self._left_attach_axis_matrix_cache,
+            self._left_attach_axis_transform_cache,
+        )
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
+
+    def _update_right_tracker_attach_axis_pose(
+        self,
+        tracker_position_xyz: tuple[float, float, float],
+        tracker_quat_wxyz: tuple[float, float, float, float],
+        force: bool = False,
+    ) -> None:
+        """更新右手附加点坐标轴的位置和姿态。"""
+        if not self._right_tracker_attach_axis_enabled or self._right_tracker_attach_axis_actor is None:
+            return
+
+        attach_position_xyz, attach_quat_wxyz = compose_vive_tracker_attach_axis_pose(
+            tracker_position_xyz,
+            tracker_quat_wxyz,
+            self._right_tracker_attach_axis_offset_xyz,
+        )
+        current_pose = (attach_position_xyz, attach_quat_wxyz)
+
+        if not force and self._last_right_attach_axis_pose == current_pose:
+            return
+
+        self._last_right_attach_axis_pose = current_pose
+        self._right_attach_axis_matrix_cache, self._right_attach_axis_transform_cache = apply_pose_to_prop_assembly(
+            self._right_tracker_attach_axis_actor,
+            attach_position_xyz,
+            attach_quat_wxyz,
+            self._right_attach_axis_matrix_cache,
+            self._right_attach_axis_transform_cache,
+        )
+
+        if self._render_request_callback is not None:
+            self._render_request_callback()
     
     def update_lighthouse_model_pose(self, lighthouse_name: str, position_xyz: tuple, quat_wxyz: tuple):
         """更新基站 3D 模型的位置和旋转（使用最终位置）。
@@ -1112,6 +1393,8 @@ class ViveTrackerWidget(QWidget):
     
     def _unload_all_tracker_models(self):
         """卸载所有已加载的 VR 追踪器模型。"""
+        self.remove_left_tracker_attach_axis()
+        self.remove_right_tracker_attach_axis()
         for side in ["left", "right"]:
             if self._model_unload_callback is not None and self._renderer is not None:
                 try:

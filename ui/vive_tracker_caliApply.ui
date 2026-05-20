@@ -70,6 +70,116 @@
      </property>
     </widget>
    </item>
+    <item>
+     <widget class="QGroupBox" name="leftAttachAxisGroupBox">
+      <property name="title">
+        <string>左手附加点</string>
+      </property>
+      <layout class="QVBoxLayout" name="leftAttachAxisLayout">
+        <item>
+         <widget class="QPushButton" name="leftAttachAxisButton">
+          <property name="text">
+            <string>附加左手附加点</string>
+          </property>
+         </widget>
+        </item>
+          <item>
+           <layout class="QHBoxLayout" name="leftAttachAxisOffsetLayout">
+            <item>
+             <widget class="QLabel" name="leftAttachAxisOffsetLabel">
+              <property name="text">
+               <string>偏移量(m)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="leftAttachAxisXEdit">
+              <property name="text">
+               <string>0.0000</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="leftAttachAxisYEdit">
+              <property name="text">
+               <string>0.0000</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="leftAttachAxisZEdit">
+              <property name="text">
+               <string>0.2000</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="leftAttachAxisSetButton">
+              <property name="text">
+               <string>设置</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QGroupBox" name="rightAttachAxisGroupBox">
+      <property name="title">
+       <string>右手附加点</string>
+      </property>
+      <layout class="QVBoxLayout" name="rightAttachAxisLayout">
+       <item>
+      <widget class="QPushButton" name="rightAttachAxisButton">
+       <property name="text">
+        <string>附加右手附加点</string>
+       </property>
+      </widget>
+       </item>
+       <item>
+      <layout class="QHBoxLayout" name="rightAttachAxisOffsetLayout">
+       <item>
+        <widget class="QLabel" name="rightAttachAxisOffsetLabel">
+         <property name="text">
+        <string>偏移量(m)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="rightAttachAxisXEdit">
+         <property name="text">
+        <string>0.0000</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="rightAttachAxisYEdit">
+         <property name="text">
+        <string>0.0000</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="rightAttachAxisZEdit">
+         <property name="text">
+        <string>0.2000</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="rightAttachAxisSetButton">
+         <property name="text">
+        <string>设置</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
