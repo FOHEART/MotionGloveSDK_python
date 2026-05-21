@@ -89,6 +89,12 @@ MotionGloveSDK_python/
 
 ---
 
+## Ubuntu下安装Steam/SteamVR 教程
+
+```
+https://github.com/FOHEART/Ubuntu_envConfig/blob/main/Install_SteamVR_Linux/Install_SteamVR_Linux.md
+```
+
 ## 系统需求
 
 ### 硬件要求
@@ -104,7 +110,7 @@ MotionGloveSDK_python/
 |---|---|
 | CPU 核心数 | ≥ 8 核 |
 | 内存 | ≥ 12 GB |
-| 存储 | ≥ 500 MB（用于依赖库和数据文件） |
+| 存储 | ≥ 10 GB（用于依赖库和数据文件） |
 
 **配置不足的影响：**
 
