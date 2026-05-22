@@ -69,9 +69,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._auto_attach_retry_timer.setInterval(100)
         self._auto_attach_retry_timer.timeout.connect(self._process_pending_auto_attach_apply)
         self._apply_button = None
-        self._cancel_button = None
         self._apply_right_button = None
-        self._cancel_right_button = None
         self._left_attach_axis_button = None
         self._left_attach_axis_x_edit = None
         self._left_attach_axis_y_edit = None
@@ -122,9 +120,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
         layout.addWidget(self._ui)
 
         self._apply_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "applyLocationButton"))
-        self._cancel_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "cancelApplyLocationButton"))
         self._apply_right_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "applyRightLocationButton"))
-        self._cancel_right_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "cancelApplyRightLocationButton"))
         self._left_attach_axis_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "leftAttachAxisButton"))
         self._left_attach_axis_x_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "leftAttachAxisXEdit"))
         self._left_attach_axis_y_edit = cast(QLineEdit | None, self._find_ui_child(QLineEdit, "leftAttachAxisYEdit"))
@@ -148,9 +144,7 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self._right_attach_axis_y_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisYRotationValueLabel"))
         self._right_attach_axis_z_rotation_value_label = cast(QLabel | None, self._find_ui_child(QLabel, "rightAttachAxisZRotationValueLabel"))
         assert self._apply_button is not None, "UI 控件未找到：applyLocationButton"
-        assert self._cancel_button is not None, "UI 控件未找到：cancelApplyLocationButton"
         assert self._apply_right_button is not None, "UI 控件未找到：applyRightLocationButton"
-        assert self._cancel_right_button is not None, "UI 控件未找到：cancelApplyRightLocationButton"
         assert self._left_attach_axis_button is not None, "UI 控件未找到：leftAttachAxisButton"
         assert self._left_attach_axis_x_edit is not None, "UI 控件未找到：leftAttachAxisXEdit"
         assert self._left_attach_axis_y_edit is not None, "UI 控件未找到：leftAttachAxisYEdit"
@@ -173,10 +167,8 @@ class ViveTrackerCaliApplyWidget(QWidget):
         assert self._right_attach_axis_x_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisXRotationValueLabel"
         assert self._right_attach_axis_y_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisYRotationValueLabel"
         assert self._right_attach_axis_z_rotation_value_label is not None, "UI 控件未找到：rightAttachAxisZRotationValueLabel"
-        self._apply_button.clicked.connect(self._on_apply_clicked)
-        self._cancel_button.clicked.connect(self._on_cancel_clicked)
-        self._apply_right_button.clicked.connect(self._on_apply_right_clicked)
-        self._cancel_right_button.clicked.connect(self._on_cancel_right_clicked)
+        self._apply_button.clicked.connect(self._on_toggle_left_apply_clicked)
+        self._apply_right_button.clicked.connect(self._on_toggle_right_apply_clicked)
         self._left_attach_axis_button.clicked.connect(self._on_left_attach_axis_clicked)
         self._left_attach_axis_set_button.clicked.connect(self._on_set_left_attach_axis_offset_clicked)
         self._left_attach_axis_x_rotation_slider.valueChanged.connect(self._on_left_attach_axis_rotation_value_changed)
@@ -197,6 +189,8 @@ class ViveTrackerCaliApplyWidget(QWidget):
         self.sync_left_attach_axis_rotation_values()
         self.sync_right_attach_axis_offset_values()
         self.sync_right_attach_axis_rotation_values()
+        self.sync_left_apply_location_button_text()
+        self.sync_right_apply_location_button_text()
         self.sync_left_attach_axis_button_text()
         self.sync_right_attach_axis_button_text()
 
@@ -210,16 +204,6 @@ class ViveTrackerCaliApplyWidget(QWidget):
             raise RuntimeError("无法找到 applyLocationButton 控件")
         return self._apply_button
 
-    def _resolve_cancel_button(self) -> QPushButton:
-        """安全获取取消应用定位按钮。"""
-        if self._cancel_button is not None and isValid(self._cancel_button):
-            return self._cancel_button
-
-        self._cancel_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "cancelApplyLocationButton"))
-        if self._cancel_button is None:
-            raise RuntimeError("无法找到 cancelApplyLocationButton 控件")
-        return self._cancel_button
-
     def _resolve_apply_right_button(self) -> QPushButton:
         """安全获取右手应用定位按钮。"""
         if self._apply_right_button is not None and isValid(self._apply_right_button):
@@ -229,16 +213,6 @@ class ViveTrackerCaliApplyWidget(QWidget):
         if self._apply_right_button is None:
             raise RuntimeError("无法找到 applyRightLocationButton 控件")
         return self._apply_right_button
-
-    def _resolve_cancel_right_button(self) -> QPushButton:
-        """安全获取右手取消应用定位按钮。"""
-        if self._cancel_right_button is not None and isValid(self._cancel_right_button):
-            return self._cancel_right_button
-
-        self._cancel_right_button = cast(QPushButton | None, self._find_ui_child(QPushButton, "cancelApplyRightLocationButton"))
-        if self._cancel_right_button is None:
-            raise RuntimeError("无法找到 cancelApplyRightLocationButton 控件")
-        return self._cancel_right_button
 
     def _resolve_left_attach_axis_button(self) -> QPushButton:
         """安全获取左手附加点切换按钮。"""
@@ -452,10 +426,12 @@ class ViveTrackerCaliApplyWidget(QWidget):
         """设置左手应用定位状态。"""
         if self._vive_tracker_widget is None:
             print("[CaliApply] ViveTrackerWidget 不可用，无法应用定位")
+            self.sync_left_apply_location_button_text()
             return False
 
         if enabled:
             if self._vive_tracker_widget.is_left_hand_root_follow_tracker_enabled():
+                self.sync_left_apply_location_button_text()
                 return True
 
             success = self._vive_tracker_widget.enable_left_hand_root_follow_tracker(True)
@@ -463,20 +439,24 @@ class ViveTrackerCaliApplyWidget(QWidget):
                 print("[CaliApply] 已启用：左手骨架将整体平移到左手 Vive Tracker 基准点")
             elif not suppress_enable_failure:
                 print("[CaliApply] 左手 Vive Tracker 当前无有效数据，未启用应用定位")
+            self.sync_left_apply_location_button_text()
             return success
 
         self._vive_tracker_widget.enable_left_hand_root_follow_tracker(False)
         print("[CaliApply] 已取消：左手骨架恢复使用原始位置")
+        self.sync_left_apply_location_button_text()
         return True
 
     def _set_right_apply_location_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
         """设置右手应用定位状态。"""
         if self._vive_tracker_widget is None:
             print("[CaliApply] ViveTrackerWidget 不可用，无法应用右手定位")
+            self.sync_right_apply_location_button_text()
             return False
 
         if enabled:
             if self._vive_tracker_widget.is_right_hand_root_follow_tracker_enabled():
+                self.sync_right_apply_location_button_text()
                 return True
 
             success = self._vive_tracker_widget.enable_right_hand_root_follow_tracker(True)
@@ -484,10 +464,12 @@ class ViveTrackerCaliApplyWidget(QWidget):
                 print("[CaliApply] 已启用：右手骨架将整体平移到右手 Vive Tracker 基准点")
             elif not suppress_enable_failure:
                 print("[CaliApply] 右手 Vive Tracker 当前无有效数据，未启用右手应用定位")
+            self.sync_right_apply_location_button_text()
             return success
 
         self._vive_tracker_widget.enable_right_hand_root_follow_tracker(False)
         print("[CaliApply] 已取消：右手骨架恢复使用原始位置")
+        self.sync_right_apply_location_button_text()
         return True
 
     def _set_left_attach_axis_enabled(self, enabled: bool, *, suppress_enable_failure: bool = False) -> bool:
@@ -615,21 +597,19 @@ class ViveTrackerCaliApplyWidget(QWidget):
         if not any(self._auto_attach_pending.values()) and self._auto_attach_retry_timer.isActive():
             self._auto_attach_retry_timer.stop()
 
-    def _on_apply_clicked(self):
-        """启用左手骨架整体跟随左手 Vive Tracker。"""
-        self._set_left_apply_location_enabled(True)
+    def _on_toggle_left_apply_clicked(self):
+        """切换左手应用定位状态。"""
+        enabled = False
+        if self._vive_tracker_widget is not None:
+            enabled = self._vive_tracker_widget.is_left_hand_root_follow_tracker_enabled()
+        self._set_left_apply_location_enabled(not enabled)
 
-    def _on_cancel_clicked(self):
-        """取消应用定位，恢复原始左手骨架位置。"""
-        self._set_left_apply_location_enabled(False)
-
-    def _on_apply_right_clicked(self):
-        """启用右手骨架整体跟随右手 Vive Tracker。"""
-        self._set_right_apply_location_enabled(True)
-
-    def _on_cancel_right_clicked(self):
-        """取消右手应用定位，恢复原始右手骨架位置。"""
-        self._set_right_apply_location_enabled(False)
+    def _on_toggle_right_apply_clicked(self):
+        """切换右手应用定位状态。"""
+        enabled = False
+        if self._vive_tracker_widget is not None:
+            enabled = self._vive_tracker_widget.is_right_hand_root_follow_tracker_enabled()
+        self._set_right_apply_location_enabled(not enabled)
 
     def sync_left_attach_axis_button_text(self):
         """同步左手附加点按钮文本。"""
@@ -641,6 +621,30 @@ class ViveTrackerCaliApplyWidget(QWidget):
 
         left_attach_axis_button.setText(
             "删除左手附加点" if has_attach_axis else "附加左手附加点"
+        )
+
+    def sync_left_apply_location_button_text(self):
+        """同步左手应用定位按钮文本。"""
+        apply_button = self._resolve_apply_button()
+
+        is_enabled = False
+        if self._vive_tracker_widget is not None:
+            is_enabled = self._vive_tracker_widget.is_left_hand_root_follow_tracker_enabled()
+
+        apply_button.setText(
+            "取消应用左手定位" if is_enabled else "应用左手定位"
+        )
+
+    def sync_right_apply_location_button_text(self):
+        """同步右手应用定位按钮文本。"""
+        apply_right_button = self._resolve_apply_right_button()
+
+        is_enabled = False
+        if self._vive_tracker_widget is not None:
+            is_enabled = self._vive_tracker_widget.is_right_hand_root_follow_tracker_enabled()
+
+        apply_right_button.setText(
+            "取消应用右手定位" if is_enabled else "应用右手定位"
         )
 
     def sync_right_attach_axis_button_text(self):

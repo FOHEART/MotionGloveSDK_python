@@ -56,6 +56,9 @@ MotionGloveSDK_python/
 │
 ├── config.json                        # OpenVR 全局配置文件（HMD/控制器/追踪器/手部映射）
 │
+├── docs/                              # 文档文件夹
+│   └── CSV_Guide.md                   # CSV 文件加载、回放与转换完整指南
+│
 ├── fonts/
 │   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
 │
@@ -380,25 +383,7 @@ python motionGloveSDK_example3_3dView.py
 
 MotionGlove 软件可将录制的动作导出为 CSV 文件。此模式加载该文件并按选定帧率逐帧回放，无需连接手套硬件。
 
-**左侧面板（CsvImportWidget）功能和操作流程：**
-
-| 控件 / 字段 | 说明 |
-|---|---|
-| 选择文件… 按钮 | 打开文件对话框，选择 MotionGlove 导出的 `.csv` 文件；选中后立即预加载全部帧到内存并显示第一帧 |
-| 文件路径框 | 显示当前已加载文件的完整路径（只读） |
-| 帧率下拉框 | 选择回放帧率：10 / 24 / 30 / 60 Hz（默认 60 Hz）；播放中切换立即生效 |
-| 帧号标签 | 显示当前帧号和总帧数（格式：`当前帧/总帧数 (百分比%)`） |
-| 进度条 | 拖动可跳转到任意位置；按下时暂停推进，松开时跳转到目标帧 |
-| 开始播放 / 暂停播放 按钮 | 切换播放和暂停状态；播放到末帧后自动停止 |
-| 重置 按钮 | 停止播放并回到第一帧 |
-
-**操作流程：**
-1. 将 `APP_MODE` 改为 `AppMode.CSV_PLAYBACK` 后运行脚本
-2. 点击 **选择文件…**，选择 MotionGlove 导出的 CSV 文件；加载完成后状态栏显示总帧数，3D 场景显示第一帧
-3. 在帧率下拉框中选择所需回放速度
-4. 点击 **开始播放** 开始逐帧回放；可随时点击 **暂停播放** 暂停
-5. 拖动进度条可跳转到任意帧，松手后场景立即更新到目标帧，再次点击 **开始播放** 从该帧继续
-6. 播放到末帧后自动停止，点击 **重置** 可回到第一帧重新播放
+详细的 CSV 回放操作指南、文件加载和转换为 BVH 格式的说明，请参考 [CSV 文件加载、回放与转换指南](./docs/CSV_Guide.md)。
 
 ---
 
@@ -767,109 +752,6 @@ while True:
             x, y, z, yaw, pitch, roll = pose
             # 处理追踪器位置和旋转...
 ```
-
----
-
-## CSV → BVH 转换
-
-`src/csv_to_bvh.py` 提供将 MotionGlove 导出 CSV 文件转换为标准 BVH 动捕文件的功能，可在 3D 查看器的 CSV 回放模式中通过 **"导出 BVH…"** 按钮一键调用，也可以作为模块在代码中直接使用。
-
-### 使用方式
-
-**通过 3D 查看器界面：**
-
-1. 启动 3D 查看器并切换到 CSV 回放模式（启动时选择 **CSV 文件回放**）
-2. 点击 **"选择文件…"** 加载 CSV 文件
-3. 点击 **"导出 BVH…"**，转换完成后弹窗提示保存路径
-4. BVH 文件自动保存在与 CSV 文件相同的目录下，文件名相同，扩展名改为 `.bvh`
-
-**通过代码调用：**
-
-```python
-from src.csv_to_bvh import convert_csv_to_bvh
-
-# 输出路径默认与 CSV 同目录同名，扩展名改为 .bvh
-out_path = convert_csv_to_bvh("path/to/recording.csv")
-
-# 也可以指定输出路径
-out_path = convert_csv_to_bvh("path/to/recording.csv", "path/to/output.bvh")
-```
-
-### 转换流程
-
-```
-CSV 文件
-│
-├─ 第 1 行（列名表头）         跳过
-│
-├─ 第 1 帧（T-pose）           用于计算 BVH HIERARCHY OFFSET
-│   每根骨骼：pos(全局绝对, 米) + euler(ZXY, 度)
-│   → 父子相对位移 × 100 → OFFSET(厘米)
-│
-├─ 前 10 帧时间戳              推算平均帧间隔 → BVH Frame Time
-│
-└─ 全部帧（含第 1 帧）
-    每帧每骨骼：
-      位置：(当前骨骼全局坐标 − 父骨骼全局坐标) × 100  [厘米]
-      旋转：ZXY 欧拉 → 四元数 → ZYX 欧拉               [度]
-    → 写入 BVH MOTION 段，每帧一行，258 个数值
-         (43 关节 × 6 通道，含合成 ROOT)
-```
-
-### 坐标系与单位
-
-| 项目 | CSV | BVH |
-|---|---|---|
-| 位置单位 | 米 | 厘米（× 100） |
-| 位置坐标性质 | 全局绝对坐标 | 父子相对偏移 |
-| 旋转顺序 | ZXY（内旋） | ZYX（外旋，通道顺序 Zrot Yrot Xrot） |
-| 坐标系朝向 | OpenGL 标准（Y 轴朝上，指尖朝 Y+） | 同左，无需轴变换 |
-
-### 骨骼层级结构
-
-BVH 文件包含 **43 个关节**，骨骼结构如下：
-
-```
-ROOT ROOT               ← 合成根节点，位置/旋转始终为零
-├── RightHand
-│   ├── RightHandThumb1 → Thumb2 → Thumb3 → Thumb4
-│   ├── RightHandIndex1 → Index2 → Index3 → Index4
-│   ├── RightHandMiddle1 → Middle2 → Middle3 → Middle4
-│   ├── RightHandRing1  → Ring2  → Ring3  → Ring4
-│   └── RightHandPinky1 → Pinky2 → Pinky3 → Pinky4
-└── LeftHand
-    └── （同右手，对称结构）
-```
-
-CSV 中的末端关节命名（`*3End`）在 BVH 中重命名为 `*4`：
-
-| CSV 骨骼名 | BVH 关节名 |
-|---|---|
-| `RightHandThumb3End` | `RightHandThumb4` |
-| `RightHandIndex3End` | `RightHandIndex4` |
-| `RightHandMiddle3End` | `RightHandMiddle4` |
-| `RightHandRing3End` | `RightHandRing4` |
-| `RightHandPinky3End` | `RightHandPinky4` |
-| `LeftHand*3End`（同上）| `LeftHand*4` |
-
-每个关节均有 **6 通道**（`Xposition Yposition Zposition Zrotation Yrotation Xrotation`），包括末端的 `*4` 节点（在链末附加无通道的 `End Site`）。
-
-### 注意事项
-
-**CSV 文件第一帧需为 T-pose：**
-BVH 文件头（`HIERARCHY` 段）的 `OFFSET` 值取自 CSV 第一帧的骨骼位置，作为静止姿态的骨骼参考偏移。如果第一帧不是 T-pose（所有关节旋转角为零的标准站姿），骨骼的静止形态会发生偏移，但不影响动画数据的正确性（因为每帧都有完整的 position channels，OFFSET 在播放时被覆盖）。
-
-**帧率自动检测：**
-转换器从 CSV 行头的时间戳字段（`time YYYY-MM-DD HH:MM:SS.mmm`）自动推算帧率，取前 10 帧时间戳的平均间隔作为 BVH 的 `Frame Time`。若 CSV 中无时间戳或无法解析，默认使用 60 Hz（`Frame Time: 0.016667`）。
-
-**第三方软件兼容性：**
-生成的 BVH 文件符合标准 BVH 格式（BioVision Hierarchy），可在 BVHacker、Blender、MotionBuilder、Unity、Unreal Engine 等软件中打开。注意 BVH 规范要求 `MOTION` 段前不能有空行，本转换器已处理此细节。
-
-BVH在线查看器：
-
-https://renkunzhao.github.io/motion_viewer/
-
-https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ---
 

@@ -50,23 +50,9 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="cancelApplyLocationButton">
-     <property name="text">
-      <string>取消左手应用定位</string>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QPushButton" name="applyRightLocationButton">
      <property name="text">
       <string>应用右手定位</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="cancelApplyRightLocationButton">
-     <property name="text">
-      <string>取消右手应用定位</string>
      </property>
     </widget>
    </item>
