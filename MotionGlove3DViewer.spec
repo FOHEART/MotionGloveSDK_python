@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('fonts', 'fonts'), ('ui', 'ui')]
+datas = [('fonts', 'fonts'), ('ui', 'ui'), ('translations', 'translations'), ('config.json', '.')]
 binaries = []
 hiddenimports = ['vtkmodules.all', 'vtkmodules.qt.QVTKRenderWindowInteractor', 'PySide6.QtWidgets', 'PySide6.QtCore', 'PySide6.QtGui']
 tmp_ret = collect_all('vtk')
@@ -9,6 +9,10 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('vtkmodules')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('PySide6')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('openvr')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('triad_openvr')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
@@ -21,7 +25,21 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'PyQt5',
+        'PyQt5.QtCore',
+        'PyQt5.QtGui',
+        'PyQt5.QtWidgets',
+        'PyQt5.sip',
+        'PyQt6',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'PySide2',
+        'PySide2.QtCore',
+        'PySide2.QtGui',
+        'PySide2.QtWidgets',
+    ],
     noarchive=False,
     optimize=0,
 )

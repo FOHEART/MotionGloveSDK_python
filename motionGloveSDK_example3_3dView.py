@@ -66,6 +66,26 @@ sys.path.insert(0, _DRAW3D_DIR)
 sys.path.insert(0, _LIBS_DIR)
 sys.path.insert(0, _UI_DIR)
 
+
+def _configure_qt_platform_env_early() -> None:
+    ci_mode = os.environ.get("MOTIONGLOVE_CI", "").strip().lower() in ("1", "true", "yes") or \
+              os.environ.get("CI", "").strip().lower() in ("1", "true", "yes")
+    ci_render_env = os.environ.get("MOTIONGLOVE_CI_RENDER", "").strip().lower()
+    ci_render_enabled = ci_render_env in ("1", "true", "yes") if ci_render_env else not sys.platform.startswith("win")
+
+    if ci_mode and ci_render_enabled:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    elif os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
+
+_configure_qt_platform_env_early()
+
+# Qt 全局属性必须在任何 QApplication 创建前设置。
+from PySide6.QtCore import Qt as _QtEarly
+from PySide6.QtWidgets import QApplication as _QAppEarly
+_QAppEarly.setAttribute(_QtEarly.AA_ShareOpenGLContexts)
+
 import vtk
 from vtk_axes import add_axes_to_renderer, build_local_axes_actor
 from camera_control import bind_space_reset_camera, setup_camera
@@ -1835,20 +1855,6 @@ def main():
     if _CI_MODE and not _CI_RENDER_ENABLED:
         _run_ci_no_render()
         return
-
-    # ── CI 离屏渲染路径：设置无头 Qt 平台 ──
-    if _CI_MODE and _CI_RENDER_ENABLED:
-        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    # VTK 使用 GLX (X11) 渲染；在 Wayland 会话下 Qt 默认选择 Wayland 后端，
-    # 两者不兼容会导致 BadWindow X Error。强制使用 xcb (X11/XWayland) 保持一致。
-    elif os.environ.get("XDG_SESSION_TYPE") == "wayland":
-        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
-
-    # ── Qt 全局属性（必须在 QApplication 构造前设置）──
-    # 修复 Linux/X11 上 VTK + Qt 组合时的 BadWindow X Error
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication as _QAppEarly
-    _QAppEarly.setAttribute(Qt.AA_ShareOpenGLContexts)
 
     app, window = _build_qt_app()
 

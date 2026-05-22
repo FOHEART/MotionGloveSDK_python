@@ -3,9 +3,17 @@
 Provides `read_config()` and `write_config()` with atomic writes.
 """
 import os
+import sys
 import json
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+def _resolve_root_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+ROOT = _resolve_root_dir()
 CONFIG_PATH = os.path.join(ROOT, "config.json")
 
 

@@ -59,6 +59,17 @@ class VRTrackerModelActor:
             Path(__file__).parent.parent / "triad_openvr" / "vr_tracker_vive_3_0" / "vr_tracker_vive_3_0.obj",
             Path.cwd() / "triad_openvr" / "vr_tracker_vive_3_0" / "vr_tracker_vive_3_0.obj",
         ]
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.insert(0, Path(meipass) / "triad_openvr" / "vr_tracker_vive_3_0" / "vr_tracker_vive_3_0.obj")
+
+        try:
+            exe_dir = Path(sys.executable).parent
+            candidates.insert(1, exe_dir / "_internal" / "triad_openvr" / "vr_tracker_vive_3_0" / "vr_tracker_vive_3_0.obj")
+            candidates.insert(2, exe_dir / "triad_openvr" / "vr_tracker_vive_3_0" / "vr_tracker_vive_3_0.obj")
+        except Exception:
+            pass
         
         for candidate in candidates:
             try:

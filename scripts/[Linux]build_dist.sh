@@ -25,5 +25,10 @@ pyinstaller \
     --workpath "$ROOT_DIR/build" \
     "$ROOT_DIR/MotionGlove3DViewer.spec"
 
+cp "$ROOT_DIR/config.json" "$ROOT_DIR/dist/MotionGlove3DViewer/config.json"
+mkdir -p "$ROOT_DIR/dist/MotionGlove3DViewer/_internal/triad_openvr"
+cp -r "$ROOT_DIR/triad_openvr/lh_basestation_vive" "$ROOT_DIR/dist/MotionGlove3DViewer/_internal/triad_openvr/"
+cp -r "$ROOT_DIR/triad_openvr/vr_tracker_vive_3_0" "$ROOT_DIR/dist/MotionGlove3DViewer/_internal/triad_openvr/"
+
 echo
 echo "[build] Done. Output: $ROOT_DIR/dist/MotionGlove3DViewer/"

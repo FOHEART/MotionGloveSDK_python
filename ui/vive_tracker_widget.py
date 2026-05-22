@@ -23,6 +23,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QIODevice, QTimer, Qt, QEvent
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu
+from shiboken6 import isValid
 
 # 导入 SteamVR 状态检查器
 from triad_openvr.steamvr_status_checker import SteamVRStatusChecker
@@ -390,6 +391,21 @@ class ViveTrackerWidget(QWidget):
         self._right_group = info_widget.get_groups()["right"]
         self._start_tracking_btn = info_widget.get_start_tracking_button()
         return info_widget
+
+    def _set_config_error_text(self, error_text: str) -> None:
+        """安全更新左右手配置标签中的错误信息。"""
+        try:
+            self._refresh_info_tab_widget_refs()
+        except RuntimeError:
+            return
+
+        for label in (self._left_config_label, self._right_config_label):
+            if label is None or not isValid(label):
+                continue
+            try:
+                label.setText(error_text)
+            except RuntimeError:
+                continue
 
     def _debug_dump_tab_state(self, reason: str):
         """打印当前 tab 状态，辅助定位切换异常。"""
@@ -1566,8 +1582,7 @@ class ViveTrackerWidget(QWidget):
             self._openvr_system = triad_openvr()
         except Exception as e:
             error_text = f"<font color='red'><b>OpenVR 初始化失败</b></font><br>{e}"
-            self._left_config_label.setText(error_text)
-            self._right_config_label.setText(error_text)
+            self._set_config_error_text(error_text)
             print(f"[StartTracking] 启动失败：OpenVR 初始化异常: {e}")
             return False
 

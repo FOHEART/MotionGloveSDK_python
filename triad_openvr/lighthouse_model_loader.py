@@ -1,13 +1,37 @@
 import os
+import sys
 import vtk
 
-_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-LIGHTHOUSE_MODEL_PATH = os.path.join(
-    _MODULE_DIR,
-    "lh_basestation_vive",
-    "lh_basestation_vive.obj",
-)
+def _find_lighthouse_model_path() -> str:
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(module_dir, "lh_basestation_vive", "lh_basestation_vive.obj"),
+        os.path.join(os.path.dirname(module_dir), "triad_openvr", "lh_basestation_vive", "lh_basestation_vive.obj"),
+        os.path.join(os.getcwd(), "triad_openvr", "lh_basestation_vive", "lh_basestation_vive.obj"),
+    ]
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(0, os.path.join(meipass, "triad_openvr", "lh_basestation_vive", "lh_basestation_vive.obj"))
+
+    try:
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        candidates.insert(1, os.path.join(exe_dir, "_internal", "triad_openvr", "lh_basestation_vive", "lh_basestation_vive.obj"))
+        candidates.insert(2, os.path.join(exe_dir, "triad_openvr", "lh_basestation_vive", "lh_basestation_vive.obj"))
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        try:
+            if os.path.isfile(candidate):
+                return candidate
+        except Exception:
+            continue
+
+    return candidates[0]
+
+LIGHTHOUSE_MODEL_PATH = _find_lighthouse_model_path()
 LIGHTHOUSE_MESH_DECIMATION_RATIO = 0.2
 
 class LighthouseModelLoader:
