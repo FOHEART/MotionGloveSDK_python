@@ -86,7 +86,7 @@
      </widget>
      <widget class="QWidget" name="tab_linker_hand">
       <attribute name="title">
-       <string>LinkerHand L10</string>
+       <string>LinkerHand O6</string>
       </attribute>
       <layout class="QVBoxLayout" name="layout_tab_linker_hand">
        <property name="leftMargin">

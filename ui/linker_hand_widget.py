@@ -57,10 +57,13 @@ def _ui_path() -> Path:
 
 
 class LinkerHandWidget(QWidget):
-    """Display left hand finger linker angles (Y-axis rotation sum)."""
+    """Display right hand finger linker angles (Y-axis rotation sum) for O6."""
     
     # Data send rate to LinkerHand (Hz)
     SEND_HZ: float = 30.0
+
+    # Thumb bend: max angle (degrees) for motor value mapping
+    THUMB_BEND_MAX_DEG: float = 90.0
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -96,16 +99,12 @@ class LinkerHandWidget(QWidget):
 
     def _bind_labels(self):
         row_specs = [
-            ("左手拇指根部", "lbl_text_thumb",  ["LeftHandThumb1",  "LeftHandThumb2",  "LeftHandThumb3"], "y"),
-            ("左手拇指侧摆", "lbl_text_thumb_adduction", ["LeftHandThumb1"], "y"),
-            ("左手食指根部", "lbl_text_index",  ["LeftHandIndex1",  "LeftHandIndex2",  "LeftHandIndex3"], "y"),
-            ("左手中指根部", "lbl_text_middle", ["LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3"], "y"),
-            ("左手无名指根部", "lbl_text_ring",  ["LeftHandRing1",   "LeftHandRing2",   "LeftHandRing3"], "y"),
-            ("左手小指根部", "lbl_text_pinky",  ["LeftHandPinky1",  "LeftHandPinky2",  "LeftHandPinky3"], "y"),
-            ("左手食指侧摆", "lbl_text_index_adduction", ["LeftHandIndex1"], "z"),
-            ("左手无名指侧摆", "lbl_text_ring_adduction", ["LeftHandRing1"], "z"),
-            ("左手小指侧摆", "lbl_text_pinky_adduction", ["LeftHandPinky1"], "z"),
-            ("左手拇指旋转", "lbl_text_thumb_rotation", ["LeftHandThumb1"], "z"),
+            ("右手拇指弯曲", "lbl_text_thumb",  ["RightHandThumb2",  "RightHandThumb3"], "y"),
+            ("右手拇指侧摆", "lbl_text_thumb_adduction", ["RightHandThumb1"], "y"),
+            ("右手食指弯曲", "lbl_text_index",  ["RightHandIndex1",  "RightHandIndex2",  "RightHandIndex3"], "y"),
+            ("右手中指弯曲", "lbl_text_middle", ["RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3"], "y"),
+            ("右手无名指弯曲", "lbl_text_ring",  ["RightHandRing1",   "RightHandRing2",   "RightHandRing3"], "y"),
+            ("右手小指弯曲", "lbl_text_pinky",  ["RightHandPinky1",  "RightHandPinky2",  "RightHandPinky3"], "y"),
         ]
 
         for finger_key, obj_name, bones, axis in row_specs:
@@ -139,15 +138,6 @@ class LinkerHandWidget(QWidget):
         self.lbl_motor_pinky = self._ui.findChild(QLabel, "lbl_motor_pinky")
         if self.lbl_motor_pinky is None:
             raise RuntimeError(f"UI 控件未找到：lbl_motor_pinky")
-        self.lbl_motor_index_adduction = self._ui.findChild(QLabel, "lbl_motor_index_adduction")
-        if self.lbl_motor_index_adduction is None:
-            raise RuntimeError(f"UI 控件未找到：lbl_motor_index_adduction")
-        self.lbl_motor_ring_adduction = self._ui.findChild(QLabel, "lbl_motor_ring_adduction")
-        if self.lbl_motor_ring_adduction is None:
-            raise RuntimeError(f"UI 控件未找到：lbl_motor_ring_adduction")
-        self.lbl_motor_pinky_adduction = self._ui.findChild(QLabel, "lbl_motor_pinky_adduction")
-        if self.lbl_motor_pinky_adduction is None:
-            raise RuntimeError(f"UI 控件未找到：lbl_motor_pinky_adduction")
 
         # Bind buttons
         self.btn_connect = self._ui.findChild(QPushButton, "btn_connect")
@@ -180,11 +170,11 @@ class LinkerHandWidget(QWidget):
                 log_lines.append(f"CAN 初始化结果: {'成功' if ok else '失败（继续尝试）'}")
 
                 from LinkerHand.linker_hand_api import LinkerHandApi
-                log_lines.append("正在连接灵巧手 (left L10) …")
+                log_lines.append("正在连接灵巧手 (right O6) …")
                 with self._connect_lock:
                     self._linker_api = LinkerHandApi(
-                        hand_type="left",
-                        hand_joint="L10",
+                        hand_type="right",
+                        hand_joint="O6",
                         can="can0",
                         modbus="None",
                     )
@@ -252,14 +242,14 @@ class LinkerHandWidget(QWidget):
             self._send_timer = None
 
     def _send_to_linker_hand(self):
-        """Build 10-element pose and call finger_move at SEND_HZ."""
+        """Build 6-element pose and call finger_move at SEND_HZ."""
         with self._connect_lock:
             api = self._linker_api
         if api is None:
             return
 
         # Extract all motor values from labels
-        motor_values = [255] * 10  # default all 255
+        motor_values = [255] * 6  # default all 255
 
         # Index 0: thumb motor value
         try:
@@ -306,30 +296,6 @@ class LinkerHandWidget(QWidget):
             text = self.lbl_motor_pinky.text()
             if "：" in text:
                 motor_values[5] = int(round(float(text.split("：")[1])))
-        except (ValueError, IndexError):
-            pass
-
-        # Index 6: index adduction motor value
-        try:
-            text = self.lbl_motor_index_adduction.text()
-            if "：" in text:
-                motor_values[6] = int(round(float(text.split("：")[1])))
-        except (ValueError, IndexError):
-            pass
-
-        # Index 7: ring adduction motor value
-        try:
-            text = self.lbl_motor_ring_adduction.text()
-            if "：" in text:
-                motor_values[7] = int(round(float(text.split("：")[1])))
-        except (ValueError, IndexError):
-            pass
-
-        # Index 8: pinky adduction motor value
-        try:
-            text = self.lbl_motor_pinky_adduction.text()
-            if "：" in text:
-                motor_values[8] = int(round(float(text.split("：")[1])))
         except (ValueError, IndexError):
             pass
 
@@ -420,38 +386,58 @@ class LinkerHandWidget(QWidget):
             total_abs = 0.0
             valid_count = 0
             
-            # Sum absolute rotation angles for the specified bones
-            for bone_name in bone_names:
-                try:
-                    bone_idx = BoneIndex[bone_name]
-                    skel = skeleton_by_index.get(bone_idx)
-                    if skel is None:
-                        skel = skeleton_by_name.get(bone_name)
-                    if skel is not None:
-                        angle_deg = extract_func(skel, channel_order)
-                        if angle_deg is not None:
-                            total_abs += abs(angle_deg)
-                            valid_count += 1
-                except (KeyError, ValueError):
-                    pass
+            if finger_key == "右手拇指弯曲":
+                # Thumb bend: sum Y angles with sign first, then abs
+                # Only negative Y values are valid (bending); positive → 0
+                total_signed = 0.0
+                for bone_name in bone_names:
+                    try:
+                        bone_idx = BoneIndex[bone_name]
+                        skel = skeleton_by_index.get(bone_idx)
+                        if skel is None:
+                            skel = skeleton_by_name.get(bone_name)
+                        if skel is not None:
+                            angle_deg = extract_func(skel, channel_order)
+                            if angle_deg is not None:
+                                # Clamp positive values to 0: only bending (negative) counts
+                                total_signed += min(angle_deg, 0.0)
+                                valid_count += 1
+                    except (KeyError, ValueError):
+                        pass
+                total_abs = abs(total_signed)
+            else:
+                # Other fingers: sum absolute rotation angles per bone
+                for bone_name in bone_names:
+                    try:
+                        bone_idx = BoneIndex[bone_name]
+                        skel = skeleton_by_index.get(bone_idx)
+                        if skel is None:
+                            skel = skeleton_by_name.get(bone_name)
+                        if skel is not None:
+                            angle_deg = extract_func(skel, channel_order)
+                            if angle_deg is not None:
+                                total_abs += abs(angle_deg)
+                                valid_count += 1
+                    except (KeyError, ValueError):
+                        pass
             
             # Always show a numeric value so the UI does not stay blank.
             label.setText(f"{info['base_text']}：{total_abs:.1f}")
         
-        # Calculate motor angle (inverse of thumb root value with range clamping)
+        # Calculate motor angle: clamp thumb bend to [0, THUMB_BEND_MAX_DEG], then invert
         try:
-            thumb_text = self.finger_labels["左手拇指根部"]["label"].text()
+            thumb_text = self.finger_labels["右手拇指弯曲"]["label"].text()
             if "：" in thumb_text:
                 raw_value = float(thumb_text.split("：")[1])
-                clamped_value = max(0.0, min(255.0, raw_value))
-                motor_value = 255.0 - clamped_value
-                self.lbl_motor_thumb.setText(f"拇指根部：{motor_value:.1f}")
+                clamped_value = max(0.0, min(self.THUMB_BEND_MAX_DEG, raw_value))
+                motor_value = 255.0 * (1.0 - clamped_value / self.THUMB_BEND_MAX_DEG)
+                self.lbl_motor_thumb.setText(f"拇指弯曲：{motor_value:.1f}")
         except (KeyError, ValueError, IndexError):
             pass
 
         # Calculate thumb adduction motor value: 0~120 → 255~0
         try:
-            adduction_text = self.finger_labels["左手拇指侧摆"]["label"].text()
+            adduction_text = self.finger_labels["右手拇指侧摆"]["label"].text()
             if "：" in adduction_text:
                 raw_adduction = float(adduction_text.split("：")[1])
                 clamped_adduction = max(0.0, min(120.0, raw_adduction))
@@ -461,79 +447,46 @@ class LinkerHandWidget(QWidget):
         except (KeyError, ValueError, IndexError):
             pass
 
-        # Calculate index adduction motor value: 0~30 → 0~255 (正向，不反向)
-        try:
-            index_adduction_text = self.finger_labels["左手食指侧摆"]["label"].text()
-            if "：" in index_adduction_text:
-                raw_index_adduction = float(index_adduction_text.split("：")[1])
-                clamped_index_adduction = max(0.0, min(30.0, raw_index_adduction))
-                motor_index_adduction = (clamped_index_adduction / 30.0) * 255.0
-                self.lbl_motor_index_adduction.setText(f"食指侧摆：{motor_index_adduction:.1f}")
-        except (KeyError, ValueError, IndexError):
-            pass
-
-        # Calculate ring adduction motor value: 0~30 → 0~255 (正向，不反向)
-        try:
-            ring_adduction_text = self.finger_labels["左手无名指侧摆"]["label"].text()
-            if "：" in ring_adduction_text:
-                raw_ring_adduction = float(ring_adduction_text.split("：")[1])
-                clamped_ring_adduction = max(0.0, min(30.0, raw_ring_adduction))
-                motor_ring_adduction = (clamped_ring_adduction / 30.0) * 255.0
-                self.lbl_motor_ring_adduction.setText(f"无名指侧摆：{motor_ring_adduction:.1f}")
-        except (KeyError, ValueError, IndexError):
-            pass
-
-        # Calculate pinky adduction motor value: 0~30 → 0~255 (正向，不反向)
-        try:
-            pinky_adduction_text = self.finger_labels["左手小指侧摆"]["label"].text()
-            if "：" in pinky_adduction_text:
-                raw_pinky_adduction = float(pinky_adduction_text.split("：")[1])
-                clamped_pinky_adduction = max(0.0, min(30.0, raw_pinky_adduction))
-                motor_pinky_adduction = (clamped_pinky_adduction / 30.0) * 255.0
-                self.lbl_motor_pinky_adduction.setText(f"小指侧摆：{motor_pinky_adduction:.1f}")
-        except (KeyError, ValueError, IndexError):
-            pass
-
         # Calculate index finger motor value: same as thumb (0~255 → 255~0)
         try:
-            index_text = self.finger_labels["左手食指根部"]["label"].text()
+            index_text = self.finger_labels["右手食指弯曲"]["label"].text()
             if "：" in index_text:
                 raw_index = float(index_text.split("：")[1])
                 clamped_index = max(0.0, min(255.0, raw_index))
                 motor_index = 255.0 - clamped_index
-                self.lbl_motor_index.setText(f"食指根部：{motor_index:.1f}")
+                self.lbl_motor_index.setText(f"食指弯曲：{motor_index:.1f}")
         except (KeyError, ValueError, IndexError):
             pass
 
         # Calculate middle finger motor value: same as thumb (0~255 → 255~0)
         try:
-            middle_text = self.finger_labels["左手中指根部"]["label"].text()
+            middle_text = self.finger_labels["右手中指弯曲"]["label"].text()
             if "：" in middle_text:
                 raw_middle = float(middle_text.split("：")[1])
                 clamped_middle = max(0.0, min(255.0, raw_middle))
                 motor_middle = 255.0 - clamped_middle
-                self.lbl_motor_middle.setText(f"中指根部：{motor_middle:.1f}")
+                self.lbl_motor_middle.setText(f"中指弯曲：{motor_middle:.1f}")
         except (KeyError, ValueError, IndexError):
             pass
 
         # Calculate ring finger motor value: same as thumb (0~255 → 255~0)
         try:
-            ring_text = self.finger_labels["左手无名指根部"]["label"].text()
+            ring_text = self.finger_labels["右手无名指弯曲"]["label"].text()
             if "：" in ring_text:
                 raw_ring = float(ring_text.split("：")[1])
                 clamped_ring = max(0.0, min(255.0, raw_ring))
                 motor_ring = 255.0 - clamped_ring
-                self.lbl_motor_ring.setText(f"无名指根部：{motor_ring:.1f}")
+                self.lbl_motor_ring.setText(f"无名指弯曲：{motor_ring:.1f}")
         except (KeyError, ValueError, IndexError):
             pass
 
         # Calculate pinky finger motor value: same as thumb (0~255 → 255~0)
         try:
-            pinky_text = self.finger_labels["左手小指根部"]["label"].text()
+            pinky_text = self.finger_labels["右手小指弯曲"]["label"].text()
             if "：" in pinky_text:
                 raw_pinky = float(pinky_text.split("：")[1])
                 clamped_pinky = max(0.0, min(255.0, raw_pinky))
                 motor_pinky = 255.0 - clamped_pinky
-                self.lbl_motor_pinky.setText(f"小指根部：{motor_pinky:.1f}")
+                self.lbl_motor_pinky.setText(f"小指弯曲：{motor_pinky:.1f}")
         except (KeyError, ValueError, IndexError):
             pass
