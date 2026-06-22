@@ -436,121 +436,149 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ---
 
-## LinkerHand（灵巧手）集成
+## LinkerHand O6 — 右手灵巧手配置
 
-`ui/linker_hand_widget.py` 提供灵巧手控制接口，实时计算左手各个手指的原始欧拉角，并将其转换为灵巧手电机控制信号。该模块通过定时器以 30 Hz 的频率更新显示和发送数据到灵巧手。
-
-### 左手原始角度（QGB_leftHandRawAngle）
-
-左手各个手指根部及侧摆的原始欧拉角计算。角度值为各个骨骼在指定轴向上的旋转角度绝对值之和。
-
-| 编号 | 中文名称 | 英文标识 | 计算方式 | 数据来源 | 计算逻辑 |
-|---|---|---|---|---|---|
-| 1 | 左手拇指根部 | LeftHandThumb_Base | 绝对值之和 | LeftHandThumb1、Thumb2、Thumb3 的 Y 轴旋转角 | `\|euler_y(Thumb1)\| + \|euler_y(Thumb2)\| + \|euler_y(Thumb3)\|` |
-| 2 | 左手拇指侧摆 | LeftHandThumb_Abduction | 绝对值 | LeftHandThumb1 的 Y 轴旋转角 | `\|euler_y(Thumb1)\|` |
-| 3 | 左手食指根部 | LeftHandIndex_Base | 绝对值之和 | LeftHandIndex1、Index2、Index3 的 Y 轴旋转角 | `\|euler_y(Index1)\| + \|euler_y(Index2)\| + \|euler_y(Index3)\|` |
-| 4 | 左手中指根部 | LeftHandMiddle_Base | 绝对值之和 | LeftHandMiddle1、Middle2、Middle3 的 Y 轴旋转角 | `\|euler_y(Middle1)\| + \|euler_y(Middle2)\| + \|euler_y(Middle3)\|` |
-| 5 | 左手无名指根部 | LeftHandRing_Base | 绝对值之和 | LeftHandRing1、Ring2、Ring3 的 Y 轴旋转角 | `\|euler_y(Ring1)\| + \|euler_y(Ring2)\| + \|euler_y(Ring3)\|` |
-| 6 | 左手小指根部 | LeftHandPinky_Base | 绝对值之和 | LeftHandPinky1、Pinky2、Pinky3 的 Y 轴旋转角 | `\|euler_y(Pinky1)\| + \|euler_y(Pinky2)\| + \|euler_y(Pinky3)\|` |
-| 7 | 左手食指侧摆 | LeftHandIndex_Abduction | 绝对值 | LeftHandIndex1 的 Z 轴旋转角 | `\|euler_z(Index1)\|` |
-| 8 | 左手无名指侧摆 | LeftHandRing_Abduction | 绝对值 | LeftHandRing1 的 Z 轴旋转角 | `\|euler_z(Ring1)\|` |
-| 9 | 左手小指侧摆 | LeftHandPinky_Abduction | 绝对值 | LeftHandPinky1 的 Z 轴旋转角 | `\|euler_z(Pinky1)\|` |
-| 10 | 左手拇指旋转 | LeftHandThumb_Rotation | 绝对值 | LeftHandThumb1 的 Z 轴旋转角 | `\|euler_z(Thumb1)\|` |
-
-**计算步骤：**
-
-1. 从最新帧的骨骼数据中提取各个手指骨骼的欧拉角或四元数
-2. 如果包含欧拉角数据，直接读取指定轴的角度；否则从四元数转换得出
-3. 对指定骨骼的指定轴角度取绝对值，求和得到最终的原始角度值
-4. 所有角度单位为 **度（°）**
-
-**数据来源：**
-
-- 欧拉角优先：若帧数据中 `contains_euler_degree` 标志为真，直接使用 `euler_degree[axis_index]`
-- 四元数转换：若仅有四元数数据，使用 `xsqeconverter.quat_to_euler_degree()` 进行旋转阶次转换
-- 通道顺序：根据 `frame.header.channel_order` 确定欧拉角旋转阶次（如 ZXY、ZYX 等）
+> 本文档记录 **O6 右手** 的硬件配置、关节映射、控制项。
+> 适用于当前分支 `LinkerHandO6`。
 
 ---
 
-### 灵巧手电机控制信号（QGB_motorAngle）
+### 硬件概览
 
-根据左手原始角度计算出灵巧手电机的控制信号（0–255 范围），这些信号将通过 CAN 总线发送到灵巧手硬件。
-
-| 编号 | 中文名称 | 英文标识 | 输入范围 | 输出范围 | 计算公式 | 映射方向 |
-|---|---|---|---|---|---|---|
-| 1 | 拇指根部 | Thumb_Base_Motor | 0–255（°） | 255–0 | `motor_value = 255 - clamp(raw_value, 0, 255)` | **反向** |
-| 2 | 拇指侧摆 | Thumb_Abduction_Motor | 0–120（°） | 255–0 | `motor_value = 255 - (clamp(raw_value, 0, 120) / 120) × 255` | **反向** |
-| 3 | 食指根部 | Index_Base_Motor | 0–255（°） | 255–0 | `motor_value = 255 - clamp(raw_value, 0, 255)` | **反向** |
-| 4 | 中指根部 | Middle_Base_Motor | 0–255（°） | 255–0 | `motor_value = 255 - clamp(raw_value, 0, 255)` | **反向** |
-| 5 | 无名指根部 | Ring_Base_Motor | 0–255（°） | 255–0 | `motor_value = 255 - clamp(raw_value, 0, 255)` | **反向** |
-| 6 | 小指根部 | Pinky_Base_Motor | 0–255（°） | 255–0 | `motor_value = 255 - clamp(raw_value, 0, 255)` | **反向** |
-| 7 | 食指侧摆 | Index_Abduction_Motor | 0–30（°） | 0–255 | `motor_value = (clamp(raw_value, 0, 30) / 30) × 255` | **正向** |
-| 8 | 无名指侧摆 | Ring_Abduction_Motor | 0–30（°） | 0–255 | `motor_value = (clamp(raw_value, 0, 30) / 30) × 255` | **正向** |
-| 9 | 小指侧摆 | Pinky_Abduction_Motor | 0–30（°） | 0–255 | `motor_value = (clamp(raw_value, 0, 30) / 30) × 255` | **正向** |
-
-其中 `clamp(value, min, max)` 表示将 `value` 限制在 `[min, max]` 范围内。
-
-**映射特性：**
-
-- **反向映射**（编号 1–6）：原始角度越大，电机值越小；用于指关节弯曲控制
-- **正向映射**（编号 7–9）：原始角度越大，电机值越大；用于手指展开控制
-
-**发送频率：**
-
-电机信号每 33 ms（约 30 Hz）更新一次，通过 LinkerHand SDK 的 `finger_move(pose=[...])` 接口发送至灵巧手。
+| 项目 | 值 |
+|------|-----|
+| 手型 | **O6** |
+| 手别 | **右手**（`hand_type="right"`） |
+| 自由度 | **6 DOF** |
+| 通讯协议 | CAN（默认） / RS485（Modbus-RTU） |
+| CAN ID | `0x27` |
+| 默认 CAN 通道 | `can0`（Linux）/ `PCAN_USBBUS1`（Windows） |
+| CAN 波特率 | 1 Mbps |
+| RS485 波特率 | 115200 bps |
+| 压力传感器 | ✅ 支持（法向力 + 切向力 + 接近感应） |
 
 ---
 
-### 连接/断开按钮（btn_connect / btn_disconnect）
+### 配置设定
 
-左侧面板提供两个按钮用于灵巧手的 CAN 总线连接和断开操作。
+在 `linkerhand-python-sdk/LinkerHand/config/setting.yaml` 中：
 
-#### “连接灵巧手” 按钮
+```yaml
+LEFT_HAND:
+  EXISTS: False        # 当前无左手
+RIGHT_HAND:
+  EXISTS: True         # 仅右手 O6
+  TOUCH: True          # 带压力传感器
+  CAN: "can0"          # CAN 通道
+  MODBUS: "None"       # 使用 CAN（设为串口路径则启用 RS485）
+  JOINT: O6            # 手型型号
+```
 
-**功能说明：**
+---
 
-| 功能项 | 说明 |
-|---|---|
-| 默认状态 | 按钮标文字为"连接灵巧手"，可点击 |
-| 触发操作 | 在后台线程中初始化 CAN 接口并创建灵巧手 API 连接 |
-| CAN 初始化 | 调用 `initialize_can_interface(can_interface="can0", bitrate=1000000)` |
-| 灵巧手连接 | 创建 `LinkerHandApi(hand_type="left", hand_joint="L10", can="can0", modbus="None")` 实例 |
-| 连接成功 | 按钮文字变为"已连接"（禁用），`btn_disconnect` 启用，开始以 30 Hz 频率向灵巧手发送电机信号 |
-| 连接失败 | 按钮文字变为"连接灵巧手"（启用），输出错误日志到控制台，不启动发送定时器 |
-| 错误诊断 | 常见失败原因：CAN 驱动未加载、灵巧手硬件未上电、权限不足（Linux 需 root 或加入 can 组） |
+### 6 个关节映射
 
-**操作流程：**
+O6 右手有 **6 个关节**，拇指 2 自由度（弯曲 + 横摆），其余四指各 1 自由度（仅弯曲）：
 
-1. 确保灵巧手硬件已上电并连接到 CAN 总线
-2. 在 Linux 系统上，确保当前用户有 CAN 接口权限（或以 sudo 运行脚本）
-3. 点击 **连接灵巧手** 按钮
-4. 观察控制台输出 `[LinkerHand]` 前缀的日志，确认以下步骤：
-   - `正在初始化 CAN 接口 can0 …`
-   - `正在连接灵巧手 (left L10) …`
-   - `✓ 灵巧手连接成功`
-5. 连接成功后，按钮变为"已连接"，此时左手各手指的原始角度会实时驱动灵巧手电机
+| 索引 | 寄存器名 | 中文名 | 控制对象 | 范围 |
+|------|---------|--------|---------|------|
+| 0 | `THUMB_PITCH` | **大拇指弯曲** | 拇指弯曲/伸直 | 0–255 |
+| 1 | `THUMB_YAW` | **大拇指横摆** | 拇指张合（靠掌心↔远离） | 0–255 |
+| 2 | `INDEX_PITCH` | **食指弯曲** | 食指弯曲/伸直 | 0–255 |
+| 3 | `MIDDLE_PITCH` | **中指弯曲** | 中指弯曲/伸直 | 0–255 |
+| 4 | `RING_PITCH` | **无名指弯曲** | 无名指弯曲/伸直 | 0–255 |
+| 5 | `LITTLE_PITCH` | **小拇指弯曲** | 小拇指弯曲/伸直 | 0–255 |
 
-#### “断开灵巧手” 按钮
+> **pose 数组结构**: `[thumb_pitch, thumb_yaw, index, middle, ring, little]`
 
-**功能说明：**
+### 弧度映射（`mapping.py`）
 
-| 功能项 | 说明 |
-|---|---|
-| 默认状态 | 按钮禁用（灰色），仅在 `btn_connect` 成功后启用 |
-| 触发操作 | 停止电机发送定时器，关闭 CAN 连接 |
-| 清理步骤 | 调用 `LinkerHandApi.close_can()` 关闭 CAN 套接字，释放资源 |
-| 断开完成 | `btn_connect` 文字恢复为"连接灵巧手"并启用，`btn_disconnect` 禁用 |
-| 错误处理 | 断开过程中若发生异常，输出错误日志但仍完成断开（确保资源释放） |
+| 关节 | 最小值 (rad) | 最大值 (rad) | 方向 |
+|------|-------------|-------------|------|
+| 拇指弯曲 | 0 | 0.58 | -1 |
+| 拇指横摆 | 0 | 1.36 | -1 |
+| 食指弯曲 | 0 | 1.60 | -1 |
+| 中指弯曲 | 0 | 1.60 | -1 |
+| 无名指弯曲 | 0 | 1.60 | -1 |
+| 小拇指弯曲 | 0 | 1.60 | -1 |
 
-**操作流程：**
+---
 
-1. 在灵巧手已连接状态下，点击 **断开灵巧手** 按钮
-2. 观察控制台输出：`[LinkerHand] 灵巧手已断开`
-3. 按钮状态恢复至初始状态，可重新点击 **连接灵巧手** 重新建立连接
+### 控制项
 
-**线程安全：**
+### 关节位置控制（`finger_move`）
 
-连接和断开操作通过 `threading.Lock()` 保护共享的 `_linker_api` 对象，确保：
-- 连接过程不被其他操作中断
-- 定时发送线程与断开操作之间不产生竞态条件
-- 断开时安全释放 API 对象
+```python
+from LinkerHand.linker_hand_api import LinkerHandApi
+
+hand = LinkerHandApi(hand_type="right", hand_joint="O6", can="can0")
+hand.set_speed([100, 100, 100, 100, 100, 100])
+
+# 右手张开
+hand.finger_move([255, 70, 255, 255, 255, 255])
+#               ↑拇指  ↑拇指  ↑食  ↑中  ↑无  ↑小
+#               弯曲   横摆   指   指   名   指
+```
+
+### 示例姿势
+
+| 姿势 | pose 数组 | 说明 |
+|------|-----------|------|
+| **张开** | `[255, 70, 255, 255, 255, 255]` | 所有手指伸直 |
+| **握拳** | `[67, 151, 0, 0, 0, 0]` | 拇指弯曲+横摆，其余握紧 |
+| **拇指食指捏合** | `[180, 30, 180, 0, 0, 0]` | 仅拇指和食指弯曲 |
+
+### 其他控制参数
+
+```python
+# 设置速度 (0-255)
+hand.set_speed([100, 150, 120, 120, 120, 120])
+
+# 设置最大转矩 (0-255)
+hand.set_torque([180, 100, 80, 80, 80, 80])
+
+# 读取当前关节位置
+state = hand.get_state()  # 返回 6 个位置值
+
+# 读取力传感器
+force = hand.get_force()  # 法向力 + 切向力 + 方向 + 接近感应
+
+# 读取速度
+speed = hand.get_speed()
+```
+
+---
+
+### CAN 总线设置（Linux）
+
+```bash
+# 初始化 CAN 接口
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set can0 up
+
+# 验证
+candump can0
+```
+
+详见 [`linkerhand-python-sdk/CAN_SETUP_GUIDE.md`](./linkerhand-python-sdk/CAN_SETUP_GUIDE.md)。
+
+---
+
+### 快速测试
+
+```python
+#!/usr/bin/env python3
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(__file__), "linkerhand-python-sdk"))
+
+from LinkerHand.linker_hand_api import LinkerHandApi
+
+hand = LinkerHandApi(hand_type="right", hand_joint="O6", can="can0")
+
+# 张开
+hand.finger_move([255, 70, 255, 255, 255, 255])
+input("Press Enter to close...")
+
+# 握拳
+hand.finger_move([67, 151, 0, 0, 0, 0])
+```
