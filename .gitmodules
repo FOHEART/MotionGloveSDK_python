@@ -1,0 +1,3 @@
+[submodule "third_party/MotionGloveSDK_cpp"]
+	path = third_party/MotionGloveSDK_cpp
+	url = https://github.com/FOHEART/MotionGloveSDK_cpp.git
