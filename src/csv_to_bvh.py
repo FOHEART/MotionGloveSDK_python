@@ -1,21 +1,23 @@
-"""csv_to_bvh.py
-将 MotionGlove CSV 导出文件转换为 BVH 动作捕捉文件。
-
+"""@file  csv_to_bvh.py
+@brief 将 MotionGlove CSV 导出文件转换为 BVH 动作捕捉文件。
+@details
 位置单位：CSV 米  →  BVH 厘米（× 100）
-旋转顺序：CSV ZXY  →  BVH 通道 ZYX（Zrotation Yrotation Xrotation）
+旋转顺序：CSV 任意顺序 → BVH 通道 ZYX（Zrotation Yrotation Xrotation）
 骨骼映射：*3End → *4（拇指/食指等末端关节重命名）
 
-公开接口
---------
-convert_csv_to_bvh(csv_path, bvh_path=None, frame_rate=None) -> str
+HIERARCHY 结构：合成 ROOT（全零 6 通道）+ 左右手为 6 通道节点
+（位置+旋转），手指关节为 3 通道（仅旋转）。层级来自
+kinemHumanHandsSkeleton42Index_tree.md。
+
+公开接口：
+  convert_csv_to_bvh(csv_path, bvh_path=None, frame_rate=None) -> str
     转换并写出 BVH 文件，返回实际写出路径。
     bvh_path   缺省时与 csv_path 同目录同文件名，扩展名改为 .bvh。
     frame_rate 缺省时从 CSV 时间戳自动推算；无法推算时回退到 60 Hz。
 
-命令行用法（独立运行）
-----------------------
-python -m src.csv_to_bvh --input recording.csv
-python src/csv_to_bvh.py --input recording.csv --framerate 30 --outputdir ./out --output my_anim.bvh
+命令行用法（独立运行）：
+  python -m src.csv_to_bvh --input recording.csv
+  python src/csv_to_bvh.py --input recording.csv --framerate 30 --outputdir ./out --output my_anim.bvh
 """
 
 from __future__ import annotations
@@ -84,7 +86,12 @@ _PARENT: list[int] = [
 # ── 帧率检测 ─────────────────────────────────────────────────────────────────
 
 def _detect_frame_time(raw_data_lines: list[str]) -> float:
-    """从数据行列表推算帧间隔（秒），取前 10 行时间戳均值。"""
+    """@brief 从数据行推算帧间隔（秒）。
+
+    @details 取前 10 行时间戳的均值间隔；不足 2 个有效时间戳时回退 1/60 秒。
+    @param raw_data_lines CSV 数据行（含 header 的原始行）列表。
+    @return 帧间隔，单位秒，恒为正数。
+    """
     timestamps: list[float] = []
     for line in raw_data_lines:
         comma = line.find(",")
@@ -111,7 +118,14 @@ def _detect_frame_time(raw_data_lines: list[str]) -> float:
 # ── BVH HIERARCHY 生成 ───────────────────────────────────────────────────────
 
 def _write_chain(first: int, count: int, offsets: list[list[float]], indent: str) -> list[str]:
-    """递归写一段连续骨骼链（最末节附加 End Site）。"""
+    """@brief 递归写一段连续骨骼链（最末节附加 End Site）。
+
+    @param first   链首在 _BVH_NAMES 中的索引。
+    @param count   链长度（关节数）。
+    @param offsets 42 项偏移列表，每项 [x, y, z] 厘米。
+    @param indent  当前缩进字符串（递归时逐级加 \t）。
+    @return BVH JOINT 块文本行列表。
+    """
     name = _BVH_NAMES[first]
     ox, oy, oz = offsets[first]
     lines = [
@@ -134,7 +148,13 @@ def _write_chain(first: int, count: int, offsets: list[list[float]], indent: str
 
 
 def _write_hand(hand_base: int, offsets: list[list[float]], indent: str) -> list[str]:
-    """写一只手（含 5 根手指）的 JOINT 块。"""
+    """@brief 写一只手（含 5 根手指）的 JOINT 块。
+
+    @param hand_base 手部根节点索引（右手 0，左手 21）。
+    @param offsets   42 项偏移列表，每项 [x, y, z] 厘米。
+    @param indent    当前缩进字符串。
+    @return BVH JOINT 块文本行列表。
+    """
     name = _BVH_NAMES[hand_base]
     ox, oy, oz = offsets[hand_base]
     lines = [
@@ -151,9 +171,10 @@ def _write_hand(hand_base: int, offsets: list[list[float]], indent: str) -> list
 
 
 def _build_hierarchy(offsets: list[list[float]]) -> str:
-    """
-    构建 BVH HIERARCHY 字符串。
-    offsets: 42 项列表，每项 [x, y, z]（厘米），对应 CSV BoneIndex 0-41。
+    """@brief 构建 BVH HIERARCHY 字符串。
+
+    @param offsets 42 项列表，每项 [x, y, z]（厘米），对应 CSV BoneIndex 0-41。
+    @return BVH HIERARCHY 段文本。
     """
     lines = [
         "HIERARCHY",
@@ -171,11 +192,17 @@ def _build_hierarchy(offsets: list[list[float]]) -> str:
 # ── 帧数据转换 ───────────────────────────────────────────────────────────────
 
 def _frame_to_bvh_row(frame: GloveFrame) -> str:
-    """将一帧 GloveFrame 转换为 BVH 帧数据行。
+    """@brief 将一帧 GloveFrame 转换为 BVH 帧数据行。
 
-    ROOT (合成): 6 channels (全零)
-    RightHand / LeftHand (p==-1): 6 channels (位置+旋转)
-    手指关节: 3 channels (仅旋转，OFFSET 已定义骨骼方向，无需运行时位置)
+    @details 通道布局：
+      ROOT (合成): 6 channels (全零)
+      RightHand / LeftHand (父索引 -1): 6 channels (位置米→厘米 + 旋转)
+      手指关节: 3 channels (仅旋转，OFFSET 已定义骨骼方向，无需运行时位置)
+    旋转统一输出为 ZYX 顺序：EULER 流按 header 旋转顺序转四元数再转 ZYX；
+    QUAT 流直接按 ZYX 提取。
+
+    @param frame CsvFrameReader 提供的单帧 GloveFrame。
+    @return 空格分隔的 BVH 帧数值行（6 + 2×6 + 40×3 = 138 个数值）。
     """
     rot_order = int(frame.header.channel_order)
     values: list[float] = [0.0] * 6   # 合成 ROOT：全零
@@ -215,18 +242,17 @@ def convert_csv_to_bvh(
     bvh_path: str | None = None,
     frame_rate: float | None = None,
 ) -> str:
-    """
-    将 MotionGlove CSV 文件转换为 BVH 文件。
+    """@brief 将 MotionGlove CSV 文件转换为 BVH 文件。
 
-    参数
-    ----
-    csv_path   : 输入 CSV 文件路径
-    bvh_path   : 输出 BVH 路径；缺省时与 csv_path 同目录同名，扩展名改为 .bvh
-    frame_rate : 强制指定帧率（Hz）；缺省时从 CSV 时间戳自动推算，无法推算时回退到 60 Hz
+    @details 全流程：读文件 → CsvFrameReader 预解析帧 → 由首帧偏移生成
+             HIERARCHY → 逐帧输出 MOTION 数据行 → 写文件。
 
-    返回
-    ----
-    实际写出的 BVH 文件路径（字符串）
+    @param csv_path   输入 CSV 文件路径（utf-8-sig，首行为表头）。
+    @param bvh_path   输出 BVH 路径；缺省时与 csv_path 同目录同名，扩展名改为 .bvh。
+    @param frame_rate 强制指定帧率（Hz）；缺省时从 CSV 时间戳自动推算，
+                      无法推算时回退到 60 Hz。
+    @return 实际写出的 BVH 文件路径（字符串）。
+    @exception FileNotFoundError 输入 CSV 不存在时抛出。
 
     异常
     ----

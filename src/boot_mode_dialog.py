@@ -1,3 +1,11 @@
+"""@file  boot_mode_dialog.py
+@brief 应用启动模式选择对话框（PySide6）。
+@details
+弹出「实时 UDP 流 / CSV 文件回放」二选一对话框。返回值由调用方注入
+（泛型参数），使本模块不依赖主应用的枚举类型。仅 UI 层使用，
+不做单元测试（需 Qt 事件循环）。
+"""
+
 from __future__ import annotations
 
 from typing import TypeVar
@@ -10,10 +18,13 @@ T = TypeVar("T")
 
 
 def show_boot_mode_dialog(udp_value: T, csv_value: T) -> T | None:
-    """Show the startup mode dialog and return the selected value.
+    """@brief 显示启动模式对话框并返回用户选择。
 
-    The caller provides the concrete values to return for UDP and CSV mode,
-    which keeps this module independent from the main application's enum type.
+    @details 调用方提供 UDP / CSV 两种模式各自要返回的具体值，
+             本模块与主应用的枚举类型解耦。用户关闭对话框（未选择）时返回 None。
+    @param udp_value 选择「实时 UDP 流」时返回的值。
+    @param csv_value 选择「CSV 文件回放」时返回的值。
+    @return 所选值（T）；用户直接关闭对话框返回 None。
     """
     chosen: list[T | None] = [None]
 

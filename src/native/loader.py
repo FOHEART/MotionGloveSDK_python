@@ -1,10 +1,16 @@
 """
-loader.py - MotionGloveSDK Python 转接层
-定位并加载 C++ 编译产物（MotionGloveSDK.dll / libMotionGloveSDK.so），
-并把 C 导出函数绑定成带明确原型的 ctypes 函数。
+@file  loader.py
+@brief 定位并加载 C++ 编译产物，把 C 导出函数绑定为 ctypes 函数。
+@details
+定位规则：
+  - 环境变量 MOTIONGLOVE_NATIVE_LIB 为权威路径（可为库文件或所在目录）；
+  - 否则按 candidate_paths() 的优先级搜索（打包目录 / native / libs /
+    build/mgsdk_cpp / third_party/MotionGloveSDK_cpp/out），最后回退系统库。
 
-导出函数原型来自 MotionGloveSDK/include/motionGloveSDK.h。
-函数签名若发生变化，只需修改本文件的 _bind_* 部分与 abi.py。
+导出函数原型来自 MotionGloveSDK/include/motionGloveSDK.h。函数签名若
+发生变化，只需修改本文件的 _bind_* 部分与 abi.py。
+
+加载时执行 abi.verify_layout() 布局自检，不一致直接抛错（防错位读数据）。
 """
 
 from __future__ import annotations
@@ -33,20 +39,24 @@ _BUILD_CONFIGS = ("Release", "Debug", "RelWithDebInfo", "")
 
 
 def library_file_name() -> str:
+    """@brief 当前平台的原生库文件名。
+
+    @return 文件名（Windows: MotionGloveSDK.dll；Linux/macOS: lib 前缀 .so/.dylib）。
+    """
     return _LIBRARY_FILE_NAMES.get(sys.platform, "libMotionGloveSDK.so")
 
 
 def candidate_paths() -> list[Path]:
-    """
-    按优先级返回候选库文件路径（不含环境变量指定的路径）。
+    """@brief 按优先级返回候选库文件路径（不含环境变量指定的路径）。
 
-    优先级：
-      1. 打包后（PyInstaller）的应用目录 / `sys._MEIPASS`
+    @details 优先级：
+      1. 打包后（PyInstaller）的应用目录 / sys._MEIPASS
       2. <repo>/native/                                开发自放置目录
       3. <repo>/libs/                                  与 Python 依赖同级的约定目录
       4. <repo>/build/mgsdk_cpp/install/{bin,lib}      scripts/build_mgsdk_cpp 的安装结果
       5. <repo>/build/mgsdk_cpp/**                     CMake 构建树
       6. <repo>/third_party/MotionGloveSDK_cpp/out/**  C++ 工程自带构建脚本的输出
+    @return 候选 Path 列表（可能包含不存在的路径，调用方需逐个 is_file 判断）。
     """
     name = library_file_name()
     paths: list[Path] = []
@@ -80,10 +90,13 @@ def candidate_paths() -> list[Path]:
 
 
 def find_library() -> str:
-    """
-    返回可用的库路径。
-    环境变量 MOTIONGLOVE_NATIVE_LIB 一旦设置即为权威路径（不存在时直接报错），
-    否则按 candidate_paths() 依次查找，最后回退到系统库搜索。
+    """@brief 返回第一个可用的库路径（字符串）。
+
+    @details 环境变量 MOTIONGLOVE_NATIVE_LIB 一旦设置即为权威路径
+             （不存在时直接报错），否则按 candidate_paths() 依次查找，
+             最后回退到系统库搜索。
+    @return 库文件绝对路径（或系统库名，若通过 find_library 找到）。
+    @exception NativeLibraryNotFound 所有候选均不可用时抛出。
     """
     name = library_file_name()
 
@@ -108,9 +121,20 @@ def find_library() -> str:
 
 
 class NativeLibrary:
-    """已加载的原生库；属性即已绑定原型的导出函数。"""
+    """@brief 已加载的原生库句柄；公开属性即已绑定原型的导出函数。
+
+    @details _bind() 阶段给每个导出函数设置 restype / argtypes；缺失
+             必需导出函数时抛 MotionGloveNativeError（ABI 不匹配）。
+    """
 
     def __init__(self, handle: ctypes.CDLL, path: str) -> None:
+        """@brief 包装 CDLL 句柄并完成导出函数绑定。
+
+        @param handle 已打开的 ctypes.CDLL 句柄。
+        @param path   库文件路径（记录用于诊断）。
+        @return 无（None）。
+        @exception MotionGloveNativeError 缺少必需导出函数时抛出。
+        """
         self._handle = handle
         self.path = path
         self._bind()
@@ -174,7 +198,12 @@ class NativeLibrary:
 
 
 def load_library(path: str | None = None) -> NativeLibrary:
-    """加载原生库。path 为 None 时按 candidate_paths() 自动定位。"""
+    """@brief 加载原生库并执行 ABI 布局自检。
+
+    @param path 库文件路径；None 时按 find_library() 自动定位。
+    @return NativeLibrary 实例。
+    @exception MotionGloveNativeError 库无法加载或布局自检失败时抛出。
+    """
     resolved = path or find_library()
     try:
         handle = ctypes.CDLL(resolved)

@@ -1,19 +1,29 @@
 """
-errors.py - MotionGloveSDK Python 转接层
-转接层专用的异常类型，与 C++ 侧的返回码（0 成功 / 负值失败）解耦。
+@file  errors.py
+@brief MotionGloveSDK Python 转接层专用异常类型。
+@details 与 C++ 侧的返回码（0 成功 / 负值失败）解耦：转接层内部把失败
+         翻译为异常抛给上层，上层只需捕获 MotionGloveNativeError。
 """
 
 from __future__ import annotations
 
 
 class MotionGloveNativeError(RuntimeError):
-    """原生库不可用、ABI 不匹配或调用失败。"""
+    """@brief 原生库不可用、ABI 不匹配或调用失败的基类异常。"""
 
 
 class NativeLibraryNotFound(MotionGloveNativeError):
-    """在候选路径中找不到 MotionGloveSDK 原生库。"""
+    """@brief 在候选路径中找不到 MotionGloveSDK 原生库。
+
+    @details 异常消息包含全部已搜索位置与编译指引。
+    """
 
     def __init__(self, searched: list[str]) -> None:
+        """@brief 用已搜索路径列表构造异常（消息附带编译指引）。
+
+        @param searched 已尝试的全部候选路径。
+        @return 无（None）。
+        """
         self.searched = searched
         lines = [
             "未找到 MotionGloveSDK 原生库（MotionGloveSDK.dll / libMotionGloveSDK.so）。",

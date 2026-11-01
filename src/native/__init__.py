@@ -1,6 +1,7 @@
 """
-native - MotionGloveSDK Python 转接层（Python 转接层 / adapter layer）
-
+@file  __init__.py
+@brief MotionGloveSDK Python 转接层（native adapter layer）。
+@details
 目的：让上层代码稳定地使用 MotionGloveSDK_cpp 编译出来的库，而 C++ 工程
 经常改动时只需要改动本包，不需要动 src/motionGloveSDK.py、示例程序或 3D 视图。
 
@@ -53,7 +54,11 @@ _backend: NativeBackend | None = None
 
 
 def get_backend() -> NativeBackend:
-    """返回进程级原生后端单例；原生库不可用时抛 MotionGloveNativeError。"""
+    """@brief 返回进程级原生后端单例（惰性创建）。
+
+    @return NativeBackend 实例。
+    @exception MotionGloveNativeError 原生库不可用时抛出。
+    """
     global _backend
     if _backend is None:
         _backend = create_backend()
@@ -61,7 +66,10 @@ def get_backend() -> NativeBackend:
 
 
 def is_available() -> bool:
-    """原生库是否可用（不可用时不会抛异常，仅返回 False）。"""
+    """@brief 原生库是否可用。
+
+    @return True 可用；False 不可用（不会抛异常，仅返回 False）。
+    """
     try:
         get_backend()
     except MotionGloveNativeError:
@@ -70,15 +78,22 @@ def is_available() -> bool:
 
 
 def backend_name() -> str:
+    """@brief 后端名称标识。@return 字符串，固定为 "native"。"""
     return "native"
 
 
 def library_path() -> str | None:
-    """已加载原生库的绝对路径（首次调用会触发加载）；不可用时抛 MotionGloveNativeError。"""
+    """@brief 已加载原生库的绝对路径。
+
+    @return 库文件绝对路径；原生库不可用时抛 MotionGloveNativeError。
+    """
     return get_backend().library_path
 
 
 def reset_backend() -> None:
-    """丢弃单例（主要用于测试）。"""
+    """@brief 丢弃后端单例（主要用于测试）。
+
+    @return 无（None）。
+    """
     global _backend
     _backend = None

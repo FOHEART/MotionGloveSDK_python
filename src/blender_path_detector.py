@@ -1,3 +1,15 @@
+"""@file  blender_path_detector.py
+@brief 从 <repo>/libs 下探测 Blender 可执行文件路径。
+@details
+依赖独立（不 import bpy），可单元测试。规则：在 libs 目录下寻找名称
+含 "blender" 的子目录，取其中 blender.exe。结果以 BlenderDetectionResult
+数据类返回（status ∈ found / missing-libs / missing-candidate /
+missing-executable / error）。
+
+命令行用法：
+  python src/blender_path_detector.py [search_root] [--verbose]
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -8,6 +20,13 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class BlenderDetectionResult:
+    """@brief Blender 探测结果（不可变数据类）。
+
+    @details fields: search_root 搜索根目录；libs_dir libs 目录；
+             candidate_dirs 命中的候选子目录；executable_path 找到的
+             blender.exe；status 状态标识；error 探测异常信息。
+    """
+
     search_root: Path
     libs_dir: Path
     candidate_dirs: tuple[Path, ...]
@@ -17,10 +36,19 @@ class BlenderDetectionResult:
 
     @property
     def found(self) -> bool:
+        """@brief 是否找到可执行文件。@return 找到为 True。"""
         return self.executable_path is not None
 
 
 def detect_blender_executable(search_root: str | Path | None = None) -> BlenderDetectionResult:
+    """@brief 在 search_root/libs 下探测 blender.exe。
+
+    @details 查找名称含 "blender" 的子目录（忽略大小写，按名称排序），
+             返回其中第一个存在的 blender.exe 的绝对路径。
+    @param search_root 搜索根目录；None 时使用当前工作目录。
+    @return BlenderDetectionResult：status="found" 时 executable_path
+            非空；其他状态见 @file 说明。
+    """
     base_dir = Path(search_root) if search_root is not None else Path.cwd()
     base_dir = base_dir.resolve()
     libs_dir = base_dir / "libs"
@@ -85,6 +113,11 @@ def detect_blender_executable(search_root: str | Path | None = None) -> BlenderD
 
 
 def format_detection_message(result: BlenderDetectionResult) -> str:
+    """@brief 把探测结果格式化为人类可读的英文描述。
+
+    @param result detect_blender_executable 的返回值。
+    @return 描述字符串（found 时含可执行文件路径）。
+    """
     if result.status == "found" and result.executable_path is not None:
         return f"Found Blender executable: {result.executable_path}"
     if result.status == "missing-libs":
@@ -102,6 +135,11 @@ def format_detection_message(result: BlenderDetectionResult) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """@brief 命令行入口：打印探测结果。
+
+    @param argv 命令行参数列表；None 时使用 sys.argv。
+    @return 0 找到可执行文件；1 未找到（结果打到 stderr）。
+    """
     parser = argparse.ArgumentParser(
         prog="blender_path_detector.py",
         description="Detect blender.exe from the current working directory's libs folder.",

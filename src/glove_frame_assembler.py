@@ -1,7 +1,7 @@
 """
-Glove Frame Assembler - MotionGloveSDK Python
-分包拼接 + 完整帧统计
-
+@file  glove_frame_assembler.py
+@brief CSV 分包拼接 + 完整帧统计。
+@details
 功能：
   - 解析每个 UDP 包的文本内容，提取 actor 名称、fn（帧序号）、subpackage（x/y）
   - 按 fn 将属于同一帧的分包拼接为完整帧的 CSV 数据部分
@@ -10,10 +10,16 @@ Glove Frame Assembler - MotionGloveSDK Python
 对应 C++ 实现：
   MotionGloveSDK/src/decodeAsGloveCSV.cpp - GloveSplitFrameMgr
 
-⚠ 说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
-   UDP 分包拼接与解析都在库内部完成。本模块现在仅供
-   motionGloveSDK_rawReceiver.py（原始数据调试工具）使用，
-   以及作为 C++ GloveSplitFrameMgr 的 Python 参考实现。
+说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
+UDP 分包拼接与解析都在库内部完成。本模块现在仅供
+motionGloveSDK_rawReceiver.py（原始数据调试工具）使用，
+以及作为 C++ GloveSplitFrameMgr 的 Python 参考实现。
+
+拼接语义（与 C++ m_data += s 一致）：
+  - 分包 body 按 subpackage 编号序“直连”拼接，无分隔符；
+  - 乱序到达仍按编号序输出；重复分包（集合语义）不重复计数；
+  - 新 fn 到来时丢弃旧帧残留状态（防串帧）；
+  - 格式不符的包 feed() 返回 False，静默跳过（协议无关性）。
 
 调用方式：
   from glove_frame_assembler import GloveFrameAssembler
@@ -23,6 +29,8 @@ Glove Frame Assembler - MotionGloveSDK Python
 
   assembler = GloveFrameAssembler(on_complete_frame=on_frame)
   assembler.feed(raw_text)  # 每收到一个 UDP 包调用一次
+
+测试：tests/unit/test_glove_frame_assembler.py。
 """
 
 import os
@@ -30,9 +38,10 @@ from typing import Callable
 
 
 class _SubpackageState:
-    """
-    单个 actor 当前正在拼接的帧的状态。
-    对应 C++ GloveSplitFrameMgr 的各成员字段。
+    """@brief 单个 actor 当前正在拼接的帧状态。
+
+    @details 对应 C++ GloveSplitFrameMgr 的各成员字段；每 actor 一个
+             实例，互不干扰。
     """
     __slots__ = ("fn", "sub_max", "received", "body_parts", "header_tokens")
 
@@ -48,23 +57,23 @@ class _SubpackageState:
 
 
 class GloveFrameAssembler:
-    """
-    CSV 分包拼接器。
+    """@brief CSV 分包拼接器。
 
-    每次收到一个 UDP 包的文本内容，调用 feed()。
-    当某个 fn 的所有分包都收齐后，调用 on_complete_frame 回调。
-
-    对应 C++ GloveSplitFrameMgr + decodeAsGloveCSV_Func() 中的分包处理逻辑。
+    @details 每次收到一个 UDP 包的文本内容，调用 feed()。当某个 fn 的
+             所有分包都收齐后，调用 on_complete_frame 回调并重置该
+             actor 的状态。对应 C++ GloveSplitFrameMgr +
+             decodeAsGloveCSV_Func() 中的分包处理逻辑。
     """
 
     def __init__(self, on_complete_frame: Callable[[str, int, str, list], None]):
-        """
-        参数：
-          on_complete_frame(actor_name, fn, body_csv, header_tokens)
-            actor_name    : 演员名称，例如 "Glove1"
-            fn            : 帧序号
-            body_csv      : 拼接完成的 CSV 数据部分（不含 header 行）
-            header_tokens : header 行按空格分割后的 token 列表（供 decode_glove_csv 使用）
+        """@brief 创建拼接器。
+
+        @param on_complete_frame 帧完成回调，签名为
+               (actor_name, fn, body_csv, header_tokens)：
+               actor_name 演员名称（如 "Glove1"）；fn 帧序号；
+               body_csv 拼接完成的 CSV 数据部分（不含 header 行，分包间无分隔符）；
+               header_tokens 第一个分包的 header token 列表（供 decode_glove_csv 使用）。
+        @return 无（None）。
         """
         self._on_complete = on_complete_frame
         self._states: dict[str, _SubpackageState] = {}
@@ -74,6 +83,12 @@ class GloveFrameAssembler:
         self.complete_frame_count: int = 0   # 已拼接完成的完整帧总数
 
     def _log_drop(self, reason: str, raw_text: str) -> None:
+        """@brief 记录一次丢包原因（受 MOTIONGLOVE_DEBUG=1 控制，限流输出）。
+
+        @param reason   丢包原因短标识（如 missing_comma、invalid_fn）。
+        @param raw_text 原始包文本（取前 120 字符作为样本输出）。
+        @return 无（None）。
+        """
         self._drop_count += 1
         if not self._debug:
             return
@@ -82,13 +97,16 @@ class GloveFrameAssembler:
             print(f"[MOTIONGLOVE_DEBUG][assembler] drop#{self._drop_count} reason={reason} sample={snippet}")
 
     def feed(self, raw_text: str) -> bool:
-        """
-        喂入一个 UDP 包的文本内容，尝试拼接分包。
-
-        返回 True  : 包含 subpackage 字段，已成功处理
-        返回 False : 格式不符（非手套 CSV 包），跳过
+        """@brief 喂入一个 UDP 包的文本内容，尝试拼接分包。
 
         对应 C++ decodeAsGloveCSV_Func() 中的 header 解析 + 分包重组逻辑。
+        格式不符的包（缺逗号 / 缺 fn / 缺 subpackage / 分包号非整数）
+        静默跳过，保证非手套 CSV 包流经同一通道时不崩。
+
+        @param raw_text 单个 UDP 包的完整文本内容（UTF-8）。
+        @return True  包含合法 subpackage 字段，已进入拼接流程（含
+                     subpackage 1/0 这类永不完成的合法包）；
+                False 格式不符（非手套 CSV 包），已跳过。
         """
         # ------------------------------------------------------------------
         # 1. 分离 header 与 body

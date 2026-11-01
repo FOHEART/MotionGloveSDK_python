@@ -74,6 +74,7 @@ Temp/
 build/
 dist/
 csvfile/
+docs/html/
 .vs/
 *.zip
 *.rar
@@ -99,3 +100,6 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 *.pyo
+# Doxygen build artifacts
+docs/
+doxygen_warnings.log

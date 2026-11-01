@@ -1,7 +1,7 @@
 """
-motionGloveSDK.py - MotionGloveSDK Python
-对外公共接口。函数名称与 C++ motionGloveSDK.h 保持一致。
-
+@file  motionGloveSDK.py
+@brief MotionGloveSDK Python 对外公共接口（函数名与 C++ motionGloveSDK.h 一致）。
+@details
 ═══════════════════════════════════════════════════════════════════════════
   数据流解析已全部交给 C++ 库（third_party/MotionGloveSDK_cpp）完成：
   UDP 接收、分包重组、CSV 解析、帧缓存都在 MotionGloveSDK.dll / .so 内部，
@@ -34,6 +34,10 @@ C++ 接口 → Python 接口对照表：
       if motionGloveSDK.MotionGloveSDK_isGloveNewFramePending("Glove1"):
           frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame("Glove1")
           motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending("Glove1")
+
+名称约束：所有含 actorName 参数的接口在进入后端前先经 _is_valid_actor_name()
+校验（UTF-8 字节数 ≤ 63，即 C++ 缓冲区 ACTOR_NAME_LEN_MAX 含结尾 NUL），
+无效名称直接短路返回，不触碰原生库。
 """
 
 from __future__ import annotations
@@ -64,13 +68,25 @@ _MAX_ACTOR_NAME_BYTES = ACTOR_NAME_LEN_MAX - 1
 
 
 def _is_valid_actor_name(actorName: str) -> bool:
+    """@brief 校验数据流名称是否为合法的 UTF-8 字节长度。
+
+    @details C++ 侧缓冲区 ACTOR_NAME_LEN_MAX 含结尾 NUL，有效长度 ≤ 63 字节；
+             按 UTF-8 字节数（非字符数）判断，中英文名同样适用。
+    @param actorName 待校验的数据流名称（Python str）。
+    @return True 长度为 1~63 字节；False 为空或超过 63 字节。
+    """
     if not actorName:
         return False
     return len(actorName.encode("utf-8", errors="replace")) <= _MAX_ACTOR_NAME_BYTES
 
 
 def _safe_print(message: str) -> None:
-    """打印中文诊断信息；控制台编码不支持时降级为 ASCII，避免打断返回值约定。"""
+    """@brief 打印中文诊断信息，控制台编码不支持时降级为 ASCII。
+
+    @details 保证打印失败不会破坏接口的返回值约定。
+    @param message 要输出的诊断文本。
+    @return 无（None）。
+    """
     try:
         print(message)
     except UnicodeEncodeError:
@@ -82,24 +98,34 @@ def _safe_print(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 def MotionGloveSDK_IsAvailable() -> bool:
-    """原生库是否可用（不会抛异常）。"""
+    """@brief 原生库是否可用（不会抛异常）。
+
+    @return True 原生库已能加载；False 缺库 / ABI 不匹配。
+    """
     return native.is_available()
 
 
 def MotionGloveSDK_GetBackendName() -> str:
-    """当前数据流后端名称，固定为 "native"。"""
+    """@brief 当前数据流后端名称。
+
+    @return 字符串，固定为 "native"。
+    """
     return native.backend_name()
 
 
 def MotionGloveSDK_GetNativeLibraryPath() -> str | None:
-    """已加载的原生库绝对路径；尚未加载时返回 None。"""
+    """@brief 已加载的原生库绝对路径。
+
+    @return 库文件绝对路径（首次调用会触发加载）；原生库不可用时抛
+            MotionGloveNativeError；尚未加载且不可用返回 None。
+    """
     return native.library_path()
 
 
 def MotionGloveSDK_getVersion() -> int:
-    """
-    返回原生 SDK 版本号（32 位整数）。
-    版本编码：(mainVersion << 16) | (subVersion << 8) | patchVersion
+    """@brief 返回原生 SDK 版本号。
+
+    @return 32 位整数，编码为 (mainVersion << 16) | (subVersion << 8) | patchVersion。
     """
     return native.get_backend().version()
 
@@ -109,16 +135,12 @@ def MotionGloveSDK_getVersion() -> int:
 # ---------------------------------------------------------------------------
 
 def MotionGloveSDK_ListenUDPPort(nPort: int = 5001) -> int:
-    """
-    绑定本机 UDP 端口并在 C++ 侧启动后台接收线程。
-    对应 C++ MotionGloveSDK_ListenUDPPort()。
+    """@brief 绑定本机 UDP 端口并在 C++ 侧启动后台接收线程。
 
-    参数：
-      nPort : 端口号（1024~65535），默认 5001
-
-    返回：
-      0  成功
-     -1  失败（端口被占用、原生库不可用等）
+    @details 对应 C++ MotionGloveSDK_ListenUDPPort()。绑定失败时会尝试
+             打印占用该端口的进程信息（print_udp_port_occupier）。
+    @param nPort 端口号，1024~65535，默认 5001。
+    @return 0 成功；-1 失败（端口被占用、原生库不可用等）。
     """
     try:
         backend = native.get_backend()
@@ -137,13 +159,10 @@ def MotionGloveSDK_ListenUDPPort(nPort: int = 5001) -> int:
 
 
 def MotionGloveSDK_CloseUDPPort() -> int:
-    """
-    关闭 UDP 连接并等待 C++ 接收线程退出。
-    对应 C++ MotionGloveSDK_CloseUDPPort()。
+    """@brief 关闭 UDP 连接并等待 C++ 接收线程退出。
 
-    返回：
-      0  成功
-     -1  失败（未处于打开状态）
+    @details 对应 C++ MotionGloveSDK_CloseUDPPort()。
+    @return 0 成功；-1 失败（未处于打开状态或原生库不可用）。
     """
     try:
         backend = native.get_backend()
@@ -157,16 +176,12 @@ def MotionGloveSDK_CloseUDPPort() -> int:
 # ---------------------------------------------------------------------------
 
 def MotionGloveSDK_isGloveNewFramePending(actorName: str) -> bool:
-    """
-    查询指定数据流是否有新帧到达。
-    对应 C++ MotionGloveSDK_isGloveNewFramePending()。
+    """@brief 查询指定数据流是否有新帧到达。
 
-    参数：
-      actorName : 数据流名称（最长 63 字节），例如 "Glove1"
-
-    返回：
-      True  有新帧
-      False 无新帧或名称无效
+    @details 对应 C++ MotionGloveSDK_isGloveNewFramePending()；名称无效时
+             短路返回 False，不触碰原生库。
+    @param actorName 数据流名称（UTF-8 ≤ 63 字节），例如 "Glove1"。
+    @return True 有新帧；False 无新帧或名称无效。
     """
     if not _is_valid_actor_name(actorName):
         return False
@@ -174,16 +189,12 @@ def MotionGloveSDK_isGloveNewFramePending(actorName: str) -> bool:
 
 
 def MotionGloveSDK_resetGloveNewFramePending(actorName: str) -> bool:
-    """
-    清除指定数据流的新帧标志。
-    对应 C++ MotionGloveSDK_resetGloveNewFramePending()。
+    """@brief 清除指定数据流的新帧标志。
 
-    参数：
-      actorName : 数据流名称
-
-    返回：
-      True  清除成功
-      False 名称无效或未找到
+    @details 对应 C++ MotionGloveSDK_resetGloveNewFramePending()；名称无效时
+             短路返回 False。
+    @param actorName 数据流名称（UTF-8 ≤ 63 字节）。
+    @return True 清除成功；False 名称无效或未找到。
     """
     if not _is_valid_actor_name(actorName):
         return False
@@ -191,13 +202,12 @@ def MotionGloveSDK_resetGloveNewFramePending(actorName: str) -> bool:
 
 
 def MotionGloveSDK_GetSkeletonsFrameType(actorName: str) -> int | None:
-    """
-    查询指定数据流缓存帧的骨骼格式。
-    对应 C++ MotionGloveSDK_GetSkeletonsFrameType()。
+    """@brief 查询指定数据流缓存帧的骨骼格式。
 
-    返回：
-      native.abi.SkeletonFormat.SKELETON_32 / SKELETON_42 / OPENXR
-      None  名称无效、数据流未知或该版本库不提供此接口
+    @details 对应 C++ MotionGloveSDK_GetSkeletonsFrameType()。
+    @param actorName 数据流名称（UTF-8 ≤ 63 字节）。
+    @return native.abi.SkeletonFormat.SKELETON_32 / SKELETON_42 / OPENXR；
+            None 名称无效、数据流未知或该版本库不提供此接口。
     """
     if not _is_valid_actor_name(actorName):
         return None
@@ -205,19 +215,14 @@ def MotionGloveSDK_GetSkeletonsFrameType(actorName: str) -> int | None:
 
 
 def MotionGloveSDK_GetGloveSkeletonsFrame(actorName: str) -> GloveFrame | None:
-    """
-    获取指定数据流最新一帧的骨骼数据（32/42 段自动分派）。
-    对应 C++ MotionGloveSDK_GetSkeletons42Frame() / GetSkeletons32Frame()。
+    """@brief 获取指定数据流最新一帧的骨骼数据（32/42 段自动分派）。
 
-    frame.skeletons 的长度与数据流格式一致（32 或 42），
-    bone_index 统一为 42 段索引，与旧版 Python 解析结果保持一致。
-
-    参数：
-      actorName : 数据流名称
-
-    返回：
-      GloveFrame 对象（成功）
-      None       名称无效、数据流未知或数据尚未到达
+    @details 对应 C++ MotionGloveSDK_GetSkeletons42Frame() /
+             GetSkeletons32Frame()。frame.skeletons 的长度与数据流格式
+             一致（32 或 42），bone_index 统一为 42 段索引，与旧版
+             Python 解析结果保持一致。
+    @param actorName 数据流名称（UTF-8 ≤ 63 字节）。
+    @return GloveFrame 对象（成功）；None 名称无效、数据流未知或数据尚未到达。
     """
     if not _is_valid_actor_name(actorName):
         return None
@@ -229,24 +234,18 @@ def MotionGloveSDK_GetGloveSkeletonsFrame(actorName: str) -> GloveFrame | None:
 # ---------------------------------------------------------------------------
 
 def MotionGloveSDK_GetLastRemoteAddr() -> tuple[str, int] | None:
-    """
-    返回最近一次成功取回的帧的发送方地址。
+    """@brief 返回最近一次成功取回的帧的发送方地址。
 
-    返回：
-      (ip_str, port_int)  至少取回过一帧时
-      None                尚未取到任何帧
+    @return (ip_str, port_int) 至少取回过一帧时；None 尚未取到任何帧。
     """
     return native.get_backend().get_last_remote_addr()
 
 
 def MotionGloveSDK_GetActorNames() -> list[str]:
-    """
-    返回当前已确认存在的数据流名称列表（按首次发现顺序）。
+    """@brief 返回当前已确认存在的数据流名称列表。
 
-    C++ SDK 没有枚举数据流的接口，因此这里收集的是"查询到有新帧"
-    以及"成功取到帧"的数据流名称。
-
-    返回：
-      list[str]  数据流名称列表，尚未发现任何数据流时为空列表
+    @details C++ SDK 没有枚举数据流的接口，因此这里收集的是「查询到有
+             新帧」以及「成功取到帧」的数据流名称，按首次发现顺序排列。
+    @return list[str] 数据流名称列表；尚未发现任何数据流时为空列表。
     """
     return native.get_backend().get_actor_names()

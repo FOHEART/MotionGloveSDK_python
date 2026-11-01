@@ -1,17 +1,20 @@
 """
-xsqeconverter.py
-Python port of xsQEConverter (Movella Technologies B.V.)
+@file   xsqeconverter.py
+@brief  欧拉角（度）与四元数互转工具（xsQEConverter 的 Python 移植）。
+@details
+直接翻译自 Movella Technologies B.V. 的 xsqeconverter.cpp，与 C++ 实现
+逐式对应，供 decode_glove_csv.py（EULER 帧转四元数）使用。
 
-Direct translation of xsqeconverter.cpp.
+公共函数：
+  - euler_degree_to_quat_xyzw(x, y, z, rot_order) -> [x, y, z, w]
+  - euler_degree_to_quat_wxyz(x, y, z, rot_order) -> [w, x, y, z]
+  - quat_to_euler_degree(quat_wxyz, order)        -> [x_deg, y_deg, z_deg]
 
-Public functions
-----------------
-euler_degree_to_quat_xyzw(x, y, z, rot_order) -> list[float]  # [x, y, z, w]
-euler_degree_to_quat_wxyz(x, y, z, rot_order) -> list[float]  # [w, x, y, z]
-quat_to_euler_degree(quat_wxyz, order)         -> list[float]  # [x_deg, y_deg, z_deg]
-
-rot_order values (match C++ unsigned int RotOrder):
+旋转顺序 rot_order 取值（与 C++ unsigned int RotOrder 一致）：
     0 = XYZ,  1 = XZY,  2 = YXZ,  3 = YZX,  4 = ZXY,  5 = ZYX
+非法 rot_order 返回单位四元数 / [0,0,0]，不抛异常。
+
+测试：tests/unit/test_xsqeconverter.py（半角公式金标准 + 逐顺序往返不变量）。
 """
 
 from __future__ import annotations
@@ -25,12 +28,22 @@ _ASIN_CLAMP = 1.0
 # ── internal helpers ────────────────────────────────────────────────────────
 
 def _safe_asinf(v: float) -> float:
+    """@brief 带钳位的 asin，避免浮点误差导致 |sin| 略大于 1 时抛 ValueError。
+
+    @param v 待求角的正弦值，理论范围 [-1, 1]；允许因舍入略越界。
+    @return  [-pi/2, pi/2] 内的弧度角；v 越界时按 ±1 钳位计算。
+    """
     return math.asin(max(-_ASIN_CLAMP, min(_ASIN_CLAMP, v)))
 
 
 def _rotation2quat(rotmat: list[float]) -> list[float]:
-    """Rotation matrix (row-major, 9 elements) → quaternion [x, y, z, w].
-    Corresponds to xsQEConverter::rotation2quat().
+    """@brief 旋转矩阵 → 归一化四元数 [x, y, z, w]。
+
+    按 |w|、|x|、|y|、|z| 最大分量分四支求解（数值稳定），对应
+    xsQEConverter::rotation2quat()。
+
+    @param rotmat 行优先 3x3 旋转矩阵，长度 9 的列表，元素为无量纲浮点数。
+    @return 归一化四元数 [x, y, z, w]；矩阵退化时返回单位四元数 [0,0,0,1]。
     """
     q = [0.0, 0.0, 0.0, 1.0]  # x y z w
 
@@ -67,9 +80,13 @@ def _rotation2quat(rotmat: list[float]) -> list[float]:
 
 
 def _quat2rotation(quat_wxyz: list[float]) -> list[float]:
-    """Quaternion [w,x,y,z] → rotation matrix (row-major, 9 elements).
-    Corresponds to xsQEConverter::QuatToEuler_quat2rotation().
-    Note: input is wxyz; C++ reorders to xyzw internally.
+    """@brief 四元数 [w, x, y, z] → 旋转矩阵（行优先 9 元素）。
+
+    对应 xsQEConverter::QuatToEuler_quat2rotation()。注意：输入为 wxyz，
+    C++ 内部先重排为 xyzw 再计算，本实现行为与之一致。
+
+    @param quat_wxyz 长度 4 的四元数列表，顺序 [w, x, y, z]（Shader 习惯序）。
+    @return 长度 9 的行优先旋转矩阵列表，元素为无量纲浮点数。
     """
     # C++: _quat = [quat[1], quat[2], quat[3], quat[0]]  (wxyz → xyzw)
     qx = quat_wxyz[1]
@@ -115,16 +132,17 @@ def _quat2rotation(quat_wxyz: list[float]) -> list[float]:
 def euler_degree_to_quat_xyzw(
     x: float, y: float, z: float, rot_order: int
 ) -> list[float]:
-    """Euler angles (degrees) → quaternion [x, y, z, w].
+    """@brief 欧拉角（度）→ 四元数 [x, y, z, w]。
 
-    Parameters
-    ----------
-    x, y, z   : Euler angles in degrees
-    rot_order : 0=XYZ  1=XZY  2=YXZ  3=YZX  4=ZXY  5=ZYX
+    对应 xsQEConverter::EulerDegreeToQuat_xyzw()：按 rot_order 拼装旋转
+    矩阵后调用 _rotation2quat() 归一化。
 
-    Returns
-    -------
-    [x, y, z, w] normalised quaternion
+    @param x          绕 X 轴欧拉角，单位度，无范围限制（任意实数）。
+    @param y          绕 Y 轴欧拉角，单位度，无范围限制。
+    @param z          绕 Z 轴欧拉角，单位度，无范围限制。
+    @param rot_order  旋转顺序编号：0=XYZ 1=XZY 2=YXZ 3=YZX 4=ZXY 5=ZYX；
+                      非法值返回单位四元数。
+    @return 归一化四元数列表 [x, y, z, w]（|q| == 1）。
     """
     XR = x / 180.0 * _PI
     YR = y / 180.0 * _PI
@@ -179,10 +197,17 @@ def euler_degree_to_quat_xyzw(
 def euler_degree_to_quat_wxyz(
     x: float, y: float, z: float, rot_order: int
 ) -> list[float]:
-    """Euler angles (degrees) → quaternion [w, x, y, z].
+    """@brief 欧拉角（度）→ 四元数 [w, x, y, z]（Shader/引擎习惯序）。
 
-    Corresponds to xsQEConverter::EulerDegreeToQuat_wxyz():
-    calls EulerDegreeToQuat_xyzw then reorders [x,y,z,w] → [w,x,y,z].
+    对应 xsQEConverter::EulerDegreeToQuat_wxyz()：调用
+    euler_degree_to_quat_xyzw() 后把 [x,y,z,w] 重排为 [w,x,y,z]。
+
+    @param x          绕 X 轴欧拉角，单位度，无范围限制。
+    @param y          绕 Y 轴欧拉角，单位度，无范围限制。
+    @param z          绕 Z 轴欧拉角，单位度，无范围限制。
+    @param rot_order  旋转顺序编号：0=XYZ 1=XZY 2=YXZ 3=YZX 4=ZXY 5=ZYX；
+                      非法值返回单位四元数。
+    @return 归一化四元数列表 [w, x, y, z]。
     """
     xyzw = euler_degree_to_quat_xyzw(x, y, z, rot_order)
     return [xyzw[3], xyzw[0], xyzw[1], xyzw[2]]
@@ -191,18 +216,18 @@ def euler_degree_to_quat_wxyz(
 def quat_to_euler_degree(
     quat_wxyz: list[float], order: int
 ) -> list[float]:
-    """Quaternion [w, x, y, z] → Euler angles in degrees.
+    """@brief 四元数 [w, x, y, z] → 欧拉角（度）。
 
-    Corresponds to xsQEConverter::QuatToEulerDegree().
+    对应 xsQEConverter::QuatToEulerDegree()：先经 _quat2rotation() 转旋转
+    矩阵，再按 order 用 atan2/asin 提取三个角。第二角为 asin 分量（主值
+    范围 ±90°），其余两角为 atan2 分量（±180°）。注意本函数与
+    euler_degree_to_quat_* 的往返仅在 asin 主值范围内可逆；万向锁附近
+    可能出现 NaN（与 C++ 行为一致）。
 
-    Parameters
-    ----------
-    quat_wxyz : [w, x, y, z]
-    order     : 0=XYZ … 5=ZYX  (same numbering as EulerDegreeToQuat)
-
-    Returns
-    -------
-    [x_deg, y_deg, z_deg]
+    @param quat_wxyz 长度 4 的四元数列表，顺序 [w, x, y, z]。
+    @param order     旋转顺序编号：0=XYZ 1=XZY 2=YXZ 3=YZX 4=ZXY 5=ZYX；
+                     非法值返回 [0, 0, 0]。
+    @return 欧拉角列表 [x_deg, y_deg, z_deg]，单位度。
     """
     rotmat = _quat2rotation(quat_wxyz)
 
@@ -220,14 +245,14 @@ def quat_to_euler_degree(
         ex = math.atan2(mat_R(1, 2), mat_R(1, 1))
         ey = math.atan2(mat_R(2, 0), mat_R(0, 0))
         ez = _safe_asinf(-mat_R(1, 0))
-    elif order == 2:
-        ex = math.atan2(-mat_R(2, 1), mat_R(1, 1))
-        ey = math.atan2(-mat_R(0, 2), mat_R(0, 0))
-        ez = _safe_asinf(mat_R(0, 1))
-    elif order == 3:
+    elif order == 2:  # YXZ：第二角 X 由 asin(-m12) 给出，Y/Z 用 atan2
         ex = _safe_asinf(-mat_R(2, 1))
         ey = math.atan2(mat_R(2, 0), mat_R(2, 2))
         ez = math.atan2(mat_R(0, 1), mat_R(1, 1))
+    elif order == 3:  # YZX：第二角 Z 由 asin(m10) 给出，X/Y 用 atan2
+        ex = math.atan2(-mat_R(2, 1), mat_R(1, 1))
+        ey = math.atan2(-mat_R(0, 2), mat_R(0, 0))
+        ez = _safe_asinf(mat_R(0, 1))
     elif order == 4:
         ex = _safe_asinf(mat_R(1, 2))
         ey = math.atan2(-mat_R(0, 2), mat_R(2, 2))

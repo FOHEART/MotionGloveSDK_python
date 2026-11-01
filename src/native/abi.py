@@ -1,7 +1,7 @@
 """
-abi.py - MotionGloveSDK Python 转接层
-C++ 侧二进制布局的 Python 映射（ctypes）。
-
+@file  abi.py
+@brief C++ 侧二进制布局的 ctypes 映射。
+@details
 ═══════════════════════════════════════════════════════════════════════════
   这是整个转接层中【唯一】与 C++ 结构体内存布局耦合的文件。
   当 MotionGloveSDK_cpp 修改了结构体 / 枚举 / 导出函数签名时：
@@ -11,9 +11,9 @@ C++ 侧二进制布局的 Python 映射（ctypes）。
   其余文件（loader.py / mapper.py / backend.py）无需改动。
 ═══════════════════════════════════════════════════════════════════════════
 
-对应 C++ 头文件：
-  MotionGloveSDK/include/motionGloveSDK_commonDef.h   （#pragma pack(1)）
-  MotionGloveSDK/include/motionGloveSDKDef.h          （#pragma pack(1)）
+对应 C++ 头文件（均 #pragma pack(1)，Python 侧用 _pack_ = 1 镜像）：
+  MotionGloveSDK/include/motionGloveSDK_commonDef.h
+  MotionGloveSDK/include/motionGloveSDKDef.h
   MotionGloveSDK/include/motionGloveSDK_skeleton42Def.h
   MotionGloveSDK/include/motionGloveSDK_skeleton32Def.h
 
@@ -23,6 +23,8 @@ C++ 侧二进制布局的 Python 映射（ctypes）。
   sizeof(KHHS42PosAttitude_TypeDef)     = 8375   remoteIP        @ 8363
   sizeof(KHHS32PosAttitude_TypeDef)     = 6415   remoteIP        @ 6403
   sizeof(KHHSOpenXRPosAttitude_TypeDef) = 10335
+
+测试：tests/unit/test_abi.py（布局基准 + verify_layout 自检）。
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ KHHS_OPENXR_SKELETON_COUNT = 52  # KHHSOpenXR_SkeletonCount（布局未定义，
 
 
 class SkeletonFormat:
-    """GloveStreamSkeletonFormat_TypeDef（uint8 枚举）"""
+    """@brief 骨骼流格式。@details GloveStreamSkeletonFormat_TypeDef（uint8 枚举）。"""
 
     SKELETON_32 = 0
     SKELETON_42 = 1
@@ -51,14 +53,14 @@ class SkeletonFormat:
 
 
 class SkeletonPosition:
-    """SkeletonPosition_TypeDef（uint8 枚举）"""
+    """@brief 骨骼位置类型。@details SkeletonPosition_TypeDef（uint8 枚举）。"""
 
     NONE = 0
     METER = 1
 
 
 class SkeletonAttitude:
-    """SkeletonAttitude_TypeDef（uint8 枚举）"""
+    """@brief 骨骼旋转类型。@details SkeletonAttitude_TypeDef（uint8 枚举）。"""
 
     NONE = 0
     EULER = 1
@@ -66,7 +68,7 @@ class SkeletonAttitude:
 
 
 class SkeletonCoordinate:
-    """SkeletonCoordinate_TypeDef（uint8 枚举）"""
+    """@brief 骨骼坐标系。@details SkeletonCoordinate_TypeDef（uint8 枚举）。"""
 
     RELATIVE = 0
     GLOBAL = 1
@@ -77,7 +79,8 @@ class SkeletonCoordinate:
 # ---------------------------------------------------------------------------
 
 class StreamHeader(ctypes.Structure):
-    """对应 C++ StreamHeader（motionGloveSDK_commonDef.h）"""
+    """@brief 帧头结构体。@details 对应 C++ StreamHeader（motionGloveSDK_commonDef.h），
+            #pragma pack(1) 与 Python 侧 _pack_ = 1 对齐；字段顺序必须与 C++ 一致。"""
 
     _pack_ = 1
     _fields_ = [
@@ -109,7 +112,11 @@ class StreamHeader(ctypes.Structure):
 
 
 class SingleSkeleton(ctypes.Structure):
-    """对应 C++ SingleSkeletonDef（motionGloveSDKDef.h）"""
+    """@brief 单骨骼段结构体（196 字节）。
+
+    @details 对应 C++ SingleSkeletonDef（motionGloveSDKDef.h）。quat_xyzw /
+             sensor_quat_xyzw 按 xyzw 存储，Python 对外输出前由 mapper 重排为 wxyz。
+    """
 
     _pack_ = 1
     _fields_ = [
@@ -227,7 +234,11 @@ EXPECTED_OFFSETS: dict[str, dict[str, int]] = {
 
 
 def describe_layout() -> dict[str, dict[str, int]]:
-    """返回当前 ctypes 定义实际的 sizeof 与全部字段 offset。"""
+    """@brief 返回当前 ctypes 定义实际的 sizeof 与全部字段 offset。
+
+    @return 嵌套字典 {结构体名: {"sizeof": N, 字段名: offset, ...}}，
+            供 verify_layout() 与 scripts/abi_probe.cpp 输出比对。
+    """
     layout: dict[str, dict[str, int]] = {}
     for struct_name, struct in STRUCTS.items():
         entry: dict[str, int] = {"sizeof": ctypes.sizeof(struct)}
@@ -239,9 +250,11 @@ def describe_layout() -> dict[str, dict[str, int]]:
 
 
 def verify_layout() -> list[str]:
-    """
-    校验 ctypes 定义与基准布局是否一致，返回不一致项列表（空表示一致）。
-    供 tests 与 scripts/verify_native_abi.py 使用。
+    """@brief 校验 ctypes 定义与基准布局是否一致。
+
+    @details 基准见 EXPECTED_SIZES / EXPECTED_OFFSETS（scripts/abi_probe.cpp
+             实测值）。供 tests/unit/test_abi.py 与 scripts/verify_native_abi.py 使用。
+    @return 不一致项描述列表（每项一条）；完全一致时返回空列表。
     """
     problems: list[str] = []
 

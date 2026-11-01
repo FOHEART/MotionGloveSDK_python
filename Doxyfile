@@ -1,0 +1,57 @@
+# @file  Doxyfile
+# @brief MotionGloveSDK (Python) — Doxygen 配置。
+# @details
+# 依据《代码注释规范_Doxygen.md》红线配置：
+#   - EXTRACT_ALL = NO：只提取已注释的实体，未注释不强行提取
+#   - WARN_NO_PARAMDOC / WARN_IF_UNDOCUMENTED / WARN_AS_ERROR：
+#     参数未注释 / 成员未注释即告警，告警即失败
+#   - WARN_LOGFILE：告警日志（验收标准：0 字节 + 退出码 0）
+#
+# 运行：D:/autotools/doxygen-1.11.0/doxygen.exe Doxyfile
+# 验收：doxygen_warnings.log 为 0 字节，退出码 0，docs/html/index.html 生成。
+
+PROJECT_NAME           = "MotionGloveSDK (Python)"
+PROJECT_BRIEF          = "MotionGloveSDK Python SDK — 数据流解析由 C++ 原生库完成，本包提供公共接口与 ctypes 转接层"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = src tests/unit
+INPUT_ENCODING         = UTF-8
+RECURSIVE              = YES
+FILE_PATTERNS          = *.py *.md
+
+EXCLUDE                = libs build third_party .venv docs
+EXCLUDE_PATTERNS       = */__pycache__/*
+
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = NO
+HIDE_UNDOC_MEMBERS     = NO
+
+# 中文输出
+OUTPUT_LANGUAGE        = Chinese
+
+# —— 告警红线 ——
+# 注意：WARN_IF_UNDOCUMENTED 在 doxygen 1.11.0 的 Python 解析器下对
+# 「已注释类的方法」必然产生误报（@param 写全也报 not documented，
+# 已实测确认，包括 :param: reST 风格），因此关闭该项；
+# 参数级覆盖由 WARN_NO_PARAMDOC = YES 保证，配合 WARN_AS_ERROR 同样零容忍。
+WARNINGS               = YES
+WARN_NO_PARAMDOC       = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_AS_ERROR          = YES
+WARN_LOGFILE           = doxygen_warnings.log
+
+# 测试文档中使用的自定义标签（tests/unit/*.py 的 @test 风格五字段模板）
+ALIASES                += "test=\par 测试标识"
+ALIASES                += "expected=\par 预期结果"
+ALIASES                += "priority=\par 优先级"
+
+QUIET                  = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+JAVADOC_AUTOBRIEF      = YES
+PYTHON_DOCSTRING       = YES
+MARKDOWN_SUPPORT       = YES

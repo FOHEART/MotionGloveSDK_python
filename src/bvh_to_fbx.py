@@ -1,5 +1,8 @@
-"""bvh_to_fbx.py
-在 Blender 后台模式下将 BVH 文件批量转换为 FBX。
+"""@file  bvh_to_fbx.py
+@brief 在 Blender 后台模式下将 BVH 文件批量转换为 FBX。
+@details
+依赖 Blender 内置 Python（bpy），不适合常规单元测试，由真机脚本验证。
+导入后旋转模式 NATIVE、轴向 -Z 前进 / Y 上，导出时烘焙全部骨骼动画。
 
 用法（命令行）：
     blender --background --python scripts/bvh_to_fbx.py -- csvfile/
@@ -20,10 +23,21 @@ import bpy
 
 
 def clear_scene() -> None:
+    """@brief 清空 Blender 场景（恢复出厂空场景）。
+
+    @return 无（None）。
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
 def convert(bvh_path: Path, scale: float, fps: int | None) -> Path:
+    """@brief 将单个 BVH 文件导入 Blender 并导出为 FBX。
+
+    @param bvh_path 输入 BVH 文件路径。
+    @param scale    导入缩放比例（默认 0.01，厘米→米）。
+    @param fps      动画帧率；None 表示按 BVH 文件自身帧率。
+    @return 输出 FBX 文件路径（与输入同目录同名，扩展名 .fbx）。
+    """
     clear_scene()
 
     bpy.ops.import_anim.bvh(
@@ -59,6 +73,13 @@ def convert(bvh_path: Path, scale: float, fps: int | None) -> Path:
 
 
 def main() -> None:
+    """@brief 命令行入口：批量转换 BVH 文件为 FBX。
+
+    @details 参数从 Blender 的 "--" 之后读取（source: input 路径，
+             --scale 缩放比例，--fps 帧率）。目录输入时按文件名排序
+             批量处理目录下全部 *.bvh。
+    @return 无（None）；参数错误或路径不存在时 sys.exit(1)。
+    """
     # -- 之后的参数才是脚本参数
     argv = sys.argv
     if "--" in argv:

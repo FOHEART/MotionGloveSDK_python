@@ -1,11 +1,20 @@
 """
-definitions.py - MotionGloveSDK Python
-数据结构与枚举定义
+@file  definitions.py
+@brief MotionGloveSDK Python 数据结构与枚举定义。
+@details
+与 C++ 头文件保持一一对应（改 C++ 结构体时同步改这里，并用
+scripts/verify_native_abi.py / tests/unit/test_abi.py 校验）：
+  - MotionGloveSDK/include/motionGloveSDK_commonDef.h
+  - MotionGloveSDK/include/motionGloveSDK_HMAXGloveDef.h
+  - MotionGloveSDK/include/motionGloveSDKDef.h
 
-对应 C++ 头文件：
-  MotionGloveSDK/include/motionGloveSDK_commonDef.h
-  MotionGloveSDK/include/motionGloveSDK_HMAXGloveDef.h
-  MotionGloveSDK/include/motionGloveSDKDef.h
+内容分四部分：
+  1. 常量与 32 骨名称表 / 32→42 索引映射表；
+  2. 协议枚举（姿态类型、坐标系、旋转顺序、手势）；
+  3. 骨骼索引枚举 BoneIndex（42 节点，含 *End 端点）与名称表；
+  4. 数据容器 StreamHeader / SingleSkeleton / GloveFrame。
+
+测试：tests/unit/test_definitions.py、tests/unit/test_abi.py。
 """
 
 from dataclasses import dataclass, field
@@ -57,23 +66,24 @@ BONE_INDEX_MAP_32_TO_42: list[int] = [
 # ---------------------------------------------------------------------------
 
 class SkeletonPosition(IntEnum):
-    """对应 C++ SkeletonPosition_TypeDef"""
+    """@brief 骨骼位置数据类型。@details 对应 C++ SkeletonPosition_TypeDef。"""
     NONE  = 0   # 不含骨骼位置
     METER = 1   # 含位置，单位：米
 
 class SkeletonAttitude(IntEnum):
-    """对应 C++ SkeletonAttitude_TypeDef"""
+    """@brief 骨骼旋转数据类型。@details 对应 C++ SkeletonAttitude_TypeDef。"""
     NONE  = 0   # 不含旋转
     EULER = 1   # 欧拉角，单位：度
     QUAT  = 2   # 四元数
 
 class SkeletonCoordinate(IntEnum):
-    """对应 C++ SkeletonCoordinate_TypeDef"""
+    """@brief 骨骼坐标系。@details 对应 C++ SkeletonCoordinate_TypeDef。"""
     RELATIVE = 0   # 本地坐标系（相对父骨骼）
     GLOBAL   = 1   # 全局坐标系
 
 class ChannelOrder(IntEnum):
-    """对应 C++ MVSDK_ChannelOrder"""
+    """@brief 欧拉角旋转顺序。@details 对应 C++ MVSDK_ChannelOrder；
+             数值与 xsqeconverter 的 rot_order 参数一致（0=XYZ … 5=ZYX）。"""
     XYZ = 0
     XZY = 1
     YXZ = 2
@@ -92,7 +102,7 @@ CHANNEL_ORDER_FROM_STR: dict[str, ChannelOrder] = {
 }
 
 class HandGesture(IntEnum):
-    """对应 C++ HandGesture_TypeDef（15 种手势识别结果）"""
+    """@brief 手势识别结果。@details 对应 C++ HandGesture_TypeDef（15 种手势）。"""
     NONE =  0
     G1   =  1
     G2   =  2
@@ -116,7 +126,8 @@ class HandGesture(IntEnum):
 # ---------------------------------------------------------------------------
 
 class BoneIndex(IntEnum):
-    """对应 C++ kinemHumanHandsSkeleton42Index"""
+    """@brief 42 节点手部骨骼索引。@details 对应 C++ kinemHumanHandsSkeleton42Index；
+             *3End 为指尖端点节点，数据流（32 骨）中不发送。"""
     RightHand            =  0
     RightHandThumb1      =  1
     RightHandThumb2      =  2
@@ -186,9 +197,11 @@ BONE_NAMES_SHORT: list[str] = [
 
 @dataclass
 class StreamHeader:
-    """
-    帧头信息。
-    对应 C++ StreamHeader（motionGloveSDK_commonDef.h）
+    """@brief 帧头信息。
+
+    @details 对应 C++ StreamHeader（motionGloveSDK_commonDef.h）。
+             CSV 路径下由 decode_glove_csv.parse_header_tokens() 填充；
+             原生库路径下由 mapper.py 从 C 结构体映射。
     """
     protocol_version:        int              = 0
     avatar_name:             str              = ""
@@ -207,9 +220,12 @@ class StreamHeader:
 
 @dataclass
 class SingleSkeleton:
-    """
-    单段骨骼数据。
-    对应 C++ SingleSkeletonDef（motionGloveSDKDef.h）
+    """@brief 单段骨骼数据。
+
+    @details 对应 C++ SingleSkeletonDef（motionGloveSDKDef.h）。
+             contains_* 标志表示对应数据在当前流中是否存在
+             （1 存在，0 不存在）；quat_wxyz 以 [w,x,y,z] 存储
+             （与 C++ quat_xyzw[4] 内存顺序一致）。
     """
     bone_index:   int = -1
     bone_name:    str = ""
@@ -231,9 +247,11 @@ class SingleSkeleton:
 
 @dataclass
 class GloveFrame:
-    """
-    一帧完整的手套骨骼数据。
-    对应 C++ KHHS32PosAttitude_TypeDef（motionGloveSDKDef.h）
+    """@brief 一帧完整的手套骨骼数据。
+
+    @details 对应 C++ KHHS32PosAttitude_TypeDef（motionGloveSDKDef.h）。
+             skeletons 默认按 42 骨初始化；CSV 32 骨流经
+             BONE_INDEX_MAP_32_TO_42 映射到 42 骨索引。
     """
     header:     StreamHeader              = field(default_factory=StreamHeader)
     skeletons:  list[SingleSkeleton]      = field(

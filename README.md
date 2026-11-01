@@ -518,3 +518,38 @@ https://renkunzhao.github.io/motion_viewer/
 
 https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
+---
+
+## 测试（pytest）
+
+单元测试位于 [`tests/unit/`](tests/README.md)，纯 Python 实现，
+不依赖原生库、PySide6 或 Blender，方法论遵循《TDD与GoogleTest实践指南》
+（红/绿/重构、金标准/不变量/边界值/异常输入四类覆盖）。
+
+```bash
+# Windows（项目根目录）
+.venv/Scripts/python.exe -m pytest tests/unit -q
+# Linux / macOS
+python3 -m pytest tests/unit -q
+```
+
+覆盖范围：欧拉角↔四元数转换（半角公式金标准 + 6 旋转顺序往返不变量）、
+CSV 帧解析（EULER/QUAT 线上 wxyz 顺序）、分包拼接（乱序/重复/无分隔符）、
+ctypes 内存布局基准（131/196/8375/6415/10335）、mapper 转换（ntohs、
+xyzw→wxyz）、config.json 原子读写、actorName 字节上限校验等。
+
+## 文档（Doxygen）
+
+源码注释遵循《代码注释规范_Doxygen.md》（@file 文件头 + @brief/@param/@return）。
+HTML 文档由根目录 `Doxyfile` 生成：
+
+```bat
+:: Windows（项目根目录）
+gen_docs.bat
+:: 或手动
+D:\autotools\doxygen-1.11.0\doxygen.exe Doxyfile
+```
+
+验收标准：`doxygen_warnings.log` 为 0 字节、退出码 0、
+`docs/html/index.html` 生成（浏览器打开即可浏览 API 文档）。
+

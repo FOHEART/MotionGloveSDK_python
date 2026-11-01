@@ -1,15 +1,25 @@
 """
-decode_glove_csv.py - MotionGloveSDK Python
-将拼接完成的 CSV body 字符串解析为 GloveFrame 数据容器
-
+@file  decode_glove_csv.py
+@brief 将拼接完成的 CSV body 字符串解析为 GloveFrame 数据容器。
+@details
 对应 C++ 实现：
-  MotionGloveSDK/src/decodeAsGloveCSV.cpp  - GloveSplitFrameMgr::parseFrame()
+  MotionGloveSDK/src/decodeAsGloveCSV.cpp    - GloveSplitFrameMgr::parseFrame()
   MotionGloveSDK/src/motionGloveSdkHelper.cpp - isFrameCSV_Glove()
 
-⚠ 说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
-   UDP 数据流的解析在库内部完成。本模块现在仅供
-   csv_frame_reader.py（CSV 文件回放）与 motionGloveSDK_rawReceiver.py
-   （原始数据调试工具）使用。
+说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
+UDP 数据流的解析在库内部完成。本模块现在仅供
+csv_frame_reader.py（CSV 文件回放）与 motionGloveSDK_rawReceiver.py
+（原始数据调试工具）使用。
+
+数值按骨骼（每骨 group_item_count 个）排列：
+  - pos（米）占 3 个：x y z；
+  - EULER 帧占 3 个：roll pitch yaw（按 header 的旋转顺序）；
+  - QUAT  帧占 4 个：w x y z（线上顺序为 wxyz，与 C++
+    decodeAsGloveCSV.cpp 的读取顺序一致）。
+
+骨骼数量按值总数自动识别：42 骨（KHHS42）或 32 骨（KHHS32，经
+BONE_INDEX_MAP_32_TO_42 映射回 42 骨索引）。总数不匹配 / 含非数值时
+返回 None 并记录调试日志（MOTIONGLOVE_DEBUG=1 开启）。
 
 调用方：
   from decode_glove_csv import decode_glove_csv
@@ -44,18 +54,28 @@ _decode_drop_count = 0
 
 
 def _debug_log(msg: str) -> None:
+    """@brief 调试日志输出（受环境变量 MOTIONGLOVE_DEBUG=1 控制）。
+
+    @param msg 日志内容字符串，UTF-8 文本。
+    @return 无（None）。
+    """
     if _DEBUG:
         print(f"[MOTIONGLOVE_DEBUG][decode] {msg}")
 
 
 def parse_header_tokens(tokens: list[str]) -> StreamHeader:
-    """
-    从 header token 列表中解析 StreamHeader。
+    """@brief 从 header token 列表中解析 StreamHeader。
+
     对应 C++ decodeAsGloveCSV_Func() 中对 splitHeaderVec 的逐项解析。
+    缺失字段保留默认值，非法数值（IndexError/ValueError）静默跳过。
 
     tokens 示例：
       ["Glove1", "pos", "euler", "ZXY", "relative", "fn", "340772",
        "gesture", "0", "0", "subpackage", "1/1"]
+
+    @param tokens header 行按空格分割后的 token 列表；空列表返回默认 StreamHeader。
+    @return 填充后的 StreamHeader（avatar_name、姿态类型、旋转顺序、
+            坐标系、帧序号、手势等字段）。
     """
     hdr = StreamHeader()
 
@@ -118,20 +138,21 @@ def decode_glove_csv(actor: str,
                      header_tokens: list[str],
                      remote_ip: str = "",
                      remote_port: int = 0) -> GloveFrame | None:
-    """
-    将拼接完成的帧数据解析为 GloveFrame。
-    对应 C++ GloveSplitFrameMgr::parseFrame() + decodeAsGloveCSV_Func() 末段的填充逻辑。
+    """@brief 将拼接完成的帧数据解析为 GloveFrame。
 
-    参数：
-      actor         : 演员名称（avatar name）
-      fn            : 帧序号
-      body_csv      : 拼接完成的 CSV 数值串（不含 header 行）
-      header_tokens : header 行按空格分割后的 token 列表（用于解析 StreamHeader）
-      remote_ip     : 数据来源 IP（可选）
-      remote_port   : 数据来源端口（可选）
+    对应 C++ GloveSplitFrameMgr::parseFrame() + decodeAsGloveCSV_Func()
+    末段的填充逻辑。流程：解析 StreamHeader → 依 header 计算
+    group_item_count（pos 3 + euler 3 或 quat 4）→ 按值总数识别 42/32 骨
+    → 逐骨填充位置与姿态（EULER 帧同时转出四元数）。
 
-    返回：
-      解析成功 → GloveFrame；格式不符 → None
+    @param actor         演员名称（avatar name），非空字符串，≤ 63 字节。
+    @param fn            帧序号，非负整数。
+    @param body_csv      拼接完成的 CSV 数值串（逗号分隔，不含 header 行）。
+    @param header_tokens header 行按空格分割后的 token 列表（解析 StreamHeader 用）。
+    @param remote_ip     数据来源 IP（可选，默认空串）。
+    @param remote_port   数据来源端口（可选，默认 0）。
+    @return 解析成功 → GloveFrame；header 无姿态字段、数值总数不匹配
+            或含非数值 → None（不抛异常）。
     """
     # ------------------------------------------------------------------
     # 1. 解析 StreamHeader
@@ -238,7 +259,8 @@ def decode_glove_csv(actor: str,
             skel.quat_wxyz = [xyzw[3], xyzw[0], xyzw[1], xyzw[2]]
 
         elif hdr.skeleton_attitude == SkeletonAttitude.QUAT:
-            # CSV 中四元数顺序为 x y z w
+            # QUAT 帧线上顺序为 wxyz（与 C++ decodeAsGloveCSV.cpp 一致），
+            # 直接按 w x y z 读取，无需重排。
             qw = values[base + offset]
             qx = values[base + offset + 1]
             qy = values[base + offset + 2]

@@ -1,6 +1,7 @@
-"""csv_frame_reader.py
-从 MotionGlove CSV 导出文件逐帧读取骨骼数据。
-
+"""
+@file  csv_frame_reader.py
+@brief 从 MotionGlove CSV 导出文件逐帧读取骨骼数据。
+@details
 文件格式（两种）：
   第 1 行：列名表头（跳过）
   第 2 行起每行代表一帧，支持两种 subpackage 格式：
@@ -15,26 +16,14 @@
       示例：
           Glove1 ... subpackage 1/2,<数值>,Glove1 ... subpackage 2/2,<数值>
 
-公开接口
---------
-CsvFrameReader(path)
-    构造时将全部数据行预解析为 GloveFrame 列表存入内存。
+公开接口（类 CsvFrameReader）：
+  - 构造时将全部数据行预解析为 GloveFrame 列表存入内存；
+  - next_frame() 顺序取帧，末帧后返回 None；
+  - reset() / seek() 控制读取位置；
+  - 属性 total_frames / current_index / at_end。
 
-    .next_frame() -> GloveFrame | None
-        返回当前索引对应的 GloveFrame 并将索引加 1。
-        已到末帧时返回 None，索引不变。
-
-    .reset()
-        将索引归零，可重新从头播放。
-
-    .at_end -> bool
-        当前索引已超出范围时为 True。
-
-    .total_frames -> int
-        数据行总数（不含表头）。
-
-    .current_index -> int
-        当前读取索引（0-based）。
+文件以 utf-8-sig 打开，兼容带 BOM 的导出文件。
+测试：tests/unit/test_csv_frame_reader.py。
 """
 
 from __future__ import annotations
@@ -55,15 +44,19 @@ _EMBEDDED_HEADER_RE = re.compile(
 
 
 class CsvFrameReader:
-    """预加载 MotionGlove CSV 导出文件，按行顺序提供 GloveFrame。"""
+    """@brief 预加载 MotionGlove CSV 导出文件，按行顺序提供 GloveFrame。
+
+    @details 构造即完成全文件解析（一次性 I/O），之后 next_frame() 为
+             纯内存操作，适合回放循环。解析失败的行（返回 None）被
+             静默丢弃，不占用帧索引。
+    """
 
     def __init__(self, path: str) -> None:
-        """
-        参数：
-            path — CSV 文件路径
+        """@brief 读取并预解析 CSV 文件。
 
-        异常：
-            FileNotFoundError — 文件不存在时抛出
+        @param path CSV 文件路径（绝对或相对均可），以 utf-8-sig 打开。
+        @return 无（None）。
+        @exception FileNotFoundError 文件不存在时抛出。
         """
         p = Path(path)
         if not p.is_file():
@@ -88,31 +81,36 @@ class CsvFrameReader:
 
     @property
     def total_frames(self) -> int:
-        """数据行总数（不含表头行）。"""
+        """@brief 数据行总数（不含表头行）。@return 帧数，非负整数。"""
         return len(self._frames)
 
     @property
     def current_index(self) -> int:
-        """当前读取索引（0-based）。"""
+        """@brief 当前读取索引。@return 0-based 索引，[0, total_frames]。"""
         return self._index
 
     @property
     def at_end(self) -> bool:
-        """当前索引已超出范围时为 True。"""
+        """@brief 是否已到末尾。@return 当前索引超出帧数范围时为 True。"""
         return self._index >= len(self._frames)
 
     def reset(self) -> None:
-        """将索引归零，下次 next_frame() 从第一帧开始。"""
+        """@brief 将索引归零，下次 next_frame() 从第一帧开始。@return 无（None）。"""
         self._index = 0
 
     def seek(self, index: int) -> None:
-        """将索引直接定位到指定帧（0-based），夹紧到合法范围。"""
+        """@brief 将索引直接定位到指定帧，越界值夹紧到合法范围。
+
+        @param index 目标索引（0-based）；负数按 0 处理，超过帧数按末尾处理。
+        @return 无（None）。
+        """
         self._index = max(0, min(index, len(self._frames)))
 
     def next_frame(self) -> GloveFrame | None:
-        """
-        返回当前索引对应的 GloveFrame 并将索引加 1。
-        已到末帧（at_end 为 True）时返回 None，索引不变。
+        """@brief 返回当前索引对应的 GloveFrame 并将索引加 1。
+
+        @return GloveFrame（正常）；已到末帧（at_end 为 True）→ None，
+                且索引保持不变。
         """
         if self.at_end:
             return None
@@ -124,10 +122,14 @@ class CsvFrameReader:
 
     @staticmethod
     def _parse_line(line: str) -> GloveFrame | None:
-        """将 CSV 单行解析为 GloveFrame。
+        """@brief 将 CSV 单行解析为 GloveFrame。
 
         支持格式 A（单 subpackage）和格式 B（多 subpackage 拼接在同一行）。
-        多段 subpackage 的 header 会被剔除，所有数值段拼接后统一传给 decode_glove_csv。
+        多段 subpackage 的 header 会被剔除，所有数值段拼接后统一传给
+        decode_glove_csv。
+
+        @param line 去除行尾换行后的 CSV 数据行文本。
+        @return GloveFrame（成功）；无逗号、header 为空或数值不合法 → None。
         """
         # 取第一段 header（到第一个逗号为止）
         comma_idx = line.find(',')
