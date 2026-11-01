@@ -10,6 +10,11 @@ Glove Frame Assembler - MotionGloveSDK Python
 对应 C++ 实现：
   MotionGloveSDK/src/decodeAsGloveCSV.cpp - GloveSplitFrameMgr
 
+⚠ 说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
+   UDP 分包拼接与解析都在库内部完成。本模块现在仅供
+   motionGloveSDK_rawReceiver.py（原始数据调试工具）使用，
+   以及作为 C++ GloveSplitFrameMgr 的 Python 参考实现。
+
 调用方式：
   from glove_frame_assembler import GloveFrameAssembler
 

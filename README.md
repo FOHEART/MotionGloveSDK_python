@@ -1,6 +1,9 @@
 # MotionGloveSDK Python
 
-MotionGlove 动作手套的 Python SDK，通过 UDP 接收手套骨骼数据，接口与 C++ SDK（`motionGloveSDK.h`）保持一致。
+MotionGlove 动作手套的 Python SDK。数据流接收与解析由 C++ SDK
+（[`third_party/MotionGloveSDK_cpp`](third_party/MotionGloveSDK_cpp)，以 git submodule 引入）
+编译出的动态库完成，Python 侧通过 `src/native` 转接层（ctypes）取回已解析好的骨骼帧；
+对外接口与 C++ SDK（`motionGloveSDK.h`）保持一致。
 
 ---
 
@@ -13,17 +16,26 @@ MotionGloveSDK_python/
 ├── motionGloveSDK_example1.py         # 示例1：帧接收计数
 ├── motionGloveSDK_example2.py         # 示例2：读取左右手掌欧拉角
 ├── motionGloveSDK_example3_3dView.py  # 示例3：3D 实时可视化（含 UDP_STREAM / CSV_PLAYBACK 双模式）
-├── CSV_PLAYBACK_UserManual.md         # CSV 回放模式最终用户操作说明
+├── AGENTS.md                          # 工程说明（面向 AI 编码助手）
 │
 ├── src/                               # SDK 内部实现模块
 │   ├── __init__.py
-│   ├── motionGloveSDK.py              # SDK 主入口（公共接口）
+│   ├── motionGloveSDK.py              # SDK 主入口（公共接口，转调 src/native）
 │   ├── definitions.py                 # 数据结构与枚举定义（GloveFrame、BoneIndex 等）
-│   ├── glove_frame_assembler.py       # UDP 分包拼帧逻辑
-│   ├── decode_glove_csv.py            # CSV 格式骨骼数据解析
+│   ├── native/                        # ★ Python 转接层：C++ 库定位/ABI/帧转换
+│   │   ├── abi.py                     # ctypes 结构体与枚举（唯一与 C++ 内存布局耦合）
+│   │   ├── loader.py                  # 原生库定位、加载、导出函数原型绑定
+│   │   ├── mapper.py                  # 原生结构体 → GloveFrame 转换
+│   │   ├── backend.py                 # NativeBackend：稳定的 Python 语义接口
+│   │   └── errors.py                  # 转接层异常
+│   ├── glove_frame_assembler.py       # UDP 分包拼帧逻辑（仅 rawReceiver 调试工具使用）
+│   ├── decode_glove_csv.py            # CSV 骨骼数据解析（仅 CSV 回放 / rawReceiver 使用）
 │   ├── csv_frame_reader.py            # CsvFrameReader：预加载 CSV 文件，逐帧提供 GloveFrame
 │   ├── xsqeconverter.py               # 欧拉角 ↔ 四元数转换（移植自 Movella xsqeconverter.cpp）
 │   └── port_occupier.py               # 端口占用诊断工具
+│
+├── third_party/
+│   └── MotionGloveSDK_cpp/            # C++ SDK（git submodule，编译出 MotionGloveSDK.dll/.so）
 │
 ├── python_draw3d/                     # 3D 渲染辅助模块（基于 VTK）
 │   ├── bone_joint_actor.py            # 骨骼关节球体 + 坐标轴 Actor（支持运行时修改半径/颜色/轴长）
@@ -44,8 +56,15 @@ MotionGloveSDK_python/
 │   ├── pyparsing/                     # pyparsing 解析库
 │   └── six.py                         # six 兼容库
 │
-├── fonts/
-│   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
+├── tools/                             # 辅助工具与资料
+│   ├── fonts/
+│   │   └── HarmonyOS_Sans_SC_Regular.ttf  # 中文字体（3D 视图叠加文字使用）
+│   ├── docs/                          # 文档配图（用户手册插图）
+│   ├── csvPlayer/                     # 第三方 BVH 工具（bvhacker.exe / bvhview.exe）
+│   ├── MotionGloveBVH/                # BVH 参考文件与说明（LeftRightHand.bvh 等）
+│   ├── triad_openvr/                  # OpenVR / Lighthouse 追踪相关遗留文件
+│   ├── CSV_PLAYBACK_UserManual.md     # CSV 回放模式最终用户操作说明
+│   └── CSV_PLAYBACK_UserManual.pdf    # 同上（PDF 版）
 │
 ├── ui/                                # Qt Designer UI 文件与控制器
 │   ├── left_panel.ui                  # 左侧网络信息面板布局（Qt Designer 可编辑）
@@ -57,6 +76,11 @@ MotionGloveSDK_python/
 ├── scripts/                           # 实用脚本
 │   ├── [Windows]setup_python_libs.cmd # Windows 一键安装依赖脚本
 │   ├── [Linux]setup_python_libs.sh    # Linux 一键安装依赖脚本
+│   ├── [Windows]build_mgsdk_cpp.cmd   # Windows 编译 third_party/MotionGloveSDK_cpp
+│   ├── [Linux]build_mgsdk_cpp.sh      # Linux 编译 third_party/MotionGloveSDK_cpp
+│   ├── verify_native_abi.py           # 校验 src/native/abi.py 与 C++ 结构体布局是否一致
+│   ├── abi_probe.cpp                  # ABI 探针（打印 C++ sizeof/offsetof）
+│   ├── native_smoke_test.py           # 原生后端端到端冒烟测试（无需真实手套）
 │   ├── [Windows]build_dist.cmd        # Windows PyInstaller 打包脚本（--console 参数可选）
 │   ├── [Linux]build_dist.sh           # Linux PyInstaller 打包脚本（--console 参数可选）
 │   ├── [Windows]git_pull_latest.cmd   # Windows 拉取最新代码脚本
@@ -124,6 +148,59 @@ bash scripts/[Linux]setup_python_libs.sh
 
 ---
 
+## 编译原生库（必需）
+
+数据流解析完全由 C++ SDK 完成，运行前必须先编译出动态库。
+
+### 1. 初始化 submodule
+
+```bash
+git submodule update --init --recursive
+```
+
+### 2. 编译
+
+```cmd
+:: Windows（需要 Visual Studio 2022 或更高 + CMake）
+scripts\[Windows]build_mgsdk_cpp.cmd
+```
+
+```bash
+# Linux / macOS（需要 g++ + CMake）
+bash "scripts/[Linux]build_mgsdk_cpp.sh"
+```
+
+产物安装到 `build/mgsdk_cpp/install/`：
+
+| 平台 | 库文件 |
+|---|---|
+| Windows | `build/mgsdk_cpp/install/bin/MotionGloveSDK.dll` |
+| Linux / macOS | `build/mgsdk_cpp/install/lib/libMotionGloveSDK.so` |
+
+`src/native/loader.py` 会按以下顺序自动查找原生库：
+`MOTIONGLOVE_NATIVE_LIB` 环境变量 → `native/` → `libs/` → `build/mgsdk_cpp/install/{bin,lib}`
+→ `build/mgsdk_cpp/` 构建树 → `third_party/MotionGloveSDK_cpp/out/`。
+也可以用环境变量直接指定库文件（或所在目录）的绝对路径：
+
+```cmd
+set MOTIONGLOVE_NATIVE_LIB=D:\path\to\MotionGloveSDK.dll
+```
+
+### 3. 验证（可选）
+
+```bash
+python scripts/verify_native_abi.py    # 校验 src/native/abi.py 与 C++ 结构体布局一致
+python scripts/native_smoke_test.py    # 端到端冒烟测试（发送合成数据帧，无需真实手套）
+```
+
+> **C++ 工程改动后怎么办？**
+> `third_party/MotionGloveSDK_cpp` 可能经常更新。更新后重新执行第 2 步；
+> 若结构体/接口有变化，`scripts/verify_native_abi.py` 会明确指出差异，
+> 此时只需要修改 `src/native/abi.py`（内存布局）或 `src/native/loader.py`（函数签名），
+> 其余业务代码无需改动。
+
+---
+
 ## 快速开始
 
 ### 前提条件
@@ -151,14 +228,21 @@ while True:
 
 | 接口 | 说明 |
 |---|---|
-| `MotionGloveSDK_getVersion()` | 返回 SDK 版本号（32 位整数） |
-| `MotionGloveSDK_ListenUDPPort(nPort)` | 绑定本机 UDP 端口并启动后台接收线程，返回 0 成功 / -1 失败 |
-| `MotionGloveSDK_CloseUDPPort()` | 关闭 UDP 连接并等待后台线程退出 |
+| `MotionGloveSDK_getVersion()` | 返回原生 SDK 版本号（32 位整数） |
+| `MotionGloveSDK_ListenUDPPort(nPort)` | 绑定本机 UDP 端口并启动 C++ 后台接收线程，返回 0 成功 / -1 失败 |
+| `MotionGloveSDK_CloseUDPPort()` | 关闭 UDP 连接并等待 C++ 接收线程退出 |
 | `MotionGloveSDK_isGloveNewFramePending(actorName)` | 查询指定数据流是否有新帧到达 |
 | `MotionGloveSDK_resetGloveNewFramePending(actorName)` | 清除指定数据流的新帧标志 |
-| `MotionGloveSDK_GetGloveSkeletonsFrame(actorName)` | 获取最新一帧 `GloveFrame` 骨骼数据 |
-| `MotionGloveSDK_GetLastRemoteAddr()` | 返回最近一次收到 UDP 数据包的发送方 `(ip, port)`，未收到数据时返回 `None` |
-| `MotionGloveSDK_GetActorNames()` | 返回当前已发现的所有套装名称列表（如 `["Glove1", "Glove2"]`） |
+| `MotionGloveSDK_GetSkeletonsFrameType(actorName)` | 查询缓存帧的骨骼格式（32 段 / 42 段 / OpenXR），未知时返回 `None` |
+| `MotionGloveSDK_GetGloveSkeletonsFrame(actorName)` | 获取最新一帧 `GloveFrame` 骨骼数据（32/42 段自动分派） |
+| `MotionGloveSDK_GetLastRemoteAddr()` | 返回最近一次成功取帧的发送方 `(ip, port)`，尚未取帧时返回 `None` |
+| `MotionGloveSDK_GetActorNames()` | 返回已确认存在的数据流名称列表（如 `["Glove1", "Glove2"]`） |
+| `MotionGloveSDK_IsAvailable()` | 原生库是否可用（不抛异常） |
+| `MotionGloveSDK_GetBackendName()` | 当前数据流后端名称，固定为 `"native"` |
+| `MotionGloveSDK_GetNativeLibraryPath()` | 已加载的原生库绝对路径 |
+
+> 除 `MotionGloveSDK_ListenUDPPort()`（以 `-1` 表示失败）和 `MotionGloveSDK_IsAvailable()` 外，
+> 其余接口在原生库不可用时抛出 `MotionGloveNativeError`，异常信息中包含编译指引与已搜索路径。
 
 ---
 

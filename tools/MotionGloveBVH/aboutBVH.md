@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code when working with files in this directory.
+This file provides guidance to AI coding assistants when working with files in this directory.
 
 ## Directory Purpose
 
-`MotionGloveBVH/` contains BVH (BioVision Hierarchy) motion capture files for the FOHEART H2 data glove project. These files define skeletal hierarchies and recorded motion sequences used for testing, retargeting, and animation pipeline development.
+`tools/MotionGloveBVH/` contains BVH (BioVision Hierarchy) motion capture files for the FOHEART H2 data glove project. These files define skeletal hierarchies and recorded motion sequences used for testing, retargeting, and animation pipeline development.
 
 ## Files
 

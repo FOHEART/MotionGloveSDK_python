@@ -413,7 +413,7 @@ def _build_qt_app():
             self._ground_actor.SetVisibility(True)
             self._renderer.AddActor(self._ground_actor)
 
-            _font_file = os.path.join(_SCRIPT_DIR, "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
+            _font_file = os.path.join(_SCRIPT_DIR, "tools", "fonts", "HarmonyOS_Sans_SC_Regular.ttf")
             if not os.path.isfile(_font_file):
                 _font_file = None
             add_overlay_text(
@@ -481,27 +481,32 @@ def _build_qt_app():
                 while not self._quit_event.is_set():
                     # 把队列中所有积压帧逐一消费，做连续性检测，取最新帧用于渲染
                     latest = None
-                    while motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
-                        frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame(GLOVE_NAME)
-                        motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(GLOVE_NAME)
-                        if frame is None:
-                            continue
-                        fn = frame.header.frame_number
-                        with self._frame_lock:
-                            # 连续性检测
-                            if self._last_frame_fn is not None:
-                                lost = fn - self._last_frame_fn - 1
-                                if lost > 0:
-                                    self._dropped_frames += lost
-                                    self._drop_event = (
-                                        self._last_frame_fn + 1,
-                                        fn - 1,
-                                        self._dropped_frames,
-                                    )
-                            self._total_frames += 1
-                            self._last_frame_fn = fn
-                            self._fps_counter.tick()
-                            latest = frame
+                    try:
+                        while motionGloveSDK.MotionGloveSDK_isGloveNewFramePending(GLOVE_NAME):
+                            frame = motionGloveSDK.MotionGloveSDK_GetGloveSkeletonsFrame(GLOVE_NAME)
+                            motionGloveSDK.MotionGloveSDK_resetGloveNewFramePending(GLOVE_NAME)
+                            if frame is None:
+                                continue
+                            fn = frame.header.frame_number
+                            with self._frame_lock:
+                                # 连续性检测
+                                if self._last_frame_fn is not None:
+                                    lost = fn - self._last_frame_fn - 1
+                                    if lost > 0:
+                                        self._dropped_frames += lost
+                                        self._drop_event = (
+                                            self._last_frame_fn + 1,
+                                            fn - 1,
+                                            self._dropped_frames,
+                                        )
+                                self._total_frames += 1
+                                self._last_frame_fn = fn
+                                self._fps_counter.tick()
+                                latest = frame
+                    except motionGloveSDK.MotionGloveNativeError:
+                        # 原生库不可用：不要中断轮询线程，稍后重试
+                        time.sleep(0.5)
+                        continue
                     if latest is not None:
                         with self._frame_lock:
                             self._latest_frame[0] = latest
@@ -673,14 +678,18 @@ def _build_qt_app():
 
             # 更新左侧网络信息面板（UDP 模式）
             if self._left_panel is not None:
-                addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
+                try:
+                    addr = motionGloveSDK.MotionGloveSDK_GetLastRemoteAddr()
+                    actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
+                except motionGloveSDK.MotionGloveNativeError:
+                    addr = None
+                    actor_names = []
                 if addr is not None:
                     self._left_panel.lbl_ip.setText(addr[0])
                     self._left_panel.lbl_port.setText(str(addr[1]))
                 else:
                     self._left_panel.lbl_ip.setText(self.tr("Waiting..."))
                     self._left_panel.lbl_port.setText("—")
-                actor_names = motionGloveSDK.MotionGloveSDK_GetActorNames()
                 self._left_panel.lbl_actor_name.setText(", ".join(actor_names) if actor_names else "—")
                 if frame is not None and self._last_frame_fn is not None:
                     self._left_panel.lbl_frame_id.setText(str(self._last_frame_fn))
@@ -933,6 +942,13 @@ def _build_qt_app():
                 self._left_panel.set_receiving(True)
                 self._left_panel.clear_error()
             else:
+                if not motionGloveSDK.MotionGloveSDK_IsAvailable():
+                    self._left_panel.show_port_error([
+                        "原生库不可用",
+                        "请先编译 third_party/MotionGloveSDK_cpp：",
+                        "scripts\\[Windows]build_mgsdk_cpp.cmd",
+                    ])
+                    return
                 from src.port_occupier import find_udp_port_occupier
                 lines = find_udp_port_occupier(RX_PORT)
                 if not lines:

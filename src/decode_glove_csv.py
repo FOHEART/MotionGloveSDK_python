@@ -6,7 +6,12 @@ decode_glove_csv.py - MotionGloveSDK Python
   MotionGloveSDK/src/decodeAsGloveCSV.cpp  - GloveSplitFrameMgr::parseFrame()
   MotionGloveSDK/src/motionGloveSdkHelper.cpp - isFrameCSV_Glove()
 
-调用方（由 glove_frame_assembler.py 的回调触发）：
+⚠ 说明：SDK 的数据流路径已改为调用 C++ 原生库（见 src/native/），
+   UDP 数据流的解析在库内部完成。本模块现在仅供
+   csv_frame_reader.py（CSV 文件回放）与 motionGloveSDK_rawReceiver.py
+   （原始数据调试工具）使用。
+
+调用方：
   from decode_glove_csv import decode_glove_csv
 
   def on_frame(actor, fn, body_csv):
