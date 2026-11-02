@@ -16,6 +16,7 @@ MotionGloveSDK_python/
 ├── motionGloveSDK_example1.py         # 示例1：帧接收计数
 ├── motionGloveSDK_example2.py         # 示例2：读取左右手掌欧拉角
 ├── motionGloveSDK_example3_3dView.py  # 示例3：3D 实时可视化（含 UDP_STREAM / CSV_PLAYBACK 双模式）
+├── [Windows]build.cmd                 # Windows 一条龙打包/构建：装依赖 + 编译原生库 + PyInstaller
 ├── AGENTS.md                          # 工程说明（面向 AI 编码助手）
 │
 ├── src/                               # SDK 内部实现模块
@@ -81,12 +82,13 @@ MotionGloveSDK_python/
 │   ├── verify_native_abi.py           # 校验 src/native/abi.py 与 C++ 结构体布局是否一致
 │   ├── abi_probe.cpp                  # ABI 探针（打印 C++ sizeof/offsetof）
 │   ├── native_smoke_test.py           # 原生后端端到端冒烟测试（无需真实手套）
-│   ├── [Windows]build_dist.cmd        # Windows PyInstaller 打包脚本（--console 参数可选）
 │   ├── [Linux]build_dist.sh           # Linux PyInstaller 打包脚本（--console 参数可选）
 │   ├── [Windows]git_pull_latest.cmd   # Windows 拉取最新代码脚本
 │   ├── [Linux]git_pull_latest.sh      # Linux 拉取最新代码脚本
 │   ├── [Windows]open_in_vscode.bat    # Windows 用 VSCode 打开工程脚本
-│   └── [Linux]open_in_vscode.sh       # Linux 用 VSCode 打开工程脚本
+│   ├── [Linux]open_in_vscode.sh       # Linux 用 VSCode 打开工程脚本
+│   ├── [Windows]package_for_customer.cmd # Windows 打包客户分发包（剥离所有 git 内容）
+│   └── package_for_customer.ps1       # 打包逻辑（上面的 .cmd 只是包装）
 │
 └── pyrightconfig.json                 # Pyright 类型检查配置
 ```
@@ -124,15 +126,15 @@ bash scripts/[Linux]setup_python_libs.sh
 | 包 | 版本（Windows） | 版本（Linux） | 用途 |
 |---|---|---|---|
 | vtk | 9.6.0 | 9.6.0 | 3D 渲染（示例3使用） |
-| numpy | 2.4.2 | 2.2.6 | 数值计算 |
+| numpy | 2.2.6 | 2.2.6 | 数值计算 |
 | matplotlib | 3.10.8 | 3.10.8 | 绘图（依赖项） |
 | Pillow | 12.1.1 | 12.1.1 | 图像处理 |
-| pyside6 | 6.5.3 | 6.5.3 | Qt6 GUI 框架（示例3主窗口） |
+| pyside6 | 6.11.0 | 6.11.0 | Qt6 GUI 框架（示例3主窗口） |
 | pyparsing | 3.3.2 | 3.3.2 | 解析工具 |
 | python-dateutil | 2.9.0.post0 | 2.9.0.post0 | 日期工具 |
 | packaging | 26.0 | 26.0 | 包管理工具 |
-| fonttools | 4.61.1 | 4.62.0 | 字体工具 |
-| contourpy | 1.3.3 | 1.3.2 | 等高线（matplotlib 依赖） |
+| fonttools | 4.62.0 | 4.62.0 | 字体工具 |
+| contourpy | 1.3.2 | 1.3.2 | 等高线（matplotlib 依赖） |
 | cycler | 0.12.1 | 0.12.1 | 样式循环（matplotlib 依赖） |
 | kiwisolver | 1.4.9 | 1.4.9 | 约束求解（matplotlib 依赖） |
 | six | 1.17.0 | 1.17.0 | Python 2/3 兼容层 |
@@ -144,7 +146,8 @@ bash scripts/[Linux]setup_python_libs.sh
 | pyinstaller | 6.19.0 | 打包为可执行文件 |
 | pybind11 | 2.13.6 | Python/C++ 混合编译 |
 
-> **Linux 注意：** numpy 2.4.x、contourpy 1.3.3+、kiwisolver 1.5.0+ 需要 Python 3.11+，Linux 脚本使用了兼容 Python 3.10 的版本。
+> **版本搭配注意：** `numpy 2.x` 与 `pyside6 6.11.x` 必须成对安装。`pyside6 6.5.x` 的
+> shiboken6 按 NumPy 1.x 编译，且与 VTK 9.6 组合时进程退出会崩溃（0xC0000005）。
 
 ---
 
@@ -520,6 +523,26 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ---
 
+## 打包为独立可执行文件（Windows）
+
+根目录的 `[Windows]build.cmd` 是一条龙脚本：**安装 Python 依赖 → 编译原生库 → PyInstaller 打包**，
+产物为 `dist\MotionGlove3DViewer\MotionGlove3DViewer.exe`（内含 VTK、PySide6、字体、UI 文件与原生库）。
+该脚本会随客户分发包一同发出，客户拿到源码后可直接用它构建可执行文件。
+
+```cmd
+:: 一条龙（缺什么补什么；已就绪的步骤会自动跳过）
+[Windows]build.cmd
+
+:: 常见用法
+[Windows]build.cmd --console      :: 保留控制台窗口，便于查看启动报错
+[Windows]build.cmd --force        :: 强制重装依赖 + 重新编译原生库 + 重新打包
+[Windows]build.cmd --skip-deps    :: 跳过依赖安装（libs\ 已就绪时更快）
+[Windows]build.cmd --skip-native  :: 跳过原生库编译（已编译过时更快）
+```
+
+依赖安装复用 `scripts\[Windows]setup_python_libs.cmd`，原生库编译复用
+`scripts\[Windows]build_mgsdk_cpp.cmd`，两者也可以单独执行。
+
 ## 测试（pytest）
 
 单元测试位于 [`tests/unit/`](tests/README.md)，纯 Python 实现，
@@ -552,4 +575,34 @@ D:\autotools\doxygen-1.11.0\doxygen.exe Doxyfile
 
 验收标准：`doxygen_warnings.log` 为 0 字节、退出码 0、
 `docs/html/index.html` 生成（浏览器打开即可浏览 API 文档）。
+
+## 打包客户分发包
+
+发给客户的源码压缩包由 `scripts/package_for_customer.ps1` 生成（Windows 下可直接用
+`scripts\[Windows]package_for_customer.cmd` 调用）：
+
+```cmd
+:: 默认输出到仓库根目录：MotionGloveSDK_python_v<版本号>.zip
+scripts\[Windows]package_for_customer.cmd
+
+:: 指定版本号 / 保留暂存目录以便检查内容
+scripts\[Windows]package_for_customer.cmd -Version 0.2.2 -KeepStaging
+```
+
+打包时会做三件事：
+
+1. **剥离 git 痕迹**：不包含 `.git`（含子模块工作区里的 gitlink 文件）、`.gitmodules`、
+   `.github/`、`*git_pull_latest*` 脚本，客户既看不到仓库地址，也无法通过脚本拉取代码；
+2. **剔除内部资料与开发物料**：`openspec/`、`.workbuddy/`、`AGENTS.md`、`docs/superpowers/`、
+   `tests/`、`pytest.ini`、`pyrightconfig.json`、`Doxyfile` 等；
+3. **去掉依赖与产物**：`libs/`（约 1 GB）、`build/`、`out/`、`dist/`、`csvfile/`、`docs/html/`、`__pycache__/`。
+
+构建入口 `[Windows]build.cmd` 及其依赖的 `MotionGlove3DViewer.spec`、`scripts/[Windows]setup_python_libs.cmd`、
+`scripts/[Windows]build_mgsdk_cpp.cmd` 会保留在分发包内（客户可自行构建可执行文件），
+README 中“打包为独立可执行文件”章节随之保留；`scripts/[Linux]build_dist.sh` 仍不随包发出。
+
+`third_party/MotionGloveSDK_cpp` 的源码会完整保留（客户可自行编译），只剔除其 `.git` 与内部资料；
+包内 `README.md` 里“初始化 submodule / git pull 脚本 / 内部发布流程”等段落会被自动删除或改写，
+`config.json` 中开发者本机的绝对路径（`blender_exe`）会被清空。压缩完成后脚本还会全文扫描
+一次，一旦发现 `.git`、git 命令或仓库地址就直接报错，避免误发。
 

@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
@@ -52,7 +53,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=(os.environ.get('MG_DIST_CONSOLE', '0') == '1'),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

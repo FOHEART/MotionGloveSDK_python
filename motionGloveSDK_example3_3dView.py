@@ -38,7 +38,7 @@ from fps_counter import FpsCounter
 from vtk_fps_overlay import VtkFpsOverlay
 
 from src import motionGloveSDK
-from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, GloveFrame
+from src.definitions import BoneIndex, KHHS42_SKELETON_COUNT, KHHS32_SKELETON_COUNT, GloveFrame
 from src.translator_helper import install_configured_translator
 
 # ─────────────────────────────────────────────
@@ -183,6 +183,80 @@ def _quat_rotate_vec3(q, v):
         vy + qw * ty + (qz * tx - qx * tz),
         vz + qw * tz + (qx * ty - qy * tx),
     )
+
+
+def compute_frame_pose(frame):
+    """@brief 解算一帧的关节世界坐标与全局四元数。
+
+    @details 局部四元数沿父链累乘得到全局旋转（relative 数据约定
+             global = parent_global * local）。32 骨数据流不含 *End 末梢
+             节点，这里按第三段骨骼的轴向补出一段固定长度的虚拟末梢。
+    @param frame GloveFrame 帧数据。
+    @return (positions, global_quats)，均为 42 项列表，缺失项为 None。
+    """
+    positions: list = [None] * KHHS42_SKELETON_COUNT
+    global_quats: list = [None] * KHHS42_SKELETON_COUNT
+
+    for skel in frame.skeletons:
+        i = skel.bone_index
+        if i < 0 or i >= KHHS42_SKELETON_COUNT:
+            continue
+        if not skel.contains_quat_wxyz:
+            continue
+        lw, lx, ly, lz = skel.quat_wxyz
+        par = _BONE_PARENT[i]
+        if par == -1 or global_quats[par] is None:
+            # 根骨骼或父链断裂：局部即全局
+            global_quats[i] = (lw, lx, ly, lz)
+        else:
+            # 全局 = parent_global * local（四元数左乘）
+            pw, px, py, pz = global_quats[par]
+            global_quats[i] = (
+                pw*lw - px*lx - py*ly - pz*lz,
+                pw*lx + px*lw + py*lz - pz*ly,
+                pw*ly - px*lz + py*lw + pz*lx,
+                pw*lz + px*ly - py*lx + pz*lw,
+            )
+        # End-node bones carry real position but no meaningful rotation
+        if i in _END_BONE_INDICES:
+            global_quats[i] = None
+
+    for skel in frame.skeletons:
+        i = skel.bone_index
+        if 0 <= i < KHHS42_SKELETON_COUNT and skel.contains_position:
+            positions[i] = skel.position
+
+    # 32 骨数据流：为每根手指第三节补一个虚拟末梢点
+    if len(frame.skeletons) == KHHS32_SKELETON_COUNT:
+        for end_idx, third_idx, second_idx in _VIRTUAL_TIP_RULES:
+            p3 = positions[third_idx]
+            if p3 is None:
+                continue
+            q3 = global_quats[third_idx]
+            # 骨骼静止姿态沿局部 +Y 轴：虚拟末梢方向 = 第三段全局姿态的 +Y
+            direction = None
+            if q3 is not None:
+                direction = _normalize_vec3(_quat_rotate_vec3(q3, (0.0, 1.0, 0.0)))
+            if direction is None:
+                # 无姿态数据时退化为第三节骨段的实际方向
+                p2 = positions[second_idx]
+                if p2 is not None:
+                    direction = _normalize_vec3((
+                        p3[0] - p2[0],
+                        p3[1] - p2[1],
+                        p3[2] - p2[2],
+                    ))
+            if direction is None:
+                continue
+            positions[end_idx] = [
+                p3[0] + direction[0] * _VIRTUAL_TIP_LENGTH_M,
+                p3[1] + direction[1] * _VIRTUAL_TIP_LENGTH_M,
+                p3[2] + direction[2] * _VIRTUAL_TIP_LENGTH_M,
+            ]
+            # 虚拟末梢点继承第三段的全局旋转（axis tripod 朝向与第三段一致）
+            global_quats[end_idx] = q3
+
+    return positions, global_quats
 
 
 
@@ -580,78 +654,7 @@ def _build_qt_app():
                 )
 
             if frame is not None:
-                positions: list = [None] * KHHS42_SKELETON_COUNT
-
-                # 计算每根骨骼的全局四元数（局部四元数沿父链累乘）
-                # 数据为 relative 旋转，全局 = parent_global * local
-                global_quats: list = [None] * KHHS42_SKELETON_COUNT
-                for skel in frame.skeletons:
-                    i = skel.bone_index
-                    if i < 0 or i >= KHHS42_SKELETON_COUNT:
-                        continue
-                    if not skel.contains_quat_wxyz:
-                        continue
-                    lw, lx, ly, lz = skel.quat_wxyz
-                    par = _BONE_PARENT[i]
-                    if par == -1 or global_quats[par] is None:
-                        # 根骨骼或父链断裂：局部即全局
-                        global_quats[i] = (lw, lx, ly, lz)
-                    else:
-                        # 全局 = parent_global * local（四元数左乘）
-                        pw, px, py, pz = global_quats[par]
-                        global_quats[i] = (
-                            pw*lw - px*lx - py*ly - pz*lz,
-                            pw*lx + px*lw + py*lz - pz*ly,
-                            pw*ly - px*lz + py*lw + pz*lx,
-                            pw*lz + px*ly - py*lx + pz*lw,
-                        )
-                    # End-node bones carry real position but no meaningful rotation
-                    if i in _END_BONE_INDICES:
-                        global_quats[i] = None
-
-                for skel in frame.skeletons:
-                    i = skel.bone_index
-                    if i < 0 or i >= KHHS42_SKELETON_COUNT:
-                        continue
-                    if skel.contains_position and global_quats[i] is not None:
-                        positions[i] = skel.position
-                    elif skel.contains_position:
-                        positions[i] = skel.position
-
-                # 32 节点数据流：为每根手指第三节追加虚拟末梢点
-                if len(frame.skeletons) == 32:
-                    for end_idx, third_idx, second_idx in _VIRTUAL_TIP_RULES:
-                        p2 = positions[second_idx]
-                        p3 = positions[third_idx]
-                        q3 = global_quats[third_idx]
-                        if p3 is None or q3 is None:
-                            continue
-                        # 虚拟末端方向由第三段骨骼的原始姿态给出；若左右手镜像导致
-                        # 轴向符号相反，则用第二节到第三节的实际骨段方向只做符号判定。
-                        direction = _normalize_vec3(_quat_rotate_vec3(q3, (1.0, 0.0, 0.0)))
-                        if direction is None:
-                            continue
-                        if p2 is not None:
-                            segment_direction = _normalize_vec3((
-                                p3[0] - p2[0],
-                                p3[1] - p2[1],
-                                p3[2] - p2[2],
-                            ))
-                            if segment_direction is not None:
-                                dot = (
-                                    direction[0] * segment_direction[0]
-                                    + direction[1] * segment_direction[1]
-                                    + direction[2] * segment_direction[2]
-                                )
-                                if dot < 0.0:
-                                    direction = (-direction[0], -direction[1], -direction[2])
-                        positions[end_idx] = [
-                            p3[0] + direction[0] * _VIRTUAL_TIP_LENGTH_M,
-                            p3[1] + direction[1] * _VIRTUAL_TIP_LENGTH_M,
-                            p3[2] + direction[2] * _VIRTUAL_TIP_LENGTH_M,
-                        ]
-                        # 虚拟末梢点继承第三段的全局旋转（axis tripod 朝向与第三段一致）
-                        global_quats[end_idx] = q3
+                positions, global_quats = compute_frame_pose(frame)
 
                 for i, ja in enumerate(self._joint_actors):
                     pos = positions[i]
