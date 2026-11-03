@@ -1,0 +1,11 @@
+# 行尾策略
+# scripts/*.cmd 既是 Windows 批处理、又是 POSIX sh 脚本（首行 exec 切换解释器）：
+#   - cmd 段要求 CRLF（LF 会让 label/goto 解析异常）
+#   - sh 段两种行尾都能跑（首行末尾的 # 负责吃掉 CR，POSIX 段统一 tr -d '\r'）
+# 因此强制这批脚本在任何平台检出时都是 CRLF，避免 Windows 端 autocrlf=false 时被降级成 LF。
+
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+*.sh    text eol=lf

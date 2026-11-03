@@ -5,7 +5,7 @@
 ═══════════════════════════════════════════════════════════════════════════
   这是整个转接层中【唯一】与 C++ 结构体内存布局耦合的文件。
   当 MotionGloveSDK_cpp 修改了结构体 / 枚举 / 导出函数签名时：
-    1. 重新编译原生库：scripts/[Windows]build_mgsdk_cpp.cmd
+    1. 重新编译原生库：scripts/build_mgsdk_cpp.cmd（Windows cmd / Linux sh 同一份文件）
     2. 运行 ABI 校验：  python scripts/verify_native_abi.py
     3. 只修改本文件，使 sizeof/offsetof 与 C++ 一致
   其余文件（loader.py / mapper.py / backend.py）无需改动。

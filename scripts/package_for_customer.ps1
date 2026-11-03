@@ -7,14 +7,14 @@
     客户既拿不到仓库地址/历史，也无法用脚本拉取你的代码：
 
       * 不包含 .git / .gitmodules / .gitignore / .github —— 没有仓库地址、历史与远端配置；
-      * 不包含 git 操作脚本（[Windows]git_pull_latest.cmd / [Linux]git_pull_latest.sh）；
+      * 不包含 git 操作脚本（scripts/git_pull_latest.cmd）；
       * 不包含内部资料（openspec、.workbuddy、AGENTS.md、docs/superpowers、tests/）；
       * 不包含依赖缓存与构建产物（libs、build、out、dist、csvfile、docs/html、__pycache__）；
-      * 不包含开发工具（pytest.ini、pyrightconfig.json、Doxyfile、gen_docs.bat）。
+      * 不包含开发工具（pytest.ini、pyrightconfig.json、Doxyfile、scripts/gen_docs.cmd）。
 
-    构建入口 [Windows]build.cmd 及其依赖的 MotionGlove3DViewer.spec 会**随包发出**，
-    客户拿到源码后可直接构建 dist\MotionGlove3DViewer\MotionGlove3DViewer.exe；
-    scripts\[Linux]build_dist.sh 仍属内部物料，不打包。
+    构建入口 build.cmd（Windows cmd 与 Linux/macOS sh 共用的双解释器脚本）及其依赖的
+    MotionGlove3DViewer.spec 会**随包发出**，客户拿到源码后可直接构建
+    dist/MotionGlove3DViewer/MotionGlove3DViewer[.exe]。
 
     third_party/MotionGloveSDK_cpp 的 **C++ 源码会完整保留**（客户可自行编译），
     只剔除其中的 .git 与内部资料。README 中“git submodule / 拉取脚本 / 内部发布流程”
@@ -35,7 +35,7 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package_for_customer.ps1
 
 .EXAMPLE
-    scripts\[Windows]package_for_customer.cmd -Version 0.2.2 -KeepStaging
+    scripts/package_for_customer.cmd -Version 0.2.2 -KeepStaging
 #>
 [CmdletBinding()]
 param(
@@ -86,7 +86,7 @@ elseif (-not (Test-Path -LiteralPath $OutputDir)) {
 $OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path
 
 $packageName = "${packageBaseName}_v$Version"
-$stageRoot = Join-Path $repoRoot 'build\package'
+$stageRoot = Join-Path (Join-Path $repoRoot 'build') 'package'
 $stageDir = Join-Path $stageRoot $packageName
 $zipPath = Join-Path $OutputDir "$packageName.zip"
 
@@ -107,11 +107,9 @@ $excludeFiles = @(
     '.git', '.gitignore', '.gitattributes', '.gitmodules',
     '*git_pull_latest*',
     '*package_for_customer*', '*package_source*',
-    # Windows 构建入口 [Windows]build.cmd 要随包发出，这里只排除 Linux 打包脚本
-    '[Linux]build_dist.sh',
     'AGENTS.md',
     'pytest.ini', 'pyrightconfig.json',
-    'Doxyfile', 'gen_docs.bat', 'doxygen_warnings.log', '*.log',
+    'Doxyfile', 'gen_docs.cmd', 'doxygen_warnings.log', '*.log',
     '*.zip', '*.7z', '*.user', '*.bak', '*.tmp',
     '*.pyc', '*.pyo', 'Thumbs.db', '.DS_Store',
     # 仓库根目录遗留的独立 .qm 文件（真正的翻译在 translations/ 下，文件名不同，不受影响）
@@ -122,13 +120,74 @@ Write-Host "[1/5] 复制工程文件到暂存目录：$stageDir"
 if (Test-Path -LiteralPath $stageDir) { Remove-Item -LiteralPath $stageDir -Recurse -Force }
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 
-$robocopyArgs = @(
-    $repoRoot, $stageDir, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
-    '/XD'
-) + $excludeDirs + @('/XF') + $excludeFiles
-& robocopy @robocopyArgs | Out-Null
-# robocopy 用 0~7 表示成功（有差异/已复制），>= 8 才是失败
-if ($LASTEXITCODE -ge 8) { throw "复制工程文件失败（robocopy 退出码 $LASTEXITCODE）" }
+# 回退复制：按“任意一级祖先目录命中排除名即跳过 + 文件名通配”实现，语义对齐 robocopy /XD、/XF
+function Copy-TreeWithExcludes {
+    param(
+        [string]$Source,
+        [string]$Dest,
+        [string[]]$ExcludeDirNames = @(),
+        [string[]]$ExcludeFilePatterns = @(),
+        [string[]]$ExcludeAbsolutePaths = @()
+    )
+
+    $sourceRoot = (Resolve-Path -LiteralPath $Source).Path
+    $sep = [IO.Path]::DirectorySeparatorChar
+
+    foreach ($item in Get-ChildItem -LiteralPath $sourceRoot -Recurse -Force -ErrorAction SilentlyContinue) {
+        # 绝对路径排除（如 docs/html、docs）
+        $absoluteHit = $false
+        foreach ($abs in $ExcludeAbsolutePaths) {
+            if ($item.FullName -eq $abs -or $item.FullName.StartsWith($abs + $sep)) { $absoluteHit = $true; break }
+        }
+        if ($absoluteHit) { continue }
+
+        $rel = $item.FullName.Substring($sourceRoot.Length).TrimStart('\', '/')
+        $segments = $rel -split '[\\/]'
+
+        # 任意一级祖先目录命中排除名 → 整棵子树跳过
+        $skip = $false
+        for ($i = 0; $i -lt $segments.Count - 1; $i++) {
+            if ($ExcludeDirNames -contains $segments[$i]) { $skip = $true; break }
+        }
+        if ($skip) { continue }
+
+        if ($item.PSIsContainer) {
+            if ($ExcludeDirNames -contains $item.Name) { continue }
+            New-Item -ItemType Directory -Path (Join-Path $Dest $rel) -Force | Out-Null
+            continue
+        }
+
+        $skipFile = $false
+        foreach ($pattern in $ExcludeFilePatterns) {
+            if ($item.Name -like $pattern) { $skipFile = $true; break }
+        }
+        if ($skipFile) { continue }
+
+        $targetFile = Join-Path $Dest $rel
+        $targetDir = Split-Path -Parent $targetFile
+        if (-not (Test-Path -LiteralPath $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $item.FullName -Destination $targetFile -Force
+    }
+}
+
+$robocopy = Get-Command robocopy -ErrorAction SilentlyContinue
+if ($robocopy) {
+    $robocopyArgs = @(
+        $repoRoot, $stageDir, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
+        '/XD'
+    ) + $excludeDirs + @('/XF') + $excludeFiles
+    & robocopy @robocopyArgs | Out-Null
+    # robocopy 用 0~7 表示成功（有差异/已复制），>= 8 才是失败
+    if ($LASTEXITCODE -ge 8) { throw "复制工程文件失败（robocopy 退出码 $LASTEXITCODE）" }
+}
+else {
+    Write-Host '  未找到 robocopy（非 Windows），改用 PowerShell 复制'
+    Copy-TreeWithExcludes -Source $repoRoot -Dest $stageDir `
+        -ExcludeDirNames $excludeDirs -ExcludeFilePatterns $excludeFiles `
+        -ExcludeAbsolutePaths @((Join-Path $repoRoot 'docs'))
+}
 
 # ---------------------------------------------------------------------------
 # 改写分发包内的说明文字（只改暂存副本，仓库里的文件保持原样）
@@ -181,7 +240,7 @@ function Update-StagedText {
 Write-Host '[2/5] 删除/改写分发包内的 git 相关说明'
 
 # 目录树里只给开发者看的脚本条目
-$dropLinePatterns = @('git_pull_latest', 'package_for_customer', 'package_source', 'build_dist')
+$dropLinePatterns = @('git_pull_latest', 'package_for_customer', 'package_source')
 
 $commonOps = @(
     @{ Pattern = '请先初始化子模块[：:]\s*git submodule update --init --recursive';
@@ -212,8 +271,7 @@ Update-StagedText -Path (Join-Path $stageDir 'CHANGELOG.md') -Ops $commonOps `
     -DropLinePatterns $dropLinePatterns | Out-Null
 Update-StagedText -Path (Join-Path $stageDir 'third_party/MotionGloveSDK_cpp/README.md') -Ops $commonOps `
     -DropLinePatterns $dropLinePatterns -DropSections $cppReadmeDropSections | Out-Null
-Update-StagedText -Path (Join-Path $stageDir 'scripts/[Windows]build_mgsdk_cpp.cmd') -Ops $commonOps | Out-Null
-Update-StagedText -Path (Join-Path $stageDir 'scripts/[Linux]build_mgsdk_cpp.sh') -Ops $commonOps | Out-Null
+Update-StagedText -Path (Join-Path $stageDir 'scripts/build_mgsdk_cpp.cmd') -Ops $commonOps | Out-Null
 Update-StagedText -Path (Join-Path $stageDir 'scripts/verify_native_abi.py') -Ops $commonOps | Out-Null
 
 # config.json 里可能有开发者本机的绝对路径（如 blender.exe），清空让客户自行配置
@@ -234,7 +292,7 @@ Write-Host '[3/5] 校验分发包里没有残留 git 内容'
 $problems = @()
 
 # 构建入口必须随包发出，客户要靠它生成可执行文件
-$requiredBuildFiles = @('[Windows]build.cmd', 'MotionGlove3DViewer.spec')
+$requiredBuildFiles = @('build.cmd', 'MotionGlove3DViewer.spec')
 foreach ($required in $requiredBuildFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageDir $required))) {
         throw "分发包缺少构建所需文件：$required"
@@ -277,8 +335,12 @@ Write-Host '  未发现 .git 目录/文件、git 操作脚本、脚本内的 git
 Write-Host "[4/5] 压缩为 $zipPath"
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 
-$sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
-if (-not $sevenZip) {
+# 7z 只在 Windows 上额外探测 ProgramFiles（Linux/macOS 只看 PATH）
+$sevenZip = $null
+$sevenZipCmd = Get-Command 7z -ErrorAction SilentlyContinue
+if ($sevenZipCmd) { $sevenZip = $sevenZipCmd.Source }
+$isWindowsPs = (-not $PSVersionTable.Platform) -or ($PSVersionTable.Platform -eq 'Win32NT')
+if (-not $sevenZip -and $isWindowsPs -and $env:ProgramFiles) {
     $candidate = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
     if (Test-Path -LiteralPath $candidate) { $sevenZip = $candidate }
 }
@@ -310,4 +372,4 @@ else {
 Write-Host "  压缩包：$zipPath"
 Write-Host "  版本：v$Version　顶层目录：$packageName　文件数：$fileCount　大小：$sizeMb MB"
 Write-Host "  已排除目录：$($excludeDirs -join '、')"
-Write-Host '  提示：分发包不含 libs/ 与预编译动态库，客户可运行根目录 [Windows]build.cmd 一键装依赖 + 编译原生库 + 打包。'
+Write-Host '  提示：分发包不含 libs/ 与预编译动态库，客户可运行根目录 build.cmd 一键装依赖 + 编译原生库 + 打包。'

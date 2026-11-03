@@ -28,8 +28,8 @@ class NativeLibraryNotFound(MotionGloveNativeError):
         lines = [
             "未找到 MotionGloveSDK 原生库（MotionGloveSDK.dll / libMotionGloveSDK.so）。",
             "本 SDK 的数据流解析完全由 C++ 库完成，必须先编译它：",
-            "  Windows : scripts\\[Windows]build_mgsdk_cpp.cmd",
-            "  Linux   : bash \"scripts/[Linux]build_mgsdk_cpp.sh\"",
+            "  Windows : scripts\\build_mgsdk_cpp.cmd",
+            "  Linux   : sh scripts/build_mgsdk_cpp.cmd",
             "也可以用环境变量 MOTIONGLOVE_NATIVE_LIB 指定库文件（或所在目录）的绝对路径。",
             "已搜索的位置：",
         ]

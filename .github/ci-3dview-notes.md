@@ -6,8 +6,7 @@
 
 - `.github/workflows/ci-3dview.yml`
 - `motionGloveSDK_example3_3dView.py`
-- `[Windows]setup_python_libs.cmd`
-- `[Linux]setup_python_libs.sh`
+- `scripts/setup_python_libs.cmd`（cmd / sh 双解释器，两端共用同一份文件）
 
 ## 当前 CI 工作流说明
 
@@ -103,7 +102,7 @@
 
 CI 中执行：
 
-- `call "[Windows]setup_python_libs.cmd"`
+- `call "scripts\setup_python_libs.cmd"`
 - `python motionGloveSDK_example3_3dView.py`
 
 当前环境变量：
@@ -122,7 +121,7 @@ CI 中执行：
 
 CI 中执行：
 
-- `bash "[Linux]setup_python_libs.sh"`
+- `sh "scripts/setup_python_libs.cmd"`
 - `xvfb-run -a python motionGloveSDK_example3_3dView.py`
 
 当前环境变量：
@@ -139,7 +138,7 @@ CI 中执行：
 
 ### Windows 安装脚本
 
-文件：`[Windows]setup_python_libs.cmd`
+文件：`scripts/setup_python_libs.cmd`（Windows 段与 POSIX 段在同一文件内）
 
 当前约定：
 

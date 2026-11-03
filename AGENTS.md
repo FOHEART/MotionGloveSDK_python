@@ -10,12 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dependencies are installed locally to `libs/` (not system Python) using pip `--target`:
 
+All `scripts/*.cmd` files are **dual-interpreter** (same file runs under Windows `cmd.exe`
+and POSIX `sh`); they must stay CRLF and BOM-free.
+
 ```bash
 # Windows
-scripts\[Windows]setup_python_libs.cmd
+scripts\setup_python_libs.cmd
 
 # Linux/macOS
-bash scripts/[Linux]setup_python_libs.sh
+sh scripts/setup_python_libs.cmd
 ```
 
 **Python 3.10+ is required.** Runtime deps (vtk, numpy, matplotlib, Pillow, **pyside6**) land in `libs/`; dev tools (pyinstaller, pybind11) go to system Python.
@@ -26,10 +29,10 @@ The native library is also required at runtime:
 git submodule update --init --recursive
 
 # Windows (Visual Studio 2022+ and CMake required)
-scripts\[Windows]build_mgsdk_cpp.cmd
+scripts\build_mgsdk_cpp.cmd
 
 # Linux/macOS (g++ and CMake required)
-bash "scripts/[Linux]build_mgsdk_cpp.sh"
+sh scripts/build_mgsdk_cpp.cmd
 ```
 
 Outputs go to `build/mgsdk_cpp/install/` (`bin/MotionGloveSDK.dll` on Windows, `lib/libMotionGloveSDK.so` elsewhere).

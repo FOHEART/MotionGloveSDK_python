@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
-# VTK / PySide6 由 scripts/[Windows]setup_python_libs.cmd 安装到 libs/
+# VTK / PySide6 由 scripts/setup_python_libs.cmd 安装到 libs/
 sys.path.insert(0, str(_ROOT / "libs"))
 pytest.importorskip("vtk", reason="需要 libs/ 中的 VTK 依赖")
 
