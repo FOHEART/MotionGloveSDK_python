@@ -7,6 +7,22 @@ MotionGlove 动作手套的 Python SDK。数据流接收与解析由 C++ SDK
 
 ---
 
+## CLI（CLI-Anything）
+
+工程内置无 GUI 依赖的命令行接口，供 Agent / CI / 无头环境使用：
+
+```bash
+python motionGloveSDK_cli.py --json status
+python motionGloveSDK_example3_3dView.py --cli --json status
+```
+
+完整命令表、统一 JSON 信封 schema、错误码与示例见仓库根
+[`SKILL.md`](SKILL.md)（唯一一份）；Python harness 见
+`agent-harness/cli_anything/motionglove/`。打包时 `build.cmd` 会自动把
+harness 与 SKILL.md 同步到 `dist/MotionGlove3DViewer/`。
+
+---
+
 ## 工程结构
 
 ```
@@ -16,7 +32,12 @@ MotionGloveSDK_python/
 ├── motionGloveSDK_example1.py         # 示例1：帧接收计数
 ├── motionGloveSDK_example2.py         # 示例2：读取左右手掌欧拉角
 ├── motionGloveSDK_example3_3dView.py  # 示例3：3D 实时可视化（含 UDP_STREAM / CSV_PLAYBACK 双模式）
+├── motionGloveSDK_cli.py              # CLI 独立入口（--cli/--repl，无 GUI 依赖）
+├── cli/                               # CLI 实现：信封、命令、会话、解析、REPL
+├── agent-harness/                     # CLI-Anything Python harness（Click + subprocess）
+├── SKILL.md                           # CLI Skill 描述（唯一一份，命令表/错误码/示例）
 ├── build.cmd                          # 一条龙打包/构建（cmd + sh 双解释器）：装依赖 + 编译原生库 + PyInstaller
+├── scripts/sync_agent_harness.py      # 同步 harness + SKILL.md 到分发目录
 ├── AGENTS.md                          # 工程说明（面向 AI 编码助手）
 │
 ├── src/                               # SDK 内部实现模块

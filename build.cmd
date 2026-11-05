@@ -171,6 +171,13 @@ if not exist "%EXE_PATH%" (
 REM PyInstaller 运行后可能改掉控制台代码页，重新设置以免中文乱码
 chcp 65001 >nul
 
+REM 同步 CLI-Anything harness 与唯一一份 SKILL.md 到分发目录
+python "%PROJECT_ROOT%scripts\sync_agent_harness.py" --dist "%PROJECT_ROOT%dist\MotionGlove3DViewer"
+if errorlevel 1 (
+    echo [error] agent-harness 同步失败
+    goto fail
+)
+
 echo.
 echo ============================================================
 echo  [done] 打包完成
@@ -294,6 +301,8 @@ fi
     --distpath "$ROOT/dist" \
     --workpath "$ROOT/build/pyinstaller" \
     "$ROOT/MotionGlove3DViewer.spec" || { echo "[error] PyInstaller 打包失败" >&2; exit 1; }
+
+"$PY" "$ROOT/scripts/sync_agent_harness.py" --dist "$ROOT/dist/MotionGlove3DViewer" || { echo "[error] agent-harness 同步失败" >&2; exit 1; }
 
 APP_PATH="$ROOT/dist/MotionGlove3DViewer/MotionGlove3DViewer"
 [ -f "$APP_PATH" ] || { echo "[error] 未生成 $APP_PATH" >&2; exit 1; }

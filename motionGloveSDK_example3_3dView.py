@@ -27,6 +27,28 @@ sys.path.insert(0, _DRAW3D_DIR)
 sys.path.insert(0, _LIBS_DIR)
 sys.path.insert(0, _UI_DIR)
 
+# ── CLI-Anything 早期分流 ──────────────────────────────────────────────
+# 必须在任何 vtk / PySide6 导入之前：本文件 L30 起的模块级导入以及
+# src.translator_helper 的模块级 PySide6 导入都会拉起 GUI 框架。
+# CLI 路径只加载 cli/（标准库 + src/），不创建 QApplication、不绑定 UDP。
+def _extract_cli_args(argv: list[str]) -> list[str] | None:
+    """@brief 检测 --cli / --repl 并返回交给 CLI 的参数，未命中返回 None。"""
+    for flag in ("--cli", "--repl"):
+        if flag in argv:
+            idx = argv.index(flag)
+            rest = list(argv[idx + 1:])
+            return ["--repl", *rest] if flag == "--repl" else rest
+    return None
+
+
+if __name__ == "__main__":
+    _cli_args = _extract_cli_args(sys.argv[1:])
+    if _cli_args is not None:
+        if _SCRIPT_DIR not in sys.path:
+            sys.path.insert(0, _SCRIPT_DIR)
+        from cli import main as _cli_main
+        sys.exit(_cli_main(_cli_args))
+
 import vtk
 from vtk_axes import add_axes_to_renderer
 from camera_control import bind_space_reset_camera, setup_camera
