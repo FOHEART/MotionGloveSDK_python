@@ -119,7 +119,7 @@ GUI 主程序 `motionGloveSDK_example3_3dView.py --cli ...`、独立入口
 | 2 | 会话状态不满足 | 先 `project open` 或传 `--file` | `"未打开工程；请先执行 project open <csv路径> / project open --udp，或在本命令中显式传入 --file / --source udp"` |
 | 3 | IO 错误 | 创建目录或修正路径 | `"CSV 文件不存在：C:\definitely_missing_123.csv"`；`"输出目录不存在：C:\definitely_missing_dir_123（请先创建目录）"` |
 | 4 | 数据解析错误 | 换有效 CSV 或有效帧索引 | `"CSV 文件中没有可用帧：...\empty.csv"` |
-| 5 | 原生库不可用 | 编译 C++ SDK 或设置 `MOTIONGLOVE_NATIVE_LIB` | `"MotionGloveSDK 原生库不可用，无法监听 UDP；请执行 scripts\build_mgsdk_cpp.cmd 或设置 MOTIONGLOVE_NATIVE_LIB"` |
+| 5 | 原生库不可用 | 编译 C++ SDK 或设置 `MOTIONGLOVE_NATIVE_LIB` | `"MotionGloveSDK 原生库不可用，无法监听 UDP；请执行 scripts\build_mgsdk_cpp.bat 或设置 MOTIONGLOVE_NATIVE_LIB"` |
 | 6 | UDP 错误 | 检查端口/设备/超时 | `"等待 0.1 秒内未收到数据帧（端口 55099，数据流 Glove1）"` |
 | 7 | 导出格式/目标不支持 | 改用 json/csv/bvh | `"不支持的导出格式：obj；可选 json, csv, bvh，或把输出文件扩展名写成 .json/.csv/.bvh"` |
 | 8 | 内部错误 | 报告 `message` 中的异常类型 | `"TypeName: ..."` |
@@ -217,10 +217,10 @@ cli-anything-motionglove repl
 
 源码树对应：`SKILL.md`（根，唯一一份）、`cli/`（CLI 实现）、
 `motionGloveSDK_cli.py`（独立入口）、`agent-harness/`、
-`scripts/sync_agent_harness.py` 与 `scripts/sync_agent_harness.cmd`。
-`build.cmd` 在 PyInstaller 成功后自动调用同步脚本；也可手动执行
-`scripts\sync_agent_harness.cmd [目标目录]` 或
-`python scripts/sync_agent_harness.py --dist <目录> [--check]`。
+`scripts/lib/sync_agent_harness.py` 与 `scripts/sync_agent_harness.bat`。
+`buildDeploy.bat` 在 PyInstaller 成功后自动调用同步脚本；也可手动执行
+`scripts\sync_agent_harness.bat [目标目录]` 或
+`python scripts/lib/sync_agent_harness.py --dist <目录> [--check]`。
 同步会排除 `__pycache__/`、`.pytest_cache/`、`*.egg-info/`、`*.pyc`。
 
 harness 的二进制定位顺序：`MOTIONGLOVE_CLI_BIN` > 安装目录同级 exe >
@@ -242,9 +242,9 @@ exe 候选会先跑一次 `--json status` 探测，旧版 GUI exe（无 `--cli` 
 6. WIN32 子系统 exe 从控制台启动时，CLI 自动 `AttachConsole` 接管父控制台、
    代码页切 UTF-8；标准输出已被重定向（`>file`、管道）时按 OS 标准句柄
    重建流，因此 subprocess 管道与文件重定向都能拿到信封。
-   需要直观控制台输出可用 `build.cmd --console` 打包。
+   需要直观控制台输出可用 `buildDeploy.bat --console` 打包。
    若分发目录里仍是**旧版 exe**（未含 `--cli` 分流），harness 探测会失败并
-   抛 `CliProtocolError`（stdout 不是合法信封）；重新执行 `build.cmd` 生成新
+   抛 `CliProtocolError`（stdout 不是合法信封）；重新执行 `buildDeploy.bat` 生成新
    exe，或改用源码树 `python motionGloveSDK_cli.py`。
 7. `--cli` 分流位于主程序所有 VTK/PySide6 导入之前；普通启动行为不变。
 8. 底层 SDK/解析器的诊断输出被重定向到 stderr，**stdout 永远只有一行信封**。

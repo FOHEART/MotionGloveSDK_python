@@ -59,11 +59,11 @@ jobs:
       - name: Install VTK/runtime deps into libs (Windows)
         if: runner.os == 'Windows'
         shell: cmd
-        run: call "scripts\setup_python_libs.cmd"
+        run: call "scripts\setup_python_libs.bat"
 
       - name: Install VTK/runtime deps into libs (Linux)
         if: runner.os == 'Linux'
-        run: sh "scripts/setup_python_libs.cmd"
+        run: sh "scripts/setup_python_libs.bat"
 
       - name: Run 3D viewer smoke test (Windows)
         if: runner.os == 'Windows'
@@ -106,11 +106,11 @@ jobs:
       - name: Build native library (Windows)
         if: runner.os == 'Windows'
         shell: cmd
-        run: call "scripts\build_mgsdk_cpp.cmd"
+        run: call "scripts\build_mgsdk_cpp.bat"
 
       - name: Build native library (Linux)
         if: runner.os == 'Linux'
-        run: sh "scripts/build_mgsdk_cpp.cmd"
+        run: sh "scripts/build_mgsdk_cpp.bat"
 
       - name: Verify ctypes ABI against C++ headers
         run: python scripts/verify_native_abi.py

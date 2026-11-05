@@ -9,7 +9,7 @@ The existing 3D viewer is a standalone VTK window with no UI chrome — as the S
 - Add a menu bar: **File → Exit**, **Help → About Qt**
 - Add a left-side panel (`QDockWidget` or fixed `QWidget`) showing the live UDP source IP and port
 - Add a status bar at the bottom of the main window
-- Update `[Windows]setup_python_libs.cmd` and `[Linux]setup_python_libs.sh` to install `pyside6`
+- Update `[Windows]setup_python_libs.bat` and `[Linux]setup_python_libs.sh` to install `pyside6`
 
 ## Capabilities
 
@@ -27,6 +27,6 @@ The existing 3D viewer is a standalone VTK window with no UI chrome — as the S
 
 - `motionGloveSDK_example3_3dView.py` — major refactor: VTK initialization moves into a PySide6 embedding layer
 - `python_draw3d/` — VTK pipeline largely unchanged; entry point adapts to Qt event loop
-- `[Windows]setup_python_libs.cmd`, `[Linux]setup_python_libs.sh` — add `pyside6` to pip install target
+- `[Windows]setup_python_libs.bat`, `[Linux]setup_python_libs.sh` — add `pyside6` to pip install target
 - CI workflow may need `pyside6` install and an offscreen Qt platform (`QT_QPA_PLATFORM=offscreen`) on Linux
 - New runtime dependency: `pyside6` (≥6.5)

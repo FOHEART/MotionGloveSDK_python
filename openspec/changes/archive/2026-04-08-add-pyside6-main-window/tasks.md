@@ -1,6 +1,6 @@
 ## 1. Setup & Dependencies
 
-- [x] 1.1 Add `pyside6==6.5.3` to the runtime pip install line in `[Windows]setup_python_libs.cmd` (inside the `--target libs` block)
+- [x] 1.1 Add `pyside6==6.5.3` to the runtime pip install line in `[Windows]setup_python_libs.bat` (inside the `--target libs` block)
 - [x] 1.2 Add `pyside6==6.5.3` to the runtime pip install line in `[Linux]setup_python_libs.sh` (inside the `--target libs` block)
 - [x] 1.3 Verify `vtkmodules.qt.QVTKRenderWindowInteractor` is importable after `pyside6` and `vtk==9.6.0` are both installed in `libs/`
 

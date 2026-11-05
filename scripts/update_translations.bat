@@ -5,10 +5,10 @@ REM ============================================================================
 REM  Update and compile Qt translations (lupdate -> lrelease).
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\update_translations.cmd
-REM    Linux/macOS: sh scripts/update_translations.cmd
+REM    Windows    : scripts\update_translations.bat
+REM    Linux/macOS: sh scripts/update_translations.bat
 REM
-REM  lupdate / lrelease come from libs\PySide6（由 setup_python_libs.cmd 安装）。
+REM  lupdate / lrelease come from libs\PySide6（由 setup_python_libs.bat 安装）。
 REM  Linux 上若 libs/PySide6 下没有可执行文件，则回退到 PATH 里的
 REM  lupdate / lrelease 或 pyside6-lupdate / pyside6-lrelease。
 REM ============================================================================
@@ -88,12 +88,12 @@ pick_tool() {
 
 LUPDATE=$(pick_tool lupdate) || {
     echo "[ERROR] 未找到 lupdate（期望 $ROOT/libs/PySide6/lupdate 或 PATH 中的 lupdate）。" >&2
-    echo "        请先安装依赖：sh scripts/setup_python_libs.cmd" >&2
+    echo "        请先安装依赖：sh scripts/setup_python_libs.bat" >&2
     exit 2
 }
 LRELEASE=$(pick_tool lrelease) || {
     echo "[ERROR] 未找到 lrelease（期望 $ROOT/libs/PySide6/lrelease 或 PATH 中的 lrelease）。" >&2
-    echo "        请先安装依赖：sh scripts/setup_python_libs.cmd" >&2
+    echo "        请先安装依赖：sh scripts/setup_python_libs.bat" >&2
     exit 3
 }
 

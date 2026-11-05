@@ -3,7 +3,7 @@
 @file  sync_agent_harness.py
 @brief 把 agent-harness/ 与仓库根 SKILL.md 同步到安装目录/分发包。
 @details
-跨平台纯 Python（由 sync_agent_harness.cmd 双解释器包装，也被 build.cmd 调用）。
+跨平台纯 Python（由 sync_agent_harness.bat 双解释器包装，也被 buildDeploy.bat 调用）。
 排除 __pycache__ / .pytest_cache / *.egg-info / *.pyc；支持 --check 做解包后自检。
 """
 
@@ -29,7 +29,7 @@ def _force_utf8_stdio() -> None:
 
 _force_utf8_stdio()
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "agent-harness"
 SKILL = ROOT / "SKILL.md"
 DEFAULT_DIST = ROOT / "dist" / "MotionGlove3DViewer"

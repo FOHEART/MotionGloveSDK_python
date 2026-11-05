@@ -5,8 +5,8 @@ REM ============================================================================
 REM  Pull the latest code from origin, sync submodules, rebuild the native SDK.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\git_pull_latest.cmd
-REM    Linux/macOS: sh scripts/git_pull_latest.cmd
+REM    Windows    : scripts\git_pull_latest.bat
+REM    Linux/macOS: sh scripts/git_pull_latest.bat
 REM ============================================================================
 setlocal EnableExtensions
 
@@ -39,7 +39,7 @@ if errorlevel 1 (
 
 echo.
 echo [fetch_latest] Rebuilding native library...
-call "%ROOT_DIR%\scripts\build_mgsdk_cpp.cmd"
+call "%ROOT_DIR%\scripts\build_mgsdk_cpp.bat"
 if errorlevel 1 (
     echo [ERROR] native library build failed.
     exit /b 1
@@ -65,7 +65,7 @@ echo "[fetch_latest] Syncing submodules (third_party/MotionGloveSDK_cpp)..."
 git submodule update --init --recursive || { echo "[ERROR] git submodule update failed."; exit 1; }
 
 echo "[fetch_latest] Rebuilding native library..."
-sh "$SCRIPT_DIR/build_mgsdk_cpp.cmd" || { echo "[ERROR] native library build failed."; exit 1; }
+sh "$SCRIPT_DIR/build_mgsdk_cpp.bat" || { echo "[ERROR] native library build failed."; exit 1; }
 
 echo ""
 echo "[fetch_latest] Done. Current status:"

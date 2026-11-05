@@ -971,8 +971,8 @@ def _build_qt_app():
                     self._left_panel.show_port_error([
                         "原生库不可用",
                         "请先编译 third_party/MotionGloveSDK_cpp：",
-                        "Windows: scripts\\build_mgsdk_cpp.cmd",
-                        "Linux/macOS: sh scripts/build_mgsdk_cpp.cmd",
+                        "Windows: scripts\\build_mgsdk_cpp.bat",
+                        "Linux/macOS: sh scripts/build_mgsdk_cpp.bat",
                     ])
                     return
                 from src.port_occupier import find_udp_port_occupier

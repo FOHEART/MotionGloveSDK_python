@@ -5,8 +5,8 @@ REM ============================================================================
 REM  Build csv_to_bvh (src\csv_to_bvh.py) with PyInstaller.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\build_csv_to_bvh.cmd [--no-bundle-python] [extra pyinstaller args]
-REM    Linux/macOS: sh scripts/build_csv_to_bvh.cmd [--no-bundle-python] [extra pyinstaller args]
+REM    Windows    : scripts\build_csv_to_bvh.bat [--no-bundle-python] [extra pyinstaller args]
+REM    Linux/macOS: sh scripts/build_csv_to_bvh.bat [--no-bundle-python] [extra pyinstaller args]
 REM
 REM  Output layout (identical on both platforms):
 REM    dist\csv_to_bvh\csv_to_bvh.exe      (Windows)

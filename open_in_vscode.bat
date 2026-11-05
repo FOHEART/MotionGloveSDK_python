@@ -5,12 +5,12 @@ REM ============================================================================
 REM  Open the project root in VSCode.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\open_in_vscode.cmd
-REM    Linux/macOS: sh scripts/open_in_vscode.cmd
+REM    Windows    : open_in_vscode.bat
+REM    Linux/macOS: sh open_in_vscode.bat
 REM ============================================================================
 setlocal EnableExtensions
 
-for %%I in ("%~dp0..") do set "ROOT_DIR=%%~fI"
+for %%I in ("%~dp0.") do set "ROOT_DIR=%%~fI"
 
 where code >nul 2>nul
 if errorlevel 1 (
@@ -24,8 +24,7 @@ exit /b %errorlevel%
 
 #__SH__
 # ===== POSIX 段（Linux / macOS）=====
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
-ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd) || exit 1
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 
 if ! command -v code >/dev/null 2>&1; then
     echo "[ERROR] 未找到 code 命令。请先安装 VSCode 并在命令面板执行" >&2

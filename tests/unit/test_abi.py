@@ -4,7 +4,7 @@
 @details
 覆盖策略
  - 不变量：sizeof 与字段 offset 必须与布局基准一致（VS2022 x64 / GCC x86_64
-   实测值，由 scripts/abi_probe.cpp 打印）。这是 Python 转接层与 C++ 库之间
+   实测值，由 scripts/lib/abi_probe.cpp 打印）。这是 Python 转接层与 C++ 库之间
    的二进制契约，一旦漂移，帧数据会整体错位；
  - verify_layout() 返回空列表表示全部一致；
  - FRAME_STRUCT_BY_FORMAT 必须覆盖 32/42 两种格式，缺格式会让 get_frame

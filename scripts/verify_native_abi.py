@@ -4,7 +4,7 @@ verify_native_abi.py - 校验 src/native/abi.py 与 MotionGloveSDK_cpp 的二进
 用法：
     python scripts/verify_native_abi.py
 
-原理：用本机编译器（Windows: MSVC / Linux: g++）编译 scripts/abi_probe.cpp，
+原理：用本机编译器（Windows: MSVC / Linux: g++）编译 scripts/lib/abi_probe.cpp，
       让它打印 C++ 侧真实的 sizeof / offsetof，再与 Python 端 ctypes 定义对比。
 
 MotionGloveSDK_cpp 结构体发生改动后，先跑本脚本，再只修改 src/native/abi.py。
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PROBE_SRC = REPO_ROOT / "scripts" / "abi_probe.cpp"
+PROBE_SRC = REPO_ROOT / "scripts" / "lib" / "abi_probe.cpp"
 INCLUDE_DIR = REPO_ROOT / "third_party" / "MotionGloveSDK_cpp" / "MotionGloveSDK" / "include"
 WORK_DIR = REPO_ROOT / "build" / "abi_probe"
 
@@ -143,7 +143,7 @@ def main() -> int:
     for cpp_name, fields in actual.items():
         py_name = STRUCT_NAME_MAP.get(cpp_name)
         if py_name is None:
-            problems.append(f"{cpp_name}: scripts/abi_probe.cpp 中的结构体未在 STRUCT_NAME_MAP 登记")
+            problems.append(f"{cpp_name}: scripts/lib/abi_probe.cpp 中的结构体未在 STRUCT_NAME_MAP 登记")
             continue
         py_fields = expected.get(_normalize(py_name))
         if py_fields is None:
@@ -157,7 +157,7 @@ def main() -> int:
 
     for cpp_name in STRUCT_NAME_MAP:
         if cpp_name not in actual:
-            problems.append(f"{cpp_name}: scripts/abi_probe.cpp 未输出该结构体")
+            problems.append(f"{cpp_name}: scripts/lib/abi_probe.cpp 未输出该结构体")
 
     if problems:
         print("[fail] src/native/abi.py 与 C++ 布局不一致：")

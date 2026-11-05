@@ -18,7 +18,7 @@ python motionGloveSDK_example3_3dView.py --cli --json status
 
 完整命令表、统一 JSON 信封 schema、错误码与示例见仓库根
 [`SKILL.md`](SKILL.md)（唯一一份）；Python harness 见
-`agent-harness/cli_anything/motionglove/`。打包时 `build.cmd` 会自动把
+`agent-harness/cli_anything/motionglove/`。打包时 `buildDeploy.bat` 会自动把
 harness 与 SKILL.md 同步到 `dist/MotionGlove3DViewer/`。
 
 ---
@@ -36,8 +36,9 @@ MotionGloveSDK_python/
 ├── cli/                               # CLI 实现：信封、命令、会话、解析、REPL
 ├── agent-harness/                     # CLI-Anything Python harness（Click + subprocess）
 ├── SKILL.md                           # CLI Skill 描述（唯一一份，命令表/错误码/示例）
-├── build.cmd                          # 一条龙打包/构建（cmd + sh 双解释器）：装依赖 + 编译原生库 + PyInstaller
-├── scripts/sync_agent_harness.py      # 同步 harness + SKILL.md 到分发目录
+├── buildDeploy.bat                    # 一条龙打包/构建（cmd + sh 双解释器）：装依赖 + 编译原生库 + PyInstaller
+├── open_in_vscode.bat                 # 用 VSCode 打开工程（独立小工具，双击即用）
+├── scripts/lib/sync_agent_harness.py  # 同步 harness + SKILL.md 到分发目录
 ├── AGENTS.md                          # 工程说明（面向 AI 编码助手）
 │
 ├── src/                               # SDK 内部实现模块
@@ -95,19 +96,22 @@ MotionGloveSDK_python/
 │   ├── draw_config_widget.py          # DrawConfigWidget：右侧绘图配置面板（Slider + 取色板）
 │   └── oss_licenses_dialog.py         # 开源声明对话框
 │
-├── scripts/                           # 实用脚本（.cmd 均为 cmd + sh 双解释器，同一份文件双平台可跑）
-│   ├── setup_python_libs.cmd          # 一键安装依赖（运行时 → libs/，开发工具 → 系统 Python）
-│   ├── build_mgsdk_cpp.cmd            # 编译 third_party/MotionGloveSDK_cpp
-│   ├── build_csv_to_bvh.cmd           # PyInstaller 打包 csv_to_bvh
+├── scripts/                           # 实用脚本（.bat 均为 cmd + sh 双解释器，同一份文件双平台可跑）
+│   ├── setup_python_libs.bat          # 一键安装依赖（运行时 → libs/，开发工具 → 系统 Python）
+│   ├── build_mgsdk_cpp.bat            # 编译 third_party/MotionGloveSDK_cpp
+│   ├── build_csv_to_bvh.bat           # PyInstaller 打包 csv_to_bvh
 │   ├── verify_native_abi.py           # 校验 src/native/abi.py 与 C++ 结构体布局是否一致
-│   ├── abi_probe.cpp                  # ABI 探针（打印 C++ sizeof/offsetof）
 │   ├── native_smoke_test.py           # 原生后端端到端冒烟测试（无需真实手套）
-│   ├── git_pull_latest.cmd            # 拉取最新代码 + 同步 submodule + 重编原生库
-│   ├── open_in_vscode.cmd             # 用 VSCode 打开工程
-│   ├── update_translations.cmd        # 更新并编译 Qt 翻译（lupdate → lrelease）
-│   ├── gen_docs.cmd                   # 生成 Doxygen HTML 文档并校验零告警
-│   ├── package_for_customer.cmd       # 打包客户分发包（剥离所有 git 内容）
-│   └── package_for_customer.ps1       # 打包逻辑（上面的 .cmd 只是包装）
+│   ├── git_pull_latest.bat            # 拉取最新代码 + 同步 submodule + 重编原生库
+│   ├── update_translations.bat        # 更新并编译 Qt 翻译（lupdate → lrelease）
+│   ├── gen_docs.bat                   # 生成 Doxygen HTML 文档并校验零告警
+│   ├── package_for_customer.bat       # 打包客户分发包（剥离所有 git 内容）
+│   ├── sync_agent_harness.bat         # 同步 harness + SKILL.md 到分发目录
+│   └── lib/                           # 辅助脚本（被上面的主入口调用，不单独执行）
+│       ├── abi_probe.cpp              # ABI 探针（打印 C++ sizeof/offsetof）
+│       ├── package_for_customer.ps1   # 打包逻辑（上面的 .bat 只是包装）
+│       ├── sync_agent_harness.py      # harness 同步逻辑（被入口脚本与 buildDeploy.bat 调用）
+│       └── fit_euler_formulas.py      # 欧拉角公式数值拟合（离线开发工具）
 │
 └── pyrightconfig.json                 # Pyright 类型检查配置
 ```
@@ -126,17 +130,17 @@ MotionGloveSDK_python/
 
 运行时依赖统一安装到工程目录下的 `libs/` 文件夹，不污染系统 Python 环境。
 
-安装脚本是**同一份文件**（`scripts/setup_python_libs.cmd`，首行 `exec` 自动切换解释器），
+安装脚本是**同一份文件**（`scripts/setup_python_libs.bat`，首行 `exec` 自动切换解释器），
 Windows 用 `cmd` 直接执行，Linux/macOS 用 `sh` 执行：
 
 ```cmd
 :: Windows
-scripts\setup_python_libs.cmd
+scripts\setup_python_libs.bat
 ```
 
 ```bash
 # Linux / macOS
-sh scripts/setup_python_libs.cmd
+sh scripts/setup_python_libs.bat
 ```
 
 脚本分两步执行：
@@ -185,12 +189,12 @@ git submodule update --init --recursive
 
 ```cmd
 :: Windows（需要 Visual Studio 2022 或更高 + CMake）
-scripts\build_mgsdk_cpp.cmd
+scripts\build_mgsdk_cpp.bat
 ```
 
 ```bash
 # Linux / macOS（需要 g++ + CMake）
-sh scripts/build_mgsdk_cpp.cmd
+sh scripts/build_mgsdk_cpp.bat
 ```
 
 产物安装到 `build/mgsdk_cpp/install/`：
@@ -318,7 +322,7 @@ APP_MODE = AppMode.CSV_PLAYBACK  # 回放已保存的 CSV 文件
 python motionGloveSDK_example3_3dView.py
 ```
 
-> 运行此示例需要先安装依赖：执行 `scripts/setup_python_libs.cmd`（Windows 直接运行，Linux/macOS 用 `sh scripts/setup_python_libs.cmd`），其中包含 VTK 和 PySide6。
+> 运行此示例需要先安装依赖：执行 `scripts/setup_python_libs.bat`（Windows 直接运行，Linux/macOS 用 `sh scripts/setup_python_libs.bat`），其中包含 VTK 和 PySide6。
 
 ---
 
@@ -545,7 +549,7 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ## 打包为独立可执行文件（Windows / Linux / macOS）
 
-根目录的 `build.cmd` 是一条龙脚本（**同一份文件**，Windows 用 `cmd`、Linux/macOS 用 `sh`）：
+根目录的 `buildDeploy.bat` 是一条龙脚本（**同一份文件**，Windows 用 `cmd`、Linux/macOS 用 `sh`）：
 **安装 Python 依赖 → 编译原生库 → PyInstaller 打包**，产物为
 `dist/MotionGlove3DViewer/MotionGlove3DViewer.exe`（Windows）或
 `dist/MotionGlove3DViewer/MotionGlove3DViewer`（Linux/macOS），内含 VTK、PySide6、字体、UI 文件与原生库。
@@ -553,22 +557,22 @@ https://theorangeduck.com/media/uploads/BVHView/bvhview.html
 
 ```cmd
 :: 一条龙（缺什么补什么；已就绪的步骤会自动跳过）
-build.cmd
+buildDeploy.bat
 
 :: 常见用法
-build.cmd --console      :: 保留控制台窗口，便于查看启动报错
-build.cmd --force        :: 强制重装依赖 + 重新编译原生库 + 重新打包
-build.cmd --skip-deps    :: 跳过依赖安装（libs\ 已就绪时更快）
-build.cmd --skip-native  :: 跳过原生库编译（已编译过时更快）
+buildDeploy.bat --console      :: 保留控制台窗口，便于查看启动报错
+buildDeploy.bat --force        :: 强制重装依赖 + 重新编译原生库 + 重新打包
+buildDeploy.bat --skip-deps    :: 跳过依赖安装（libs\ 已就绪时更快）
+buildDeploy.bat --skip-native  :: 跳过原生库编译（已编译过时更快）
 ```
 
 ```bash
 # Linux / macOS：参数完全相同
-sh build.cmd --console
+sh buildDeploy.bat --console
 ```
 
-依赖安装复用 `scripts/setup_python_libs.cmd`，原生库编译复用
-`scripts/build_mgsdk_cpp.cmd`，两者也可以单独执行（同样双平台通用）。
+依赖安装复用 `scripts/setup_python_libs.bat`，原生库编译复用
+`scripts/build_mgsdk_cpp.bat`，两者也可以单独执行（同样双平台通用）。
 
 ## 测试（pytest）
 
@@ -591,18 +595,18 @@ xyzw→wxyz）、config.json 原子读写、actorName 字节上限校验等。
 ## 文档（Doxygen）
 
 源码注释遵循《代码注释规范_Doxygen.md》（@file 文件头 + @brief/@param/@return）。
-HTML 文档由根目录 `Doxyfile` 生成，生成脚本 `scripts/gen_docs.cmd` 同样是**双解释器单文件**：
+HTML 文档由根目录 `Doxyfile` 生成，生成脚本 `scripts/gen_docs.bat` 同样是**双解释器单文件**：
 
 ```cmd
 :: Windows（任意目录均可执行，脚本会自动切到工程根目录）
-scripts\gen_docs.cmd
+scripts\gen_docs.bat
 ```
 
 ```bash
 # Linux / macOS
-sh scripts/gen_docs.cmd
+sh scripts/gen_docs.bat
 # 或手动（doxygen 用 DOXYGEN 环境变量指定）
-DOXYGEN=/usr/bin/doxygen sh scripts/gen_docs.cmd
+DOXYGEN=/usr/bin/doxygen sh scripts/gen_docs.bat
 ```
 
 doxygen 查找顺序：环境变量 `DOXYGEN` → Windows 默认安装位置
@@ -613,21 +617,21 @@ doxygen 查找顺序：环境变量 `DOXYGEN` → Windows 默认安装位置
 
 ## 打包客户分发包
 
-发给客户的源码压缩包由 `scripts/package_for_customer.ps1` 生成，
-两端都用同一个包装脚本 `scripts/package_for_customer.cmd` 调用
+发给客户的源码压缩包由 `scripts/lib/package_for_customer.ps1` 生成，
+两端都用同一个包装脚本 `scripts/package_for_customer.bat` 调用
 （Linux/macOS 需要 PowerShell 7：`pwsh`；无 `robocopy`/`7z` 时自动回退到 PowerShell 复制与 `Compress-Archive`）：
 
 ```cmd
 :: Windows —— 默认输出到仓库根目录：MotionGloveSDK_python_v<版本号>.zip
-scripts\package_for_customer.cmd
+scripts\package_for_customer.bat
 
 :: 指定版本号 / 保留暂存目录以便检查内容
-scripts\package_for_customer.cmd -Version 0.2.2 -KeepStaging
+scripts\package_for_customer.bat -Version 0.2.2 -KeepStaging
 ```
 
 ```bash
 # Linux / macOS
-sh scripts/package_for_customer.cmd -Version 0.2.2 -KeepStaging
+sh scripts/package_for_customer.bat -Version 0.2.2 -KeepStaging
 ```
 
 打包时会做三件事：
@@ -638,8 +642,8 @@ sh scripts/package_for_customer.cmd -Version 0.2.2 -KeepStaging
    `tests/`、`pytest.ini`、`pyrightconfig.json`、`Doxyfile` 等；
 3. **去掉依赖与产物**：`libs/`（约 1 GB）、`build/`、`out/`、`dist/`、`csvfile/`、`docs/html/`、`__pycache__/`。
 
-构建入口 `build.cmd` 及其依赖的 `MotionGlove3DViewer.spec`、`scripts/setup_python_libs.cmd`、
-`scripts/build_mgsdk_cpp.cmd` 会保留在分发包内（客户可自行构建可执行文件），
+构建入口 `buildDeploy.bat` 及其依赖的 `MotionGlove3DViewer.spec`、`scripts/setup_python_libs.bat`、
+`scripts/build_mgsdk_cpp.bat` 会保留在分发包内（客户可自行构建可执行文件），
 README 中“打包为独立可执行文件”章节随之保留。
 
 `third_party/MotionGloveSDK_cpp` 的源码会完整保留（客户可自行编译），只剔除其 `.git` 与内部资料；

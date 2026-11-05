@@ -5,8 +5,8 @@ REM ============================================================================
 REM  Generate Doxygen HTML documentation and verify the build is warning-free.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\gen_docs.cmd
-REM    Linux/macOS: sh scripts/gen_docs.cmd
+REM    Windows    : scripts\gen_docs.bat
+REM    Linux/macOS: sh scripts/gen_docs.bat
 REM
 REM  doxygen 查找顺序：
 REM    1. 环境变量 DOXYGEN 指定的可执行文件路径

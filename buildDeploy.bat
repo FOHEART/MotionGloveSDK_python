@@ -5,20 +5,20 @@ REM ============================================================================
 REM  一条龙打包：安装 Python 依赖 -^> 编译原生库 -^> PyInstaller 生成可执行文件
 REM
 REM  同一份文件在 Windows（cmd）与 Linux/macOS（POSIX sh）下都能直接运行：
-REM    Windows    : build.cmd
-REM    Linux/macOS: sh build.cmd
+REM    Windows    : buildDeploy.bat
+REM    Linux/macOS: sh buildDeploy.bat
 REM
 REM  产物：
 REM    dist\MotionGlove3DViewer\MotionGlove3DViewer.exe   (Windows)
 REM    dist/MotionGlove3DViewer/MotionGlove3DViewer       (Linux/macOS)
 REM
 REM  用法：
-REM    build.cmd                默认：隐藏控制台窗口
-REM    build.cmd --console      保留控制台窗口（便于查看报错）
-REM    build.cmd --force        强制重装依赖并重新编译原生库
-REM    build.cmd --skip-deps    跳过依赖安装（libs\ 已就绪时更快）
-REM    build.cmd --skip-native  跳过原生库编译（已编译过时更快）
-REM    build.cmd --help         显示本帮助
+REM    buildDeploy.bat                默认：隐藏控制台窗口
+REM    buildDeploy.bat --console      保留控制台窗口（便于查看报错）
+REM    buildDeploy.bat --force        强制重装依赖并重新编译原生库
+REM    buildDeploy.bat --skip-deps    跳过依赖安装（libs\ 已就绪时更快）
+REM    buildDeploy.bat --skip-native  跳过原生库编译（已编译过时更快）
+REM    buildDeploy.bat --help         显示本帮助
 REM ============================================================================
 setlocal EnableExtensions
 
@@ -84,7 +84,7 @@ if "%DEPS_READY%"=="1" (
 )
 
 :deps_install
-set "DEPS_SCRIPT=%PROJECT_ROOT%scripts\setup_python_libs.cmd"
+set "DEPS_SCRIPT=%PROJECT_ROOT%scripts\setup_python_libs.bat"
 if not exist "%DEPS_SCRIPT%" (
     echo [error] 未找到 %DEPS_SCRIPT%
     goto fail
@@ -112,7 +112,7 @@ if exist "%NATIVE_DLL%" (
 )
 
 :native_build
-set "NATIVE_SCRIPT=%PROJECT_ROOT%scripts\build_mgsdk_cpp.cmd"
+set "NATIVE_SCRIPT=%PROJECT_ROOT%scripts\build_mgsdk_cpp.bat"
 if not exist "%NATIVE_SCRIPT%" (
     echo [error] 未找到 %NATIVE_SCRIPT%
     goto fail
@@ -172,7 +172,7 @@ REM PyInstaller 运行后可能改掉控制台代码页，重新设置以免中�
 chcp 65001 >nul
 
 REM 同步 CLI-Anything harness 与唯一一份 SKILL.md 到分发目录
-python "%PROJECT_ROOT%scripts\sync_agent_harness.py" --dist "%PROJECT_ROOT%dist\MotionGlove3DViewer"
+python "%PROJECT_ROOT%scripts\lib\sync_agent_harness.py" --dist "%PROJECT_ROOT%dist\MotionGlove3DViewer"
 if errorlevel 1 (
     echo [error] agent-harness 同步失败
     goto fail
@@ -189,8 +189,8 @@ popd
 exit /b 0
 
 :usage
-echo 用法：build.cmd [--console] [--force] [--skip-deps] [--skip-native]
-echo        Linux/macOS：sh build.cmd [同上]
+echo 用法：buildDeploy.bat [--console] [--force] [--skip-deps] [--skip-native]
+echo        Linux/macOS：sh buildDeploy.bat [同上]
 echo.
 echo   --console      保留控制台窗口（默认隐藏）
 echo   --force        强制重装 Python 依赖并重新编译原生库
@@ -218,7 +218,7 @@ SKIP_DEPS=0
 SKIP_NATIVE=0
 
 usage() {
-    echo "用法：sh build.cmd [--console] [--force] [--skip-deps] [--skip-native]"
+    echo "用法：sh buildDeploy.bat [--console] [--force] [--skip-deps] [--skip-native]"
     echo ""
     echo "  --console      保留控制台窗口（默认隐藏）"
     echo "  --force        强制重装 Python 依赖并重新编译原生库"
@@ -267,7 +267,7 @@ if [ "$SKIP_DEPS" -eq 1 ]; then
 elif [ "$FORCE" -eq 0 ] && [ "$DEPS_READY" -eq 1 ]; then
     echo "[skip] libs/ 已包含 vtk / numpy / PySide6（--force 可强制重装）"
 else
-    sh "$ROOT/scripts/setup_python_libs.cmd" || { echo "[error] 依赖安装失败" >&2; exit 1; }
+    sh "$ROOT/scripts/setup_python_libs.bat" || { echo "[error] 依赖安装失败" >&2; exit 1; }
 fi
 
 echo ""
@@ -278,7 +278,7 @@ if [ "$SKIP_NATIVE" -eq 1 ]; then
 elif [ "$FORCE" -eq 0 ] && [ -f "$NATIVE_LIB" ]; then
     echo "[skip] 已存在 $NATIVE_LIB（--force 可重新编译）"
 else
-    sh "$ROOT/scripts/build_mgsdk_cpp.cmd" || { echo "[error] 原生库编译失败" >&2; exit 1; }
+    sh "$ROOT/scripts/build_mgsdk_cpp.bat" || { echo "[error] 原生库编译失败" >&2; exit 1; }
     [ -f "$NATIVE_LIB" ] || { echo "[error] 编译完成但未找到 $NATIVE_LIB" >&2; exit 1; }
 fi
 
@@ -302,7 +302,7 @@ fi
     --workpath "$ROOT/build/pyinstaller" \
     "$ROOT/MotionGlove3DViewer.spec" || { echo "[error] PyInstaller 打包失败" >&2; exit 1; }
 
-"$PY" "$ROOT/scripts/sync_agent_harness.py" --dist "$ROOT/dist/MotionGlove3DViewer" || { echo "[error] agent-harness 同步失败" >&2; exit 1; }
+"$PY" "$ROOT/scripts/lib/sync_agent_harness.py" --dist "$ROOT/dist/MotionGlove3DViewer" || { echo "[error] agent-harness 同步失败" >&2; exit 1; }
 
 APP_PATH="$ROOT/dist/MotionGlove3DViewer/MotionGlove3DViewer"
 [ -f "$APP_PATH" ] || { echo "[error] 未生成 $APP_PATH" >&2; exit 1; }

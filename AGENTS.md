@@ -10,15 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dependencies are installed locally to `libs/` (not system Python) using pip `--target`:
 
-All `scripts/*.cmd` files are **dual-interpreter** (same file runs under Windows `cmd.exe`
+All `scripts/*.bat` files are **dual-interpreter** (same file runs under Windows `cmd.exe`
 and POSIX `sh`); they must stay CRLF and BOM-free.
 
 ```bash
 # Windows
-scripts\setup_python_libs.cmd
+scripts\setup_python_libs.bat
 
 # Linux/macOS
-sh scripts/setup_python_libs.cmd
+sh scripts/setup_python_libs.bat
 ```
 
 **Python 3.10+ is required.** Runtime deps (vtk, numpy, matplotlib, Pillow, **pyside6**) land in `libs/`; dev tools (pyinstaller, pybind11) go to system Python.
@@ -29,10 +29,10 @@ The native library is also required at runtime:
 git submodule update --init --recursive
 
 # Windows (Visual Studio 2022+ and CMake required)
-scripts\build_mgsdk_cpp.cmd
+scripts\build_mgsdk_cpp.bat
 
 # Linux/macOS (g++ and CMake required)
-sh scripts/build_mgsdk_cpp.cmd
+sh scripts/build_mgsdk_cpp.bat
 ```
 
 Outputs go to `build/mgsdk_cpp/install/` (`bin/MotionGloveSDK.dll` on Windows, `lib/libMotionGloveSDK.so` elsewhere).
@@ -121,7 +121,7 @@ The C++ project changes often, so everything ABI-related is quarantined in `src/
 | Exported function signature / return code | `native/loader.py` `_bind()`, sometimes `native/backend.py` |
 | New skeleton layout | `native/abi.py` `FRAME_STRUCT_BY_FORMAT` + `native/mapper.py` |
 
-`scripts/abi_probe.cpp` prints the real `sizeof`/`offsetof` from the C++ headers; `scripts/verify_native_abi.py` compiles it and diffs it against `native/abi.py`.
+`scripts/lib/abi_probe.cpp` prints the real `sizeof`/`offsetof` from the C++ headers; `scripts/verify_native_abi.py` compiles it and diffs it against `native/abi.py`.
 
 Notes on C++ semantics the adapter compensates for:
 - `SingleSkeletonDef` has **no** `contains_*` flags — `mapper.py` derives them from `hdr.skeletonPosition` / `hdr.skeletonAttitude`.

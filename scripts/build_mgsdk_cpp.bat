@@ -6,8 +6,8 @@ REM  Build the C++ MotionGloveSDK (third_party/MotionGloveSDK_cpp) into
 REM  build/mgsdk_cpp/install/{bin,lib} so that src/native can load it.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\build_mgsdk_cpp.cmd [Release|Debug]
-REM    Linux/macOS: sh scripts/build_mgsdk_cpp.cmd [Release|Debug]
+REM    Windows    : scripts\build_mgsdk_cpp.bat [Release|Debug]
+REM    Linux/macOS: sh scripts/build_mgsdk_cpp.bat [Release|Debug]
 REM ============================================================================
 setlocal EnableExtensions
 

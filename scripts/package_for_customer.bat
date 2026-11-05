@@ -3,17 +3,17 @@
 chcp 65001 >nul
 REM ============================================================================
 REM  Package the project into a customer-facing zip (no git metadata, no git
-REM  helper scripts). All the logic lives in scripts\package_for_customer.ps1.
+REM  helper scripts). All the logic lives in scripts\lib\package_for_customer.ps1.
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows    : scripts\package_for_customer.cmd [-Version x.y.z] [-KeepStaging]
-REM    Linux/macOS: sh scripts/package_for_customer.cmd [-Version x.y.z] [-KeepStaging]
+REM    Windows    : scripts\package_for_customer.bat [-Version x.y.z] [-KeepStaging]
+REM    Linux/macOS: sh scripts/package_for_customer.bat [-Version x.y.z] [-KeepStaging]
 REM                 （Linux/macOS 需要 PowerShell 7：pwsh）
 REM ============================================================================
 setlocal EnableExtensions
 
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "SCRIPT=%ROOT%\scripts\package_for_customer.ps1"
+set "SCRIPT=%ROOT%\scripts\lib\package_for_customer.ps1"
 
 if not exist "%SCRIPT%" (
     echo [error] 未找到 %SCRIPT%
@@ -33,7 +33,7 @@ exit /b %errorlevel%
 # ===== POSIX 段（Linux / macOS）=====
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 1
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd) || exit 1
-PS_SCRIPT="$SCRIPT_DIR/package_for_customer.ps1"
+PS_SCRIPT="$SCRIPT_DIR/lib/package_for_customer.ps1"
 
 if [ ! -f "$PS_SCRIPT" ]; then
     echo "[error] 未找到 $PS_SCRIPT" >&2

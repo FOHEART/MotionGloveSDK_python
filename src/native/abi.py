@@ -5,7 +5,7 @@
 ═══════════════════════════════════════════════════════════════════════════
   这是整个转接层中【唯一】与 C++ 结构体内存布局耦合的文件。
   当 MotionGloveSDK_cpp 修改了结构体 / 枚举 / 导出函数签名时：
-    1. 重新编译原生库：scripts/build_mgsdk_cpp.cmd（Windows cmd / Linux sh 同一份文件）
+    1. 重新编译原生库：scripts/build_mgsdk_cpp.bat（Windows cmd / Linux sh 同一份文件）
     2. 运行 ABI 校验：  python scripts/verify_native_abi.py
     3. 只修改本文件，使 sizeof/offsetof 与 C++ 一致
   其余文件（loader.py / mapper.py / backend.py）无需改动。
@@ -17,7 +17,7 @@
   MotionGloveSDK/include/motionGloveSDK_skeleton42Def.h
   MotionGloveSDK/include/motionGloveSDK_skeleton32Def.h
 
-布局基准（VS2022 x64 / GCC x86_64 实测一致，由 scripts/abi_probe.cpp 打印）：
+布局基准（VS2022 x64 / GCC x86_64 实测一致，由 scripts/lib/abi_probe.cpp 打印）：
   sizeof(StreamHeader)                  = 131    skeletonFormat @ 91
   sizeof(SingleSkeletonDef)             = 196    skeletonName    @ 4
   sizeof(KHHS42PosAttitude_TypeDef)     = 8375   remoteIP        @ 8363
@@ -237,7 +237,7 @@ def describe_layout() -> dict[str, dict[str, int]]:
     """@brief 返回当前 ctypes 定义实际的 sizeof 与全部字段 offset。
 
     @return 嵌套字典 {结构体名: {"sizeof": N, 字段名: offset, ...}}，
-            供 verify_layout() 与 scripts/abi_probe.cpp 输出比对。
+            供 verify_layout() 与 scripts/lib/abi_probe.cpp 输出比对。
     """
     layout: dict[str, dict[str, int]] = {}
     for struct_name, struct in STRUCTS.items():
@@ -252,7 +252,7 @@ def describe_layout() -> dict[str, dict[str, int]]:
 def verify_layout() -> list[str]:
     """@brief 校验 ctypes 定义与基准布局是否一致。
 
-    @details 基准见 EXPECTED_SIZES / EXPECTED_OFFSETS（scripts/abi_probe.cpp
+    @details 基准见 EXPECTED_SIZES / EXPECTED_OFFSETS（scripts/lib/abi_probe.cpp
              实测值）。供 tests/unit/test_abi.py 与 scripts/verify_native_abi.py 使用。
     @return 不一致项描述列表（每项一条）；完全一致时返回空列表。
     """

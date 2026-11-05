@@ -7,12 +7,12 @@
     客户既拿不到仓库地址/历史，也无法用脚本拉取你的代码：
 
       * 不包含 .git / .gitmodules / .gitignore / .github —— 没有仓库地址、历史与远端配置；
-      * 不包含 git 操作脚本（scripts/git_pull_latest.cmd）；
+      * 不包含 git 操作脚本（scripts/git_pull_latest.bat）；
       * 不包含内部资料（openspec、.workbuddy、AGENTS.md、docs/superpowers、tests/）；
       * 不包含依赖缓存与构建产物（libs、build、out、dist、csvfile、docs/html、__pycache__）；
-      * 不包含开发工具（pytest.ini、pyrightconfig.json、Doxyfile、scripts/gen_docs.cmd）。
+      * 不包含开发工具（pytest.ini、pyrightconfig.json、Doxyfile、scripts/gen_docs.bat）。
 
-    构建入口 build.cmd（Windows cmd 与 Linux/macOS sh 共用的双解释器脚本）及其依赖的
+    构建入口 buildDeploy.bat（Windows cmd 与 Linux/macOS sh 共用的双解释器脚本）及其依赖的
     MotionGlove3DViewer.spec 会**随包发出**，客户拿到源码后可直接构建
     dist/MotionGlove3DViewer/MotionGlove3DViewer[.exe]。
 
@@ -32,10 +32,10 @@
     保留暂存目录（build/package/<包名>），便于检查打包内容。
 
 .EXAMPLE
-    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package_for_customer.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\lib\package_for_customer.ps1
 
 .EXAMPLE
-    scripts/package_for_customer.cmd -Version 0.2.2 -KeepStaging
+    scripts/package_for_customer.bat -Version 0.2.2 -KeepStaging
 #>
 [CmdletBinding()]
 param(
@@ -46,7 +46,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $packageBaseName = 'MotionGloveSDK_python'
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ $excludeFiles = @(
     '*package_for_customer*', '*package_source*',
     'AGENTS.md',
     'pytest.ini', 'pyrightconfig.json',
-    'Doxyfile', 'gen_docs.cmd', 'doxygen_warnings.log', '*.log',
+    'Doxyfile', 'gen_docs.bat', 'doxygen_warnings.log', '*.log',
     '*.zip', '*.7z', '*.user', '*.bak', '*.tmp',
     '*.pyc', '*.pyo', 'Thumbs.db', '.DS_Store',
     # 仓库根目录遗留的独立 .qm 文件（真正的翻译在 translations/ 下，文件名不同，不受影响）
@@ -271,7 +271,7 @@ Update-StagedText -Path (Join-Path $stageDir 'CHANGELOG.md') -Ops $commonOps `
     -DropLinePatterns $dropLinePatterns | Out-Null
 Update-StagedText -Path (Join-Path $stageDir 'third_party/MotionGloveSDK_cpp/README.md') -Ops $commonOps `
     -DropLinePatterns $dropLinePatterns -DropSections $cppReadmeDropSections | Out-Null
-Update-StagedText -Path (Join-Path $stageDir 'scripts/build_mgsdk_cpp.cmd') -Ops $commonOps | Out-Null
+Update-StagedText -Path (Join-Path $stageDir 'scripts/build_mgsdk_cpp.bat') -Ops $commonOps | Out-Null
 Update-StagedText -Path (Join-Path $stageDir 'scripts/verify_native_abi.py') -Ops $commonOps | Out-Null
 
 # config.json 里可能有开发者本机的绝对路径（如 blender.exe），清空让客户自行配置
@@ -292,7 +292,7 @@ Write-Host '[3/5] 校验分发包里没有残留 git 内容'
 $problems = @()
 
 # 构建入口必须随包发出，客户要靠它生成可执行文件
-$requiredBuildFiles = @('build.cmd', 'MotionGlove3DViewer.spec')
+$requiredBuildFiles = @('buildDeploy.bat', 'MotionGlove3DViewer.spec')
 foreach ($required in $requiredBuildFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $stageDir $required))) {
         throw "分发包缺少构建所需文件：$required"
@@ -372,4 +372,4 @@ else {
 Write-Host "  压缩包：$zipPath"
 Write-Host "  版本：v$Version　顶层目录：$packageName　文件数：$fileCount　大小：$sizeMb MB"
 Write-Host "  已排除目录：$($excludeDirs -join '、')"
-Write-Host '  提示：分发包不含 libs/ 与预编译动态库，客户可运行根目录 build.cmd 一键装依赖 + 编译原生库 + 打包。'
+Write-Host '  提示：分发包不含 libs/ 与预编译动态库，客户可运行根目录 buildDeploy.bat 一键装依赖 + 编译原生库 + 打包。'

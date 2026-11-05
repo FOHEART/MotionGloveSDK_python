@@ -7,8 +7,8 @@ REM    step 1: runtime deps (vtk / numpy / matplotlib / Pillow / pyside6 ...) ->
 REM    step 2: dev tools (pyinstaller / pybind11) -> system Python
 REM
 REM  This single file runs under BOTH interpreters:
-REM    Windows   : scripts\setup_python_libs.cmd
-REM    Linux/macOS: sh scripts/setup_python_libs.cmd
+REM    Windows   : scripts\setup_python_libs.bat
+REM    Linux/macOS: sh scripts/setup_python_libs.bat
 REM ============================================================================
 setlocal EnableExtensions
 

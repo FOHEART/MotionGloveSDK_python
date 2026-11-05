@@ -243,7 +243,7 @@ def collect_udp_frames(
     if not sdk.MotionGloveSDK_IsAvailable():
         raise NativeError(
             "MotionGloveSDK 原生库不可用，无法监听 UDP；"
-            "请执行 scripts\\build_mgsdk_cpp.cmd 或设置 MOTIONGLOVE_NATIVE_LIB"
+            "请执行 scripts\\build_mgsdk_cpp.bat 或设置 MOTIONGLOVE_NATIVE_LIB"
         )
 
     ret = sdk.MotionGloveSDK_ListenUDPPort(port)

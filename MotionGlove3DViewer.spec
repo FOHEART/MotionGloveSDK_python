@@ -14,7 +14,7 @@ try:
 except Exception as exc:  # noqa: BLE001 - 打包前必须明确失败
     raise SystemExit(
         "[spec] 未找到 MotionGloveSDK 原生库，请先编译 third_party/MotionGloveSDK_cpp："
-        "Windows: scripts\\build_mgsdk_cpp.cmd；Linux/macOS: sh scripts/build_mgsdk_cpp.cmd\n" + str(exc)
+        "Windows: scripts\\build_mgsdk_cpp.bat；Linux/macOS: sh scripts/build_mgsdk_cpp.bat\n" + str(exc)
     )
 
 datas = [('tools/fonts', 'tools/fonts'), ('ui', 'ui')]
